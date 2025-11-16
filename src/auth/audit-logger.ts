@@ -89,7 +89,7 @@ export const AuditEventSchema = z.object({
 
   // Details
   message: z.string(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.unknown()).optional(),
   errorDetails: z.string().optional(),
 
   // Performance
@@ -389,7 +389,7 @@ export class SecurityAuditLogger {
     principal: string;
     principalType?: AuditEvent['principalType'];
     action: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): void {
     this.log({
       eventType: AuditEventType.AUTH_SUCCESS,
@@ -410,7 +410,7 @@ export class SecurityAuditLogger {
     principal: string;
     action: string;
     errorDetails: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): void {
     this.log({
       eventType: AuditEventType.AUTH_FAILURE,
@@ -432,7 +432,7 @@ export class SecurityAuditLogger {
     action: string;
     resource: string;
     reason: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): void {
     this.log({
       eventType: AuditEventType.AUTHZ_DENIED,
@@ -454,7 +454,7 @@ export class SecurityAuditLogger {
     action: string;
     severity: AuditSeverity;
     message: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): void {
     this.log({
       eventType: AuditEventType.SECURITY_VIOLATION,
@@ -474,7 +474,7 @@ export class SecurityAuditLogger {
     eventType: AuditEventType;
     principal: string;
     action: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): void {
     this.log({
       eventType: params.eventType,

@@ -334,15 +334,15 @@ export class SensitiveDataDetector {
   /**
    * Check if data contains sensitive information
    */
-  detectSensitiveData(data: any): { detected: boolean; fields: string[] } {
+  detectSensitiveData(data: unknown): { detected: boolean; fields: string[] } {
     const sensitiveFields: string[] = [];
 
-    const checkObject = (obj: any, path: string = '') => {
+    const checkObject = (obj: unknown, path: string = '') => {
       if (typeof obj !== 'object' || obj === null) {
         return;
       }
 
-      for (const [key, value] of Object.entries(obj)) {
+      for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
         const fullPath = path ? `${path}.${key}` : key;
         const keyLower = key.toLowerCase();
 
@@ -379,12 +379,14 @@ export class SensitiveDataDetector {
   /**
    * Redact sensitive fields from data
    */
-  redactSensitiveData(data: any): any {
+  redactSensitiveData(data: unknown): unknown {
     if (typeof data !== 'object' || data === null) {
       return data;
     }
 
-    const redacted = Array.isArray(data) ? [...data] : { ...data };
+    const redacted: Record<string, unknown> = Array.isArray(data)
+      ? (data as unknown[]).slice() as Record<string, unknown>
+      : { ...(data as Record<string, unknown>) };
 
     for (const [key, value] of Object.entries(redacted)) {
       const keyLower = key.toLowerCase();
@@ -487,7 +489,7 @@ export interface SecurityEvent {
   severity: 'low' | 'medium' | 'high' | 'critical';
   userId?: string;
   toolName?: string;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
 }
 
 export class SecurityAuditLogger {
@@ -616,11 +618,11 @@ export class SecurityMiddleware {
   /**
    * Validate MCP request (main entry point)
    */
-  async validateRequest(params: {
+  validateRequest(params: {
     toolName: string;
     userId?: string;
-    arguments?: any;
-  }): Promise<{ allowed: boolean; error?: string; warnings?: string[] }> {
+    arguments?: unknown;
+  }): { allowed: boolean; error?: string; warnings?: string[] } {
     const warnings: string[] = [];
 
     try {
@@ -658,8 +660,10 @@ export class SecurityMiddleware {
       }
 
       // Input validation based on tool type
-      if (params.toolName === 'query_bigquery' && params.arguments?.query) {
-        const queryValidation = this.inputValidator.validateQuery(params.arguments.query);
+      const args = params.arguments as { query?: string; datasetId?: string; tableId?: string } | undefined;
+
+      if (params.toolName === 'query_bigquery' && args?.query) {
+        const queryValidation = this.inputValidator.validateQuery(args.query);
         if (!queryValidation.valid) {
           this.auditLogger.logEvent({
             type: 'invalid_query',
@@ -675,7 +679,7 @@ export class SecurityMiddleware {
         }
 
         // Prompt injection detection
-        const injectionCheck = this.promptDetector.detect(params.arguments.query);
+        const injectionCheck = this.promptDetector.detect(args.query);
         if (injectionCheck.detected) {
           this.auditLogger.logEvent({
             type: 'prompt_injection',
@@ -691,8 +695,8 @@ export class SecurityMiddleware {
         }
       }
 
-      if (params.toolName === 'list_tables' && params.arguments?.datasetId) {
-        const datasetValidation = this.inputValidator.validateDatasetId(params.arguments.datasetId);
+      if (params.toolName === 'list_tables' && args?.datasetId) {
+        const datasetValidation = this.inputValidator.validateDatasetId(args.datasetId);
         if (!datasetValidation.valid) {
           return {
             allowed: false,
@@ -702,14 +706,14 @@ export class SecurityMiddleware {
       }
 
       if (params.toolName === 'get_table_schema') {
-        if (params.arguments?.datasetId) {
-          const datasetValidation = this.inputValidator.validateDatasetId(params.arguments.datasetId);
+        if (args?.datasetId) {
+          const datasetValidation = this.inputValidator.validateDatasetId(args.datasetId);
           if (!datasetValidation.valid) {
             return { allowed: false, error: datasetValidation.error };
           }
         }
-        if (params.arguments?.tableId) {
-          const tableValidation = this.inputValidator.validateTableId(params.arguments.tableId);
+        if (args?.tableId) {
+          const tableValidation = this.inputValidator.validateTableId(args.tableId);
           if (!tableValidation.valid) {
             return { allowed: false, error: tableValidation.error };
           }
@@ -742,7 +746,7 @@ export class SecurityMiddleware {
   /**
    * Validate response data
    */
-  validateResponse(data: any): { allowed: boolean; redacted?: any; warnings?: string[] } {
+  validateResponse(data: unknown): { allowed: boolean; redacted?: unknown; warnings?: string[] } {
     const warnings: string[] = [];
 
     try {

@@ -1,6 +1,88 @@
-import { BigQuery, Dataset, Table } from '@google-cloud/bigquery';
+import { BigQuery } from '@google-cloud/bigquery';
 import { z } from 'zod';
 import { EventEmitter } from 'events';
+
+// Helper types for BigQuery metadata
+interface DatasetMetadataRaw {
+  datasetReference?: {
+    projectId?: string;
+    datasetId?: string;
+  };
+  location?: string;
+  creationTime?: string;
+  lastModifiedTime?: string;
+  description?: string;
+  labels?: Record<string, string>;
+}
+
+interface TableMetadataRaw {
+  tableReference?: {
+    projectId?: string;
+    datasetId?: string;
+    tableId?: string;
+  };
+  type?: string;
+  schema?: {
+    fields?: unknown[];
+  };
+  numRows?: string;
+  numBytes?: string;
+  creationTime?: string;
+  lastModifiedTime?: string;
+  expirationTime?: string;
+}
+
+function safeGetDatasetReference(metadata: unknown): { projectId: string } {
+  const meta = metadata as DatasetMetadataRaw | undefined;
+  return {
+    projectId: meta?.datasetReference?.projectId ?? '',
+  };
+}
+
+function safeGetTableReference(metadata: unknown): { projectId: string } {
+  const meta = metadata as TableMetadataRaw | undefined;
+  return {
+    projectId: meta?.tableReference?.projectId ?? '',
+  };
+}
+
+function safeGetDatasetMetadata(metadata: unknown): {
+  location: string;
+  creationTime: string;
+  lastModifiedTime: string;
+  description?: string;
+  labels?: Record<string, string>;
+} {
+  const meta = metadata as DatasetMetadataRaw | undefined;
+  return {
+    location: meta?.location ?? '',
+    creationTime: meta?.creationTime ?? '0',
+    lastModifiedTime: meta?.lastModifiedTime ?? '0',
+    description: meta?.description,
+    labels: meta?.labels,
+  };
+}
+
+function safeGetTableMetadata(metadata: unknown): {
+  type: string;
+  schema: unknown[];
+  numRows?: string;
+  numBytes?: string;
+  creationTime: string;
+  lastModifiedTime: string;
+  expirationTime?: string;
+} {
+  const meta = metadata as TableMetadataRaw | undefined;
+  return {
+    type: meta?.type ?? 'TABLE',
+    schema: meta?.schema?.fields ?? [],
+    numRows: meta?.numRows,
+    numBytes: meta?.numBytes,
+    creationTime: meta?.creationTime ?? '0',
+    lastModifiedTime: meta?.lastModifiedTime ?? '0',
+    expirationTime: meta?.expirationTime,
+  };
+}
 
 // Zod schemas
 export const DatasetManagerConfigSchema = z.object({
@@ -32,7 +114,7 @@ export interface TableMetadata {
   datasetId: string;
   projectId: string;
   type: 'TABLE' | 'VIEW' | 'EXTERNAL' | 'MATERIALIZED_VIEW';
-  schema: any[];
+  schema: unknown[];
   numRows?: number;
   numBytes?: number;
   createdAt: Date;
@@ -136,7 +218,8 @@ export class DatasetManager extends EventEmitter {
    */
   public async listDatasets(client: BigQuery, projectId?: string): Promise<DatasetMetadata[]> {
     try {
-      const [datasets] = await client.getDatasets({ projectId });
+      const datasetsResult = await client.getDatasets({ projectId });
+      const datasets = datasetsResult[0];
 
       const metadataPromises = datasets.map(async (dataset) => {
         const datasetId = dataset.id!;
@@ -156,10 +239,11 @@ export class DatasetManager extends EventEmitter {
 
       return await Promise.all(metadataPromises);
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       throw new DatasetManagerError(
-        'Failed to list datasets',
+        `Failed to list datasets: ${err.message}`,
         'LIST_DATASETS_ERROR',
-        error
+        err
       );
     }
   }
@@ -174,7 +258,8 @@ export class DatasetManager extends EventEmitter {
   ): Promise<TableMetadata[]> {
     try {
       const dataset = client.dataset(datasetId, { projectId });
-      const [tables] = await dataset.getTables();
+      const tablesResult = await dataset.getTables();
+      const tables = tablesResult[0];
 
       const metadataPromises = tables.map(async (table) => {
         const tableId = table.id!;
@@ -194,10 +279,11 @@ export class DatasetManager extends EventEmitter {
 
       return await Promise.all(metadataPromises);
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       throw new DatasetManagerError(
-        `Failed to list tables in dataset ${datasetId}`,
+        `Failed to list tables in dataset ${datasetId}: ${err.message}`,
         'LIST_TABLES_ERROR',
-        error
+        err
       );
     }
   }
@@ -212,32 +298,38 @@ export class DatasetManager extends EventEmitter {
   ): Promise<DatasetMetadata> {
     try {
       const dataset = client.dataset(datasetId, { projectId });
-      const [metadata] = await dataset.getMetadata();
-      const [tables] = await dataset.getTables();
+      const metadataResult = await dataset.getMetadata();
+      const metadata = metadataResult[0] as DatasetMetadataRaw;
+      const tablesResult = await dataset.getTables();
+      const tables = tablesResult[0];
 
       const tableMetadataPromises = tables.map(table =>
         this.fetchTableMetadata(client, datasetId, table.id!, projectId)
       );
       const tableMetadata = await Promise.all(tableMetadataPromises);
 
+      const datasetRef = safeGetDatasetReference(metadata);
+      const datasetMeta = safeGetDatasetMetadata(metadata);
+
       return {
         id: datasetId,
-        projectId: projectId || metadata.datasetReference.projectId,
-        location: metadata.location,
-        createdAt: new Date(parseInt(metadata.creationTime)),
-        modifiedAt: new Date(parseInt(metadata.lastModifiedTime)),
-        description: metadata.description,
-        labels: metadata.labels,
+        projectId: projectId || datasetRef.projectId,
+        location: datasetMeta.location,
+        createdAt: new Date(parseInt(datasetMeta.creationTime, 10)),
+        modifiedAt: new Date(parseInt(datasetMeta.lastModifiedTime, 10)),
+        description: datasetMeta.description,
+        labels: datasetMeta.labels,
         tableCount: tables.length,
         tables: tableMetadata,
         lastAccessedAt: new Date(),
         accessCount: 1,
       };
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       throw new DatasetManagerError(
-        `Failed to fetch metadata for dataset ${datasetId}`,
+        `Failed to fetch metadata for dataset ${datasetId}: ${err.message}`,
         'FETCH_DATASET_ERROR',
-        error
+        err
       );
     }
   }
@@ -253,27 +345,32 @@ export class DatasetManager extends EventEmitter {
   ): Promise<TableMetadata> {
     try {
       const table = client.dataset(datasetId, { projectId }).table(tableId);
-      const [metadata] = await table.getMetadata();
+      const metadataResult = await table.getMetadata();
+      const metadata = metadataResult[0] as TableMetadataRaw;
+
+      const tableRef = safeGetTableReference(metadata);
+      const tableMeta = safeGetTableMetadata(metadata);
 
       return {
         id: tableId,
         datasetId,
-        projectId: projectId || metadata.tableReference.projectId,
-        type: metadata.type as TableMetadata['type'],
-        schema: metadata.schema?.fields || [],
-        numRows: metadata.numRows ? parseInt(metadata.numRows) : undefined,
-        numBytes: metadata.numBytes ? parseInt(metadata.numBytes) : undefined,
-        createdAt: new Date(parseInt(metadata.creationTime)),
-        modifiedAt: new Date(parseInt(metadata.lastModifiedTime)),
-        expirationTime: metadata.expirationTime
-          ? new Date(parseInt(metadata.expirationTime))
+        projectId: projectId || tableRef.projectId,
+        type: tableMeta.type as TableMetadata['type'],
+        schema: tableMeta.schema,
+        numRows: tableMeta.numRows ? parseInt(tableMeta.numRows, 10) : undefined,
+        numBytes: tableMeta.numBytes ? parseInt(tableMeta.numBytes, 10) : undefined,
+        createdAt: new Date(parseInt(tableMeta.creationTime, 10)),
+        modifiedAt: new Date(parseInt(tableMeta.lastModifiedTime, 10)),
+        expirationTime: tableMeta.expirationTime
+          ? new Date(parseInt(tableMeta.expirationTime, 10))
           : undefined,
       };
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       throw new DatasetManagerError(
-        `Failed to fetch metadata for table ${datasetId}.${tableId}`,
+        `Failed to fetch metadata for table ${datasetId}.${tableId}: ${err.message}`,
         'FETCH_TABLE_ERROR',
-        error
+        err
       );
     }
   }

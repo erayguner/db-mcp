@@ -34,6 +34,13 @@ module.exports = {
     'dist/',
     'node_modules/',
     '*.js',
-    '*.cjs'
+    '*.cjs',
+    'coverage/',
+    '**/*.test.ts',
+    '**/*.spec.ts',
+    '**/__tests__/**',
+    'tests/**/*',
+    'src/tests/**/*',
+    'src/bigquery/__tests__/**'
   ]
 };

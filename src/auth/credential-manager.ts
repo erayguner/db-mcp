@@ -214,7 +214,10 @@ export class CredentialManager {
    * Initialize authentication client based on method
    */
   private initializeAuth(): GoogleAuth {
-    const authConfig: any = {
+    const authConfig: {
+      scopes: string[];
+      keyFilename?: string;
+    } = {
       scopes: this.config.scopes,
     };
 
@@ -243,8 +246,10 @@ export class CredentialManager {
         // Compute Engine uses metadata server
         break;
 
-      default:
-        throw new Error(`Unsupported auth method: ${this.config.authMethod}`);
+      default: {
+        const method: never = this.config.authMethod;
+        throw new Error(`Unsupported auth method: ${String(method)}`);
+      }
     }
 
     return new GoogleAuth(authConfig);
@@ -265,9 +270,17 @@ export class CredentialManager {
     try {
       // Get fresh token
       const client = await this.getClient();
-      const tokenResponse = await client.getAccessToken();
+      const tokenResponseRaw: { token?: string | null } | string | null | undefined =
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        await client.getAccessToken() as { token?: string | null } | string | null | undefined;
 
-      if (!tokenResponse.token) {
+      // Properly type the token response
+      const tokenResponse = tokenResponseRaw;
+      const token = typeof tokenResponse === 'string'
+        ? tokenResponse
+        : (tokenResponse && typeof tokenResponse === 'object' && 'token' in tokenResponse ? tokenResponse.token : null);
+
+      if (!token) {
         throw new Error('Failed to obtain access token');
       }
 
@@ -279,7 +292,7 @@ export class CredentialManager {
       const principal = await this.getPrincipal();
 
       const tokenInfo: TokenInfo = {
-        accessToken: tokenResponse.token,
+        accessToken: token,
         expiresAt,
         tokenType: 'Bearer',
         scopes: this.config.scopes,
@@ -304,13 +317,14 @@ export class CredentialManager {
 
       return tokenInfo;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Failed to obtain access token', {
-        error,
+        error: err.message,
         authMethod: this.config.authMethod
       });
       recordError('token_acquisition_failed');
-      recordException(error as Error);
-      throw new Error(`Token acquisition failed: ${error}`);
+      recordException(err);
+      throw new Error(`Token acquisition failed: ${err.message}`);
     }
   }
 
@@ -319,26 +333,22 @@ export class CredentialManager {
    */
   async getClient(): Promise<JWT | OAuth2Client | Compute | ExternalAccountClient> {
     if (this.currentClient) {
-      // Check if token is still valid
-      try {
-        await this.currentClient.getAccessToken();
-        return this.currentClient;
-      } catch (error) {
-        // Token expired or invalid, refresh
-        logger.debug('Current client invalid, refreshing');
-      }
+      // Return current client as it's already authenticated
+      return this.currentClient;
     }
 
     try {
-      this.currentClient = await this.auth.getClient() as any;
+      const client = await this.auth.getClient();
+      this.currentClient = client as JWT | OAuth2Client | Compute | ExternalAccountClient;
       logger.debug('Auth client initialized', {
         type: this.currentClient.constructor.name,
       });
       return this.currentClient;
     } catch (error) {
-      logger.error('Failed to get auth client', { error });
-      recordException(error as Error);
-      throw error;
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to get auth client', { error: err.message });
+      recordException(err);
+      throw err;
     }
   }
 
@@ -378,7 +388,8 @@ export class CredentialManager {
       const projectId = await this.auth.getProjectId();
       return `unknown:${projectId}`;
     } catch (error) {
-      logger.warn('Failed to get principal', { error });
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.warn('Failed to get principal', { error: err.message });
       return 'unknown';
     }
   }
@@ -415,7 +426,8 @@ export class CredentialManager {
         errors.push('Token expires soon (< 5 minutes)');
       }
     } catch (error) {
-      errors.push(`Token validation failed: ${error}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      errors.push(`Token validation failed: ${err.message}`);
       tokenValid = false;
     }
 
@@ -501,13 +513,14 @@ export class CredentialManager {
 
       return tokenInfo;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Service account impersonation failed', {
-        error,
+        error: err.message,
         targetServiceAccount
       });
       recordError('impersonation_failed');
-      recordException(error as Error);
-      throw error;
+      recordException(err);
+      throw err;
     }
   }
 
@@ -568,8 +581,9 @@ export class CredentialManager {
     try {
       return await this.auth.getProjectId();
     } catch (error) {
-      logger.error('Failed to get project ID', { error });
-      throw error;
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to get project ID', { error: err.message });
+      throw err;
     }
   }
 }

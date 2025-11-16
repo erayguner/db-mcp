@@ -1,4 +1,4 @@
-import { ExternalAccountClient } from 'google-auth-library';
+import { ExternalAccountClient as _ExternalAccountClient } from 'google-auth-library';
 import { z } from 'zod';
 import { logger } from '../utils/logger.js';
 import { CredentialManager, CredentialConfig } from './credential-manager.js';
@@ -78,7 +78,7 @@ export interface OIDCTokenClaims {
   name?: string;
   picture?: string;
   hd?: string; // Hosted domain
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // ==========================================
@@ -97,7 +97,7 @@ class OIDCTokenValidator {
   /**
    * Validate OIDC token claims
    */
-  async validateToken(token: string): Promise<OIDCTokenClaims> {
+  validateToken(token: string): OIDCTokenClaims {
     try {
       // Decode JWT (without verification for now - GCP will verify)
       const claims = this.decodeJWT(token);
@@ -149,6 +149,7 @@ class OIDCTokenValidator {
         action: 'oidc_token_validation',
         severity: AuditSeverity.ERROR,
         message: `OIDC token validation failed: ${errorMsg}`,
+        metadata: {},
       });
 
       throw error;
@@ -167,9 +168,10 @@ class OIDCTokenValidator {
 
       const payload = parts[1];
       const decoded = Buffer.from(payload, 'base64').toString('utf-8');
-      return JSON.parse(decoded);
+      return JSON.parse(decoded) as OIDCTokenClaims;
     } catch (error) {
-      throw new Error(`Failed to decode JWT: ${error}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to decode JWT: ${errorMsg}`);
     }
   }
 }
@@ -228,7 +230,7 @@ export class WIFAuthenticator {
   async authenticate(oidcToken: string): Promise<WIFTokenExchangeResult> {
     try {
       // Validate OIDC token
-      const claims = await this.tokenValidator.validateToken(oidcToken);
+      const claims = this.tokenValidator.validateToken(oidcToken);
       const principal = claims.email || claims.sub;
 
       logger.info('OIDC token validated, exchanging for GCP token', {

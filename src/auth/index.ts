@@ -49,10 +49,9 @@ export type {
  * Simplified creation of authentication instances
  */
 
-import { CredentialManager, CredentialConfig } from './credential-manager.js';
-import { WIFAuthenticator, WIFAuthConfig } from './wif-authenticator.js';
-import { WorkloadIdentityFederation, WIFConfig } from './workload-identity.js';
-import { GoogleWorkspaceAuth, GoogleWorkspaceConfig } from './google-workspace.js';
+import { CredentialManager, type CredentialConfig } from './credential-manager.js';
+import { WIFAuthenticator, type WIFAuthConfig } from './wif-authenticator.js';
+import { GoogleWorkspaceAuth, type GoogleWorkspaceConfig } from './google-workspace.js';
 import { getAuditLogger } from './audit-logger.js';
 
 export interface AuthenticationOptions {

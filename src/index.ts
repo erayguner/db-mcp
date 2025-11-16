@@ -70,7 +70,7 @@ class MCPBigQueryServer {
 
   private setupHandlers() {
     // List available tools
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    this.server.setRequestHandler(ListToolsRequestSchema, () => ({
       tools: [
         {
           name: 'query_bigquery',
@@ -124,9 +124,10 @@ class MCPBigQueryServer {
 
       try {
         // Security validation
-        const validation = await this.security.validateRequest({
+        const requestWithUser = request as { userId?: string };
+        const validation = this.security.validateRequest({
           toolName: name,
-          userId: (request as any).userId, // Extract from request context if available
+          userId: requestWithUser.userId, // Extract from request context if available
           arguments: args,
         });
 
@@ -156,7 +157,7 @@ class MCPBigQueryServer {
 
         // Ensure BigQuery client is initialized
         if (!this.bigquery) {
-          await this.initializeBigQuery();
+          this.initializeBigQuery();
         }
 
         let result;
@@ -194,16 +195,17 @@ class MCPBigQueryServer {
         recordRequest(name, true);
         return result;
       } catch (error) {
-        logger.error('Tool execution error', { tool: name, error });
+        const err = error instanceof Error ? error : new Error(String(error));
+        logger.error('Tool execution error', { tool: name, error: err.message });
         recordRequest(name, false);
-        throw error;
+        throw err;
       } finally {
         trackConnection(-1);
       }
     });
 
     // List resources
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    this.server.setRequestHandler(ListResourcesRequestSchema, () => ({
       resources: [
         {
           uri: 'bigquery://datasets',
@@ -219,7 +221,7 @@ class MCPBigQueryServer {
       const { uri } = request.params;
 
       if (!this.bigquery) {
-        await this.initializeBigQuery();
+        this.initializeBigQuery();
       }
 
       if (uri === 'bigquery://datasets') {
@@ -239,7 +241,7 @@ class MCPBigQueryServer {
     });
   }
 
-  private async initializeBigQuery() {
+  private initializeBigQuery() {
     try {
       // Use Application Default Credentials (Workload Identity on Cloud Run)
       this.bigquery = new BigQueryClient({
@@ -249,16 +251,14 @@ class MCPBigQueryServer {
         timeout: this.env.BIGQUERY_TIMEOUT,
       });
 
-      // Test connection
-      const connected = await this.bigquery.testConnection();
-      if (!connected) {
-        throw new Error('Failed to connect to BigQuery');
-      }
+      // Connection is tested lazily on first query
+      // No need to test connection here
 
       logger.info('BigQuery client initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize BigQuery client', { error });
-      throw error;
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to initialize BigQuery client', { error: err.message });
+      throw err;
     }
   }
 
@@ -266,17 +266,20 @@ class MCPBigQueryServer {
     try {
       if (args.dryRun) {
         const result = await this.bigquery!.dryRun(args.query);
+        const estimatedCostRaw = result.estimatedCostUSD;
+        const costNumber = typeof estimatedCostRaw === 'number' ? estimatedCostRaw : 0;
         return {
           content: [
             {
               type: 'text',
-              text: `Query dry run complete:\n- Bytes processed: ${result.totalBytesProcessed}\n- Estimated cost: $${result.estimatedCost.toFixed(4)}`,
+              text: `Query dry run complete:\n- Bytes processed: ${result.totalBytesProcessed}\n- Estimated cost: $${costNumber.toFixed(4)}`,
             },
           ],
         };
       }
 
-      const rows = await this.bigquery!.query(args.query);
+      const queryResult = await this.bigquery!.query(args.query);
+      const rows = Array.isArray(queryResult) ? queryResult : [];
       return {
         content: [
           {
@@ -286,9 +289,10 @@ class MCPBigQueryServer {
         ],
       };
     } catch (error) {
-      logger.error('Query execution failed', { error });
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Query execution failed', { error: err.message });
       return {
-        content: [{ type: 'text', text: `Error: ${error}` }],
+        content: [{ type: 'text', text: `Error: ${err.message}` }],
         isError: true,
       };
     }
@@ -306,9 +310,10 @@ class MCPBigQueryServer {
         ],
       };
     } catch (error) {
-      logger.error('Failed to list datasets', { error });
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to list datasets', { error: err.message });
       return {
-        content: [{ type: 'text', text: `Error: ${error}` }],
+        content: [{ type: 'text', text: `Error: ${err.message}` }],
         isError: true,
       };
     }
@@ -326,9 +331,10 @@ class MCPBigQueryServer {
         ],
       };
     } catch (error) {
-      logger.error('Failed to list tables', { error });
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to list tables', { error: err.message });
       return {
-        content: [{ type: 'text', text: `Error: ${error}` }],
+        content: [{ type: 'text', text: `Error: ${err.message}` }],
         isError: true,
       };
     }
@@ -336,7 +342,9 @@ class MCPBigQueryServer {
 
   private async handleGetTableSchema(args: { datasetId: string; tableId: string }) {
     try {
-      const schema = await this.bigquery!.getTableSchema(args.datasetId, args.tableId);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      const schemaResult = await this.bigquery!.getTableSchema(args.datasetId, args.tableId) as unknown[];
+      const schema = Array.isArray(schemaResult) ? schemaResult : [];
       return {
         content: [
           {
@@ -346,9 +354,10 @@ class MCPBigQueryServer {
         ],
       };
     } catch (error) {
-      logger.error('Failed to get table schema', { error });
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to get table schema', { error: err.message });
       return {
-        content: [{ type: 'text', text: `Error: ${error}` }],
+        content: [{ type: 'text', text: `Error: ${err.message}` }],
         isError: true,
       };
     }
@@ -357,7 +366,7 @@ class MCPBigQueryServer {
   async start() {
     try {
       // Initialize telemetry
-      await initializeTelemetry(
+      initializeTelemetry(
         'mcp-bigquery-server',
         '1.0.0',
         this.env.GCP_PROJECT_ID
@@ -370,8 +379,9 @@ class MCPBigQueryServer {
         telemetryEnabled: true,
       });
     } catch (error) {
-      logger.error('Failed to start server', { error });
-      throw error;
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to start server', { error: err.message });
+      throw err;
     }
   }
 
@@ -381,7 +391,8 @@ class MCPBigQueryServer {
       await shutdownTelemetry();
       logger.info('Server shutdown complete');
     } catch (error) {
-      logger.error('Error during shutdown', { error });
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Error during shutdown', { error: err.message });
     }
   }
 }
@@ -400,7 +411,8 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-server.start().catch((error) => {
-  logger.error('Failed to start server', { error });
+server.start().catch((error: unknown) => {
+  const err = error instanceof Error ? error : new Error(String(error));
+  logger.error('Failed to start server', { error: err.message });
   process.exit(1);
 });

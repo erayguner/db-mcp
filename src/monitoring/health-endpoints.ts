@@ -27,9 +27,9 @@ export class HealthEndpoints {
    * Liveness endpoint - Cloud Run compatible
    * Returns 200 if service is alive, 503 if not
    */
-  async handleLiveness(): Promise<HealthEndpointResponse> {
+  handleLiveness(): HealthEndpointResponse {
     try {
-      const result = await this.healthMonitor.checkLiveness();
+      const result = this.healthMonitor.checkLiveness();
 
       if (result.alive) {
         return {
@@ -58,11 +58,12 @@ export class HealthEndpoints {
         }),
       };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error('Liveness check failed', { error });
       return {
         status: 503,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'error', error: String(error) }),
+        body: JSON.stringify({ status: 'error', error: errorMsg }),
       };
     }
   }
@@ -71,9 +72,9 @@ export class HealthEndpoints {
    * Readiness endpoint - Cloud Run compatible
    * Returns 200 if service is ready, 503 if not
    */
-  async handleReadiness(): Promise<HealthEndpointResponse> {
+  handleReadiness(): HealthEndpointResponse {
     try {
-      const result = await this.healthMonitor.checkReadiness();
+      const result = this.healthMonitor.checkReadiness();
 
       if (result.ready) {
         return {
@@ -103,11 +104,12 @@ export class HealthEndpoints {
         }),
       };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error('Readiness check failed', { error });
       return {
         status: 503,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'error', error: String(error) }),
+        body: JSON.stringify({ status: 'error', error: errorMsg }),
       };
     }
   }
@@ -116,9 +118,9 @@ export class HealthEndpoints {
    * Comprehensive health endpoint
    * Returns detailed health information
    */
-  async handleHealth(): Promise<HealthEndpointResponse> {
+  handleHealth(): HealthEndpointResponse {
     try {
-      const report = await this.healthMonitor.performHealthCheck();
+      const report = this.healthMonitor.performHealthCheck();
 
       const statusCode = this.getStatusCode(report.status);
 
@@ -131,13 +133,14 @@ export class HealthEndpoints {
         body: JSON.stringify(report, null, 2),
       };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error('Health check failed', { error });
       return {
         status: 503,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: HealthStatus.UNHEALTHY,
-          error: String(error),
+          error: errorMsg,
           timestamp: Date.now(),
         }),
       };
@@ -148,10 +151,10 @@ export class HealthEndpoints {
    * Component-specific health endpoint
    * Returns health information for a specific component
    */
-  async handleComponentHealth(componentName: string): Promise<HealthEndpointResponse> {
+  handleComponentHealth(componentName: string): HealthEndpointResponse {
     try {
       // Perform health check to get latest data
-      await this.healthMonitor.performHealthCheck();
+      this.healthMonitor.performHealthCheck();
 
       const component = this.healthMonitor.getComponentHealth(componentName);
 
@@ -161,7 +164,7 @@ export class HealthEndpoints {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             error: `Component '${componentName}' not found`,
-            availableComponents: await this.getAvailableComponents(),
+            availableComponents: this.getAvailableComponents(),
           }),
         };
       }
@@ -177,11 +180,12 @@ export class HealthEndpoints {
         body: JSON.stringify(component, null, 2),
       };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error('Component health check failed', { error, componentName });
       return {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: String(error) }),
+        body: JSON.stringify({ error: errorMsg }),
       };
     }
   }
@@ -189,7 +193,7 @@ export class HealthEndpoints {
   /**
    * Get available components
    */
-  private async getAvailableComponents(): Promise<string[]> {
+  private getAvailableComponents(): string[] {
     const report = this.healthMonitor.getLastHealthReport();
     if (!report) {
       return [];
@@ -217,14 +221,14 @@ export class HealthEndpoints {
    * MCP-compatible health report
    * Returns health information in MCP resource format
    */
-  async getMCPHealthResource(): Promise<{
+  getMCPHealthResource(): {
     uri: string;
     name: string;
     description: string;
     mimeType: string;
     text: string;
-  }> {
-    const report = await this.healthMonitor.performHealthCheck();
+  } {
+    const report = this.healthMonitor.performHealthCheck();
 
     return {
       uri: 'health://system',
@@ -238,8 +242,8 @@ export class HealthEndpoints {
   /**
    * Get health summary for MCP tool response
    */
-  async getHealthSummary(): Promise<string> {
-    const report = await this.healthMonitor.performHealthCheck();
+  getHealthSummary(): string {
+    const report = this.healthMonitor.performHealthCheck();
 
     const summary = [
       `System Status: ${report.status.toUpperCase()}`,

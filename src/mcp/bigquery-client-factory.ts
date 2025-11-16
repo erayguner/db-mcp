@@ -9,7 +9,7 @@ export interface BigQueryClientFactoryConfig {
   defaultProjectId?: string;
   defaultLocation?: string;
   defaultKeyFilename?: string;
-  defaultCredentials?: any;
+  defaultCredentials?: unknown;
   pooling: {
     enabled: boolean;
     minConnections?: number;
@@ -118,7 +118,7 @@ export class BigQueryClientFactory extends EventEmitter {
   /**
    * Get or create BigQuery client for a project
    */
-  public async getClient(projectId?: string): Promise<BigQueryClient> {
+  public getClient(projectId?: string): BigQueryClient {
     if (this.isShuttingDown) {
       throw new ClientFactoryError(
         'Cannot get client: factory is shutting down',
@@ -152,7 +152,7 @@ export class BigQueryClientFactory extends EventEmitter {
   /**
    * Create new BigQuery client instance
    */
-  private async createClient(projectId: string): Promise<BigQueryClient> {
+  private createClient(projectId: string): BigQueryClient {
     try {
       logger.info('Creating new BigQuery client', { projectId });
 
@@ -216,28 +216,33 @@ export class BigQueryClientFactory extends EventEmitter {
    * Forward client events to factory
    */
   private forwardClientEvents(client: BigQueryClient, projectId: string): void {
-    client.on('query:started', (data) => {
-      this.emit('query:started', { projectId, ...data });
+    client.on('query:started', (data: unknown) => {
+      const eventData = data as Record<string, unknown>;
+      this.emit('query:started', { projectId, ...eventData });
     });
 
-    client.on('query:completed', (data) => {
-      this.emit('query:completed', { projectId, ...data });
+    client.on('query:completed', (data: unknown) => {
+      const eventData = data as Record<string, unknown>;
+      this.emit('query:completed', { projectId, ...eventData });
     });
 
-    client.on('error', (error) => {
+    client.on('error', (error: unknown) => {
+      const err = error instanceof Error ? error : new Error(String(error));
       const metadata = this.clients.get(projectId);
       if (metadata) {
         metadata.errorCount++;
       }
-      this.emit('client:error', { projectId, error });
+      this.emit('client:error', { projectId, error: err });
     });
 
-    client.on('cache:hit', (data) => {
-      this.emit('cache:hit', { projectId, ...data });
+    client.on('cache:hit', (data: unknown) => {
+      const eventData = data as Record<string, unknown>;
+      this.emit('cache:hit', { projectId, ...eventData });
     });
 
-    client.on('cache:miss', (data) => {
-      this.emit('cache:miss', { projectId, ...data });
+    client.on('cache:miss', (data: unknown) => {
+      const eventData = data as Record<string, unknown>;
+      this.emit('cache:miss', { projectId, ...eventData });
     });
   }
 
@@ -277,7 +282,10 @@ export class BigQueryClientFactory extends EventEmitter {
     }
 
     this.healthCheckInterval = setInterval(() => {
-      this.performHealthCheck();
+      this.performHealthCheck().catch((error: unknown) => {
+        const err = error instanceof Error ? error : new Error(String(error));
+        logger.error('Health check error', { error: err.message });
+      });
     }, this.config.monitoring.healthCheckIntervalMs);
 
     logger.info('Health monitoring started', {

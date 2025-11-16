@@ -64,12 +64,12 @@ export class GoogleWorkspaceAuth {
       }
 
       const user: WorkspaceUser = {
-        email: payload.email!,
-        name: payload.name!,
-        hostedDomain: payload.hd!,
-        emailVerified: payload.email_verified!,
-        subject: payload.sub!,
-        groups: (payload as any).groups as string[] | undefined,
+        email: payload.email ?? '',
+        name: payload.name ?? '',
+        hostedDomain: payload.hd ?? '',
+        emailVerified: payload.email_verified ?? false,
+        subject: payload.sub ?? '',
+        groups: (payload as Record<string, unknown>).groups as string[] | undefined,
       };
 
       // Check group membership if configured
@@ -86,8 +86,9 @@ export class GoogleWorkspaceAuth {
 
       return user;
     } catch (error) {
-      logger.error('Google Workspace token verification failed', { error });
-      throw new Error(`Token verification failed: ${error}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('Google Workspace token verification failed', { error: errorMsg });
+      throw new Error(`Token verification failed: ${errorMsg}`);
     }
   }
 

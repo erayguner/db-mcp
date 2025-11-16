@@ -21,9 +21,10 @@ export const logger = winston.createLogger({
       stderrLevels: ['error', 'warn', 'info', 'debug', 'verbose', 'silly'], // All logs to stderr
       format: winston.format.combine(
         winston.format.colorize(),
-        winston.format.printf(({ timestamp, level, message, ...meta }) => {
+        winston.format.printf((info) => {
+          const { timestamp, level, message, ...meta } = info;
           const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-          return `${timestamp} [${level}]: ${message} ${metaStr}`;
+          return `${String(timestamp)} [${String(level)}]: ${String(message)} ${metaStr}`;
         })
       ),
     }),

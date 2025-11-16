@@ -186,9 +186,9 @@ export class HealthMonitor extends EventEmitter {
       clearInterval(this.checkInterval);
     }
 
-    this.checkInterval = setInterval(async () => {
+    this.checkInterval = setInterval(() => {
       try {
-        await this.performHealthCheck();
+        this.performHealthCheck();
       } catch (error) {
         logger.error('Auto health check failed', { error });
       }
@@ -213,28 +213,28 @@ export class HealthMonitor extends EventEmitter {
   /**
    * Perform comprehensive health check
    */
-  async performHealthCheck(): Promise<SystemHealthReport> {
+  performHealthCheck(): SystemHealthReport {
     const startTime = Date.now();
     const components: ComponentHealth[] = [];
 
     // Check connection pool
     if (this.connectionPool) {
-      components.push(await this.checkConnectionPool());
+      components.push(this.checkConnectionPool());
     }
 
     // Check dataset manager cache
     if (this.datasetManager) {
-      components.push(await this.checkDatasetManagerCache());
+      components.push(this.checkDatasetManagerCache());
     }
 
     // Check WIF token
     if (this.wifAuth) {
-      components.push(await this.checkWIFToken());
+      components.push(this.checkWIFToken());
     }
 
     // Check query metrics
     if (this.queryMetrics) {
-      components.push(await this.checkQueryPerformance());
+      components.push(this.checkQueryPerformance());
     }
 
     // Aggregate status
@@ -280,7 +280,7 @@ export class HealthMonitor extends EventEmitter {
   /**
    * Check connection pool health
    */
-  private async checkConnectionPool(): Promise<ComponentHealth> {
+  private checkConnectionPool(): ComponentHealth {
     const startTime = Date.now();
     const checks: Record<string, HealthCheckResult> = {};
 
@@ -350,9 +350,10 @@ export class HealthMonitor extends EventEmitter {
         duration: Date.now() - startTime,
       };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       checks.error = {
         status: HealthStatus.UNHEALTHY,
-        message: `Connection pool check failed: ${error}`,
+        message: `Connection pool check failed: ${errorMsg}`,
         timestamp: Date.now(),
         duration: Date.now() - startTime,
       };
@@ -369,7 +370,7 @@ export class HealthMonitor extends EventEmitter {
   /**
    * Check dataset manager cache health
    */
-  private async checkDatasetManagerCache(): Promise<ComponentHealth> {
+  private checkDatasetManagerCache(): ComponentHealth {
     const startTime = Date.now();
     const checks: Record<string, HealthCheckResult> = {};
 
@@ -423,9 +424,10 @@ export class HealthMonitor extends EventEmitter {
         duration: Date.now() - startTime,
       };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       checks.error = {
         status: HealthStatus.UNHEALTHY,
-        message: `Dataset manager cache check failed: ${error}`,
+        message: `Dataset manager cache check failed: ${errorMsg}`,
         timestamp: Date.now(),
         duration: Date.now() - startTime,
       };
@@ -442,7 +444,7 @@ export class HealthMonitor extends EventEmitter {
   /**
    * Check WIF token health
    */
-  private async checkWIFToken(): Promise<ComponentHealth> {
+  private checkWIFToken(): ComponentHealth {
     const startTime = Date.now();
     const checks: Record<string, HealthCheckResult> = {};
 
@@ -471,9 +473,10 @@ export class HealthMonitor extends EventEmitter {
         duration: Date.now() - startTime,
       };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       checks.error = {
         status: HealthStatus.UNHEALTHY,
-        message: `WIF token check failed: ${error}`,
+        message: `WIF token check failed: ${errorMsg}`,
         timestamp: Date.now(),
         duration: Date.now() - startTime,
       };
@@ -490,7 +493,7 @@ export class HealthMonitor extends EventEmitter {
   /**
    * Check query performance
    */
-  private async checkQueryPerformance(): Promise<ComponentHealth> {
+  private checkQueryPerformance(): ComponentHealth {
     const startTime = Date.now();
     const checks: Record<string, HealthCheckResult> = {};
 
@@ -565,9 +568,10 @@ export class HealthMonitor extends EventEmitter {
         duration: Date.now() - startTime,
       };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       checks.error = {
         status: HealthStatus.UNHEALTHY,
-        message: `Query performance check failed: ${error}`,
+        message: `Query performance check failed: ${errorMsg}`,
         timestamp: Date.now(),
         duration: Date.now() - startTime,
       };
@@ -584,7 +588,7 @@ export class HealthMonitor extends EventEmitter {
   /**
    * Readiness probe - checks if service is ready to accept requests
    */
-  async checkReadiness(): Promise<ReadinessCheckResult> {
+  checkReadiness(): ReadinessCheckResult {
     const components: Record<string, boolean> = {};
 
     // Connection pool must have minimum connections
@@ -624,7 +628,7 @@ export class HealthMonitor extends EventEmitter {
   /**
    * Liveness probe - checks if service is alive and not deadlocked
    */
-  async checkLiveness(): Promise<LivenessCheckResult> {
+  checkLiveness(): LivenessCheckResult {
     const alive = true; // If we can execute this, we're alive
     const uptime = Date.now() - this.startTime;
 

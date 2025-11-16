@@ -255,7 +255,7 @@ export function validateToolArgs<T extends ToolName>(
 /**
  * Get tool schema as JSON Schema for MCP tool definition
  */
-export function getToolInputSchema(toolName: ToolName): Record<string, any> {
+export function getToolInputSchema(toolName: ToolName): Record<string, unknown> {
   const schema = TOOL_SCHEMAS[toolName];
 
   if (!schema) {
@@ -264,16 +264,18 @@ export function getToolInputSchema(toolName: ToolName): Record<string, any> {
 
   // Convert Zod schema to JSON Schema
   // This is a simplified conversion - you may want to use zod-to-json-schema for production
+  const shape = schema.shape as Record<string, { isOptional: () => boolean }>;
+
   return {
     type: 'object',
     properties: Object.fromEntries(
-      Object.entries(schema.shape).map(([key, value]) => [
+      Object.entries(shape).map(([key]) => [
         key,
         { type: 'string' } // Simplified - should properly convert each field type
       ])
     ),
-    required: Object.keys(schema.shape).filter(
-      key => !schema.shape[key].isOptional()
+    required: Object.keys(shape).filter(
+      key => !shape[key].isOptional()
     ),
   };
 }

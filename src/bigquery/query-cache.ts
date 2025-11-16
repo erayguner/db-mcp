@@ -47,7 +47,7 @@ export interface QueryCacheConfig {
  * - Hit/miss ratio tracking
  * - Memory-efficient storage
  */
-export class QueryCache<T = any> {
+export class QueryCache<T = unknown> {
   private cache: Map<string, CacheEntry<T>>;
   private config: QueryCacheConfig;
   private stats: {
@@ -84,7 +84,7 @@ export class QueryCache<T = any> {
    * Generate cache key from SQL query
    * Uses SHA-256 hash for consistent, collision-resistant keys
    */
-  generateKey(query: string, parameters?: any[]): string {
+  generateKey(query: string, parameters?: unknown[]): string {
     const normalizedQuery = this.normalizeQuery(query);
     const keyData = parameters
       ? `${normalizedQuery}::${JSON.stringify(parameters)}`
@@ -306,13 +306,14 @@ export class QueryCache<T = any> {
   /**
    * Estimate size of a value in bytes
    */
-  private estimateSize(value: any): number {
+  private estimateSize(value: unknown): number {
     try {
       // Rough estimation using JSON serialization
       const serialized = JSON.stringify(value);
       return serialized.length * 2; // UTF-16 characters are 2 bytes
     } catch (error) {
-      logger.warn('Failed to estimate cache entry size', { error });
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.warn('Failed to estimate cache entry size', { error: errorMsg });
       return 1024; // Default to 1KB
     }
   }

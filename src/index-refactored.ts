@@ -153,11 +153,12 @@ export class MCPBigQueryServer {
    * Setup event listeners for server lifecycle events
    */
   private setupServerEventListeners(): void {
-    this.serverFactory.on('state:changed', ({ oldState, newState }) => {
-      logger.info('Server state changed', { oldState, newState });
+    this.serverFactory.on('state:changed', (data: unknown) => {
+      const eventData = data as { oldState: unknown; newState: unknown };
+      logger.info('Server state changed', { oldState: eventData.oldState, newState: eventData.newState });
       setSpanAttributes({
-        'server.state': newState,
-        'server.state.previous': oldState,
+        'server.state': String(eventData.newState),
+        'server.state.previous': String(eventData.oldState),
       });
     });
 
@@ -165,8 +166,9 @@ export class MCPBigQueryServer {
       logger.info('Server started event received');
     });
 
-    this.serverFactory.on('shutdown:started', ({ reason }) => {
-      logger.info('Server shutdown initiated', { reason });
+    this.serverFactory.on('shutdown:started', (data: unknown) => {
+      const eventData = data as { reason?: string };
+      logger.info('Server shutdown initiated', { reason: eventData.reason });
     });
 
     this.serverFactory.on('shutdown:completed', () => {
@@ -174,13 +176,15 @@ export class MCPBigQueryServer {
     });
 
     this.serverFactory.on('error', (error) => {
-      logger.error('Server error event', { error });
-      recordException(error as Error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Server error event', { error: err.message });
+      recordException(err);
     });
 
-    this.serverFactory.on('health:check', ({ healthy, state }) => {
-      if (!healthy) {
-        logger.warn('Health check failed', { state });
+    this.serverFactory.on('health:check', (data: unknown) => {
+      const eventData = data as { healthy: boolean; state: unknown };
+      if (!eventData.healthy) {
+        logger.warn('Health check failed', { state: eventData.state });
       }
     });
   }
@@ -200,8 +204,6 @@ export class MCPBigQueryServer {
       this.bigQueryClient = new BigQueryClient({
         projectId: this.env.GCP_PROJECT_ID,
         location: this.env.BIGQUERY_LOCATION,
-        maxRetries: this.env.BIGQUERY_MAX_RETRIES,
-        timeout: this.env.BIGQUERY_TIMEOUT,
       });
 
       // Test connection
@@ -215,11 +217,12 @@ export class MCPBigQueryServer {
         location: this.env.BIGQUERY_LOCATION,
       });
     } catch (error) {
-      logger.error('Failed to initialize BigQuery client', { error });
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to initialize BigQuery client', { error: err.message });
       throw new MCPApplicationError(
         'Failed to initialize BigQuery client',
         ErrorCode.INIT_BIGQUERY_FAILED,
-        error
+        err
       );
     }
   }
@@ -227,9 +230,9 @@ export class MCPBigQueryServer {
   /**
    * Initialize telemetry system
    */
-  private async initializeTelemetrySystem(): Promise<void> {
+  private initializeTelemetrySystem(): void {
     try {
-      await initializeTelemetry(
+      initializeTelemetry(
         'mcp-bigquery-server',
         '1.0.0',
         this.env.GCP_PROJECT_ID
@@ -237,11 +240,12 @@ export class MCPBigQueryServer {
 
       logger.info('Telemetry initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize telemetry', { error });
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to initialize telemetry', { error: err.message });
       throw new MCPApplicationError(
         'Failed to initialize telemetry',
         ErrorCode.INIT_TELEMETRY_FAILED,
-        error
+        err
       );
     }
   }
@@ -255,33 +259,41 @@ export class MCPBigQueryServer {
     // ==========================================
     // List Tools Handler
     // ==========================================
-    server.setRequestHandler(ListToolsRequestSchema, async () => {
+    server.setRequestHandler(ListToolsRequestSchema, () => {
       logger.debug('Handling list_tools request');
 
       // Generate tool definitions from schemas
       const tools = Object.entries(TOOL_SCHEMAS).map(([name, schema]) => {
-        const shape = schema.shape as Record<string, any>;
+        const shape = schema.shape as Record<string, unknown>;
 
         // Build JSON Schema properties
-        const properties: Record<string, any> = {};
+        const properties: Record<string, unknown> = {};
         const required: string[] = [];
 
-        Object.entries(shape).forEach(([key, field]: [string, any]) => {
+        Object.entries(shape).forEach(([key, field]: [string, unknown]) => {
+          if (!field || typeof field !== 'object') return;
+
+          const fieldDef = field as {
+            _def?: { description?: string; typeName?: string };
+            isOptional?: () => boolean;
+          };
+
           // Extract description from Zod schema
-          const description = field._def?.description || '';
+          const description = fieldDef._def?.description || '';
 
           // Determine type (simplified, could be more comprehensive)
           let type = 'string';
-          if (field._def?.typeName === 'ZodNumber') {
+          if (fieldDef._def?.typeName === 'ZodNumber') {
             type = 'number';
-          } else if (field._def?.typeName === 'ZodBoolean') {
+          } else if (fieldDef._def?.typeName === 'ZodBoolean') {
             type = 'boolean';
           }
 
           properties[key] = { type, description };
 
           // Check if field is optional
-          if (!field.isOptional()) {
+          const isOptional = fieldDef.isOptional?.() ?? true;
+          if (!isOptional) {
             required.push(key);
           }
         });
@@ -321,9 +333,10 @@ export class MCPBigQueryServer {
         // ==========================================
         // 1. Security Validation
         // ==========================================
-        const validation = await this.security.validateRequest({
+        const requestWithUser = request as { userId?: string };
+        const validation = this.security.validateRequest({
           toolName: name,
-          userId: (request as any).userId,
+          userId: requestWithUser.userId,
           arguments: args,
         });
 
@@ -372,9 +385,10 @@ export class MCPBigQueryServer {
           validatedArgs = validateToolArgs(name as ToolName, args);
           logger.debug('Arguments validated', { tool: name, requestId });
         } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
           logger.error('Argument validation failed', {
             tool: name,
-            error: (error as Error).message,
+            error: err.message,
             requestId,
           });
           recordRequest(name, false);
@@ -384,7 +398,7 @@ export class MCPBigQueryServer {
               type: 'text' as const,
               text: JSON.stringify({
                 error: 'Invalid arguments',
-                details: (error as Error).message,
+                details: err.message,
                 code: ErrorCode.VALIDATION_ERROR,
                 requestId,
               }, null, 2),
@@ -396,14 +410,16 @@ export class MCPBigQueryServer {
         // ==========================================
         // 4. Execute Tool via Handler Factory
         // ==========================================
+        const metadata: Record<string, unknown> = {
+          timestamp: new Date().toISOString(),
+          environment: this.env.NODE_ENV,
+        };
+
         const context: ToolHandlerContext = {
           bigQueryClient: this.bigQueryClient!,
-          userId: (request as any).userId,
+          userId: requestWithUser.userId,
           requestId,
-          metadata: {
-            timestamp: new Date().toISOString(),
-            environment: this.env.NODE_ENV,
-          },
+          metadata,
         };
 
         setSpanAttributes({
@@ -448,20 +464,21 @@ export class MCPBigQueryServer {
         return result;
 
       } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
         logger.error('Tool execution error', {
           tool: name,
-          error: (error as Error).message,
+          error: err.message,
           requestId,
         });
         recordRequest(name, false);
-        recordException(error as Error);
+        recordException(err);
 
         return {
           content: [{
             type: 'text' as const,
             text: JSON.stringify({
               error: 'Tool execution failed',
-              details: (error as Error).message,
+              details: err.message,
               code: ErrorCode.TOOL_EXECUTION_FAILED,
               requestId,
             }, null, 2),
@@ -476,7 +493,7 @@ export class MCPBigQueryServer {
     // ==========================================
     // List Resources Handler
     // ==========================================
-    server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    server.setRequestHandler(ListResourcesRequestSchema, () => {
       logger.debug('Handling list_resources request');
 
       return {
@@ -548,7 +565,7 @@ export class MCPBigQueryServer {
       logger.info('Starting MCP BigQuery Server');
 
       // 1. Initialize telemetry first (for observability during startup)
-      await this.initializeTelemetrySystem();
+      this.initializeTelemetrySystem();
 
       // 2. Setup MCP request handlers
       this.setupHandlers();
@@ -565,13 +582,14 @@ export class MCPBigQueryServer {
       });
 
     } catch (error) {
-      logger.error('Failed to start server', { error });
-      recordException(error as Error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to start server', { error: err.message });
+      recordException(err);
 
       // Ensure cleanup on startup failure
       await this.shutdown('startup_failure');
 
-      throw error;
+      throw err;
     }
   }
 
@@ -595,13 +613,14 @@ export class MCPBigQueryServer {
       logger.info('Server shutdown complete');
 
     } catch (error) {
-      logger.error('Error during shutdown', { error });
-      recordException(error as Error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Error during shutdown', { error: err.message });
+      recordException(err);
 
       throw new MCPApplicationError(
         'Shutdown failed',
         ErrorCode.SHUTDOWN_ERROR,
-        error
+        err
       );
     }
   }
@@ -666,8 +685,9 @@ async function main() {
 
     // Attempt cleanup if server was created
     if (server) {
-      await server.shutdown('fatal_error').catch((shutdownError) => {
-        logger.error('Error during emergency shutdown', { shutdownError });
+      await server.shutdown('fatal_error').catch((shutdownError: unknown) => {
+        const err = shutdownError instanceof Error ? shutdownError : new Error(String(shutdownError));
+        logger.error('Error during emergency shutdown', { error: err.message });
       });
     }
 
@@ -676,4 +696,8 @@ async function main() {
 }
 
 // Run the server
-main();
+main().catch((error: unknown) => {
+  const err = error instanceof Error ? error : new Error(String(error));
+  logger.error('Unhandled error in main', { error: err.message });
+  process.exit(1);
+});
