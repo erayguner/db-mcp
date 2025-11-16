@@ -1,0 +1,278 @@
+---
+name: MegaLinter Security & Code Quality
+
+on:
+  # Trigger analysis on pull requests
+  pull_request:
+    branches: [main, develop]
+
+  # Trigger on pushes to main branch
+  push:
+    branches: [main]
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+  # Schedule daily security scans at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * *'
+
+# Set permissions for GITHUB_TOKEN
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  security-events: write
+  statuses: write
+
+# Concurrency group to prevent multiple runs
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  # Apply linter fixes when possible
+  APPLY_FIXES: all
+  # Comment on PRs with results
+  GITHUB_COMMENT_REPORTER: true
+  # MegaLinter flavor for optimized performance
+  MEGALINTER_FLAVOR: javascript
+  # Enable detailed reporting
+  SHOW_ELAPSED_TIME: true
+  # Parallel execution
+  PARALLEL: true
+
+jobs:
+  megalinter:
+    name: MegaLinter Security & Quality Analysis
+    runs-on: ubuntu-latest
+
+    # Timeout after 30 minutes
+    timeout-minutes: 30
+
+    steps:
+      # Checkout code with full history for better analysis
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Setup Node.js for npm audit and package analysis
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      # Install dependencies for security scanning
+      - name: Install Dependencies
+        run: npm ci
+        continue-on-error: true
+
+      # Run npm audit for dependency security
+      - name: NPM Security Audit
+        run: |
+          echo "::group::NPM Audit Report"
+          npm audit --audit-level=moderate || true
+          npm audit --json > npm-audit-report.json || true
+          echo "::endgroup::"
+        continue-on-error: true
+
+      # Run MegaLinter with comprehensive security and quality checks
+      - name: MegaLinter Analysis
+        id: ml
+        uses: oxsecurity/megalinter@v7
+        env:
+          # Validate all source code
+          VALIDATE_ALL_CODEBASE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # GitHub API token for PR comments and status updates
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Enable fix suggestions
+          APPLY_FIXES: ${{ env.APPLY_FIXES }}
+          # Additional environment variables
+          DEFAULT_BRANCH: main
+          LOG_LEVEL: INFO
+          PRINT_ALPACA: false
+          # Security-specific configurations
+          FAIL_IF_MISSING_LINTER_IN_FLAVOR: false
+          DISABLE_ERRORS: false
+
+      # Upload MegaLinter artifacts (reports, logs)
+      - name: Archive MegaLinter Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: megalinter-reports-${{ github.run_number }}
+          path: |
+            megalinter-reports/
+            npm-audit-report.json
+          retention-days: 30
+
+      # Upload linter fixes if available
+      - name: Upload Linter Fixes
+        if: steps.ml.outputs.has_updated_sources == 1 && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linter-fixes-${{ github.run_number }}
+          path: |
+            **/*
+            !node_modules/**
+            !.git/**
+          retention-days: 7
+
+      # Create PR comment with linter fixes
+      - name: Create Pull Request with Fixes
+        if: steps.ml.outputs.has_updated_sources == 1 && github.event_name == 'pull_request' && env.APPLY_FIXES != 'none'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "style: apply MegaLinter automatic fixes"
+          title: "🤖 MegaLinter: Apply automatic fixes"
+          body: |
+            ## MegaLinter Automatic Fixes
+
+            This PR contains automatic fixes suggested by MegaLinter.
+
+            **Triggered by**: ${{ github.event_name }}
+            **Branch**: ${{ github.ref_name }}
+            **Run**: ${{ github.run_number }}
+
+            ### Applied Fixes
+            MegaLinter has automatically fixed code quality and style issues.
+
+            Please review the changes carefully before merging.
+          branch: megalinter-fixes-${{ github.run_number }}
+          delete-branch: true
+          labels: |
+            automated
+            linting
+            code-quality
+
+      # Security: Fail workflow on critical security issues
+      - name: Check for Critical Security Issues
+        if: always()
+        run: |
+          echo "::group::Security Check Results"
+
+          # Check npm audit for critical vulnerabilities
+          if [ -f npm-audit-report.json ]; then
+            CRITICAL=$(jq '.metadata.vulnerabilities.critical // 0' npm-audit-report.json)
+            HIGH=$(jq '.metadata.vulnerabilities.high // 0' npm-audit-report.json)
+
+            echo "Critical vulnerabilities: $CRITICAL"
+            echo "High vulnerabilities: $HIGH"
+
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "::error::Found $CRITICAL critical security vulnerabilities!"
+              exit 1
+            fi
+
+            if [ "$HIGH" -gt 5 ]; then
+              echo "::warning::Found $HIGH high severity vulnerabilities"
+            fi
+          fi
+
+          # Check MegaLinter security linter results
+          if [ -d megalinter-reports ]; then
+            # Check for security linter failures
+            if grep -r "ERROR" megalinter-reports/ | grep -i "security\|vuln\|cve" > /dev/null; then
+              echo "::error::Security linters found critical issues!"
+              exit 1
+            fi
+          fi
+
+          echo "::endgroup::"
+        continue-on-error: false
+
+      # Generate summary for GitHub Actions
+      - name: Generate Summary
+        if: always()
+        run: |
+          echo "## 🔍 MegaLinter Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow**: ${{ github.workflow }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Run**: #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -d megalinter-reports ]; then
+            echo "### 📊 Linter Results" >> $GITHUB_STEP_SUMMARY
+            echo "Full reports available in workflow artifacts." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f npm-audit-report.json ]; then
+            echo "### 🔒 Security Audit" >> $GITHUB_STEP_SUMMARY
+            jq -r '"- **Critical**: \(.metadata.vulnerabilities.critical // 0)\n- **High**: \(.metadata.vulnerabilities.high // 0)\n- **Moderate**: \(.metadata.vulnerabilities.moderate // 0)\n- **Low**: \(.metadata.vulnerabilities.low // 0)"' npm-audit-report.json >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- MegaLinter reports and logs" >> $GITHUB_STEP_SUMMARY
+          echo "- NPM security audit results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.ml.outputs.has_updated_sources }}" == "1" ]; then
+            echo "- Linter fix suggestions" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # Optional: Upload SARIF results for GitHub Security tab
+      - name: Upload SARIF Results
+        if: always() && fileExists('megalinter-reports/megalinter.sarif')
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: megalinter-reports/megalinter.sarif
+          category: megalinter
+        continue-on-error: true
+
+  # Separate job for Trivy container scanning
+  container-security:
+    name: Container Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: docker build -t ${{ github.repository }}:${{ github.sha }} .
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ github.repository }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          vuln-type: 'os,library'
+          scanners: 'vuln,secret,config'
+          timeout: '10m'
+
+      - name: Upload Trivy Results to Security Tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: trivy
+
+      - name: Run Trivy in Table Format
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ github.repository }}:${{ github.sha }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+
+      - name: Upload Trivy Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan-results-${{ github.run_number }}
+          path: trivy-results.sarif
+          retention-days: 30

@@ -1,0 +1,340 @@
+---
+# MegaLinter Configuration for GCP BigQuery MCP Server
+# Comprehensive security and code quality configuration for 2025 standards
+# https://megalinter.io/latest/configuration/
+
+# ============================================================================
+# GENERAL SETTINGS
+# ============================================================================
+
+# Use JavaScript flavor for optimized Docker image size
+FLAVOR_SUGGESTIONS: false
+SHOW_ELAPSED_TIME: true
+FILEIO_REPORTER: true
+PRINT_ALPACA: false
+PRINT_ALL_FILES: true
+
+# Parallel execution for faster runs
+PARALLEL: true
+
+# Apply fixes automatically (can be overridden in CI)
+APPLY_FIXES: all
+APPLY_FIXES_EVENT: all
+APPLY_FIXES_MODE: commit
+
+# ============================================================================
+# LINTER ACTIVATION
+# ============================================================================
+
+# Enable specific linter categories
+ENABLE:
+  - JAVASCRIPT
+  - TYPESCRIPT
+  - JSON
+  - YAML
+  - MARKDOWN
+  - DOCKERFILE
+  - TERRAFORM
+  - SPELL
+  - COPYPASTE
+
+# Disable linters not needed for this project
+DISABLE:
+  - PHP
+  - PYTHON
+  - RUBY
+  - GO
+  - RUST
+  - JAVA
+  - KOTLIN
+  - SCALA
+  - C
+  - CPP
+  - CSHARP
+  - SWIFT
+  - GROOVY
+  - LUA
+  - PERL
+  - POWERSHELL
+  - R
+  - SALESFORCE
+  - SQL  # Disable generic SQL (we use BigQuery-specific)
+  - HTML
+  - CSS
+  - ENV
+
+# ============================================================================
+# JAVASCRIPT & TYPESCRIPT CONFIGURATION
+# ============================================================================
+
+# ESLint - Use existing .eslintrc.cjs configuration
+JAVASCRIPT_ES_LINTER: eslint
+JAVASCRIPT_ES_FILE_EXTENSIONS: [".js", ".jsx", ".cjs", ".mjs"]
+JAVASCRIPT_ES_FILTER_REGEX_INCLUDE: "(src|tests)/.*\\.js$"
+JAVASCRIPT_ES_FILTER_REGEX_EXCLUDE: "(node_modules|dist|build|coverage)/.*"
+JAVASCRIPT_ES_CONFIG_FILE: .eslintrc.cjs
+JAVASCRIPT_ES_DISABLE_ERRORS: false
+
+# Prettier - JavaScript/TypeScript formatting
+JAVASCRIPT_PRETTIER_LINTER: prettier
+JAVASCRIPT_PRETTIER_FILE_EXTENSIONS: [".js", ".jsx", ".ts", ".tsx", ".json", ".yml", ".yaml", ".md"]
+JAVASCRIPT_PRETTIER_FILTER_REGEX_EXCLUDE: "(node_modules|dist|build|coverage|package-lock.json)/.*"
+JAVASCRIPT_PRETTIER_ARGUMENTS: --check
+JAVASCRIPT_PRETTIER_DISABLE_ERRORS: false
+
+# TypeScript ESLint
+TYPESCRIPT_ES_LINTER: eslint
+TYPESCRIPT_ES_FILE_EXTENSIONS: [".ts", ".tsx"]
+TYPESCRIPT_ES_FILTER_REGEX_INCLUDE: "(src|tests)/.*\\.ts$"
+TYPESCRIPT_ES_FILTER_REGEX_EXCLUDE: "(node_modules|dist|build|coverage)/.*"
+TYPESCRIPT_ES_CONFIG_FILE: .eslintrc.cjs
+TYPESCRIPT_ES_DISABLE_ERRORS: false
+
+# ============================================================================
+# DOCKERFILE LINTING
+# ============================================================================
+
+DOCKERFILE_HADOLINT_LINTER: hadolint
+DOCKERFILE_HADOLINT_ARGUMENTS:
+  - --failure-threshold
+  - warning
+  - --no-fail
+DOCKERFILE_HADOLINT_FILTER_REGEX_INCLUDE: "(Dockerfile|.*\\.dockerfile)$"
+DOCKERFILE_HADOLINT_DISABLE_ERRORS: false
+DOCKERFILE_HADOLINT_RULES_PATH: .hadolint.yaml
+
+# ============================================================================
+# TERRAFORM CONFIGURATION
+# ============================================================================
+
+# TFLint - Terraform linting
+TERRAFORM_TFLINT_LINTER: tflint
+TERRAFORM_TFLINT_FILE_EXTENSIONS: [".tf"]
+TERRAFORM_TFLINT_FILTER_REGEX_INCLUDE: "terraform/.*\\.tf$"
+TERRAFORM_TFLINT_ARGUMENTS: --config .tflint.hcl
+TERRAFORM_TFLINT_DISABLE_ERRORS: false
+
+# Checkov - Infrastructure security scanning
+TERRAFORM_CHECKOV_LINTER: checkov
+TERRAFORM_CHECKOV_FILE_EXTENSIONS: [".tf"]
+TERRAFORM_CHECKOV_FILTER_REGEX_INCLUDE: "terraform/.*\\.tf$"
+TERRAFORM_CHECKOV_ARGUMENTS:
+  - --framework
+  - terraform
+  - --compact
+  - --quiet
+TERRAFORM_CHECKOV_DISABLE_ERRORS: false
+
+# TFSec - Terraform security scanner
+TERRAFORM_TFSEC_LINTER: tfsec
+TERRAFORM_TFSEC_FILE_EXTENSIONS: [".tf"]
+TERRAFORM_TFSEC_FILTER_REGEX_INCLUDE: "terraform/.*"
+TERRAFORM_TFSEC_ARGUMENTS:
+  - --soft-fail
+  - --format
+  - json
+TERRAFORM_TFSEC_DISABLE_ERRORS: true
+
+# Terraform fmt
+TERRAFORM_TERRAFORM_FMT_LINTER: terraform-fmt
+TERRAFORM_TERRAFORM_FMT_ARGUMENTS:
+  - fmt
+  - -check
+  - -recursive
+TERRAFORM_TERRAFORM_FMT_DISABLE_ERRORS: false
+
+# ============================================================================
+# JSON & YAML VALIDATION
+# ============================================================================
+
+# JSON validation
+JSON_JSONLINT_LINTER: jsonlint
+JSON_JSONLINT_FILE_EXTENSIONS: [".json"]
+JSON_JSONLINT_FILTER_REGEX_EXCLUDE: "(node_modules|dist|coverage|package-lock.json)/.*"
+JSON_JSONLINT_DISABLE_ERRORS: false
+
+# Prettier for JSON
+JSON_PRETTIER_LINTER: prettier
+JSON_PRETTIER_FILE_EXTENSIONS: [".json"]
+JSON_PRETTIER_FILTER_REGEX_EXCLUDE: "(node_modules|dist|coverage|package-lock.json)/.*"
+JSON_PRETTIER_ARGUMENTS: --check
+JSON_PRETTIER_DISABLE_ERRORS: false
+
+# V8R - JSON schema validator
+JSON_V8R_LINTER: v8r
+JSON_V8R_FILE_EXTENSIONS: [".json"]
+JSON_V8R_FILTER_REGEX_EXCLUDE: "(node_modules|dist|coverage|package-lock.json)/.*"
+JSON_V8R_DISABLE_ERRORS: true
+
+# YAML validation
+YAML_YAMLLINT_LINTER: yamllint
+YAML_YAMLLINT_FILE_EXTENSIONS: [".yml", ".yaml"]
+YAML_YAMLLINT_FILTER_REGEX_EXCLUDE: "(node_modules|dist)/.*"
+YAML_YAMLLINT_CONFIG_FILE: .yamllint.yml
+YAML_YAMLLINT_DISABLE_ERRORS: false
+
+# Prettier for YAML
+YAML_PRETTIER_LINTER: prettier
+YAML_PRETTIER_FILE_EXTENSIONS: [".yml", ".yaml"]
+YAML_PRETTIER_FILTER_REGEX_EXCLUDE: "(node_modules|dist)/.*"
+YAML_PRETTIER_ARGUMENTS: --check
+YAML_PRETTIER_DISABLE_ERRORS: false
+
+# ============================================================================
+# MARKDOWN LINTING
+# ============================================================================
+
+MARKDOWN_MARKDOWNLINT_LINTER: markdownlint
+MARKDOWN_MARKDOWNLINT_FILE_EXTENSIONS: [".md", ".markdown"]
+MARKDOWN_MARKDOWNLINT_FILTER_REGEX_EXCLUDE: "(node_modules|dist|CHANGELOG)/.*"
+MARKDOWN_MARKDOWNLINT_CONFIG_FILE: .markdownlint.json
+MARKDOWN_MARKDOWNLINT_DISABLE_ERRORS: true
+
+MARKDOWN_MARKDOWN_LINK_CHECK_LINTER: markdown-link-check
+MARKDOWN_MARKDOWN_LINK_CHECK_DISABLE_ERRORS: true
+
+MARKDOWN_MARKDOWN_TABLE_FORMATTER_LINTER: markdown-table-formatter
+MARKDOWN_MARKDOWN_TABLE_FORMATTER_DISABLE_ERRORS: true
+
+# ============================================================================
+# SPELL CHECKING
+# ============================================================================
+
+SPELL_CSPELL_LINTER: cspell
+SPELL_CSPELL_FILE_EXTENSIONS: [".ts", ".js", ".md", ".txt", ".json", ".yaml", ".yml"]
+SPELL_CSPELL_FILTER_REGEX_EXCLUDE: "(node_modules|dist|coverage|package-lock.json)/.*"
+SPELL_CSPELL_CONFIG_FILE: .cspell.json
+SPELL_CSPELL_DISABLE_ERRORS: true
+
+# Misspell - Fast spell checker
+SPELL_MISSPELL_LINTER: misspell
+SPELL_MISSPELL_DISABLE_ERRORS: true
+
+# ============================================================================
+# COPY-PASTE DETECTION
+# ============================================================================
+
+COPYPASTE_JSCPD_LINTER: jscpd
+COPYPASTE_JSCPD_CONFIG_FILE: .jscpd.json
+COPYPASTE_JSCPD_DISABLE_ERRORS: true
+
+# ============================================================================
+# FILE/DIRECTORY EXCLUSIONS
+# ============================================================================
+
+# Exclude patterns (regex)
+FILTER_REGEX_EXCLUDE: |-
+  (node_modules|dist|build|coverage|\.terraform|\.git|\.github|\.vscode|\.idea|\.next|\.cache|logs|tmp)/.*
+  |package-lock\.json
+  |npm-audit-report\.json
+  |.*\.lock
+  |.*\.min\.js
+  |.*\.min\.css
+  |.*\.map
+
+# Include only source and configuration files
+FILTER_REGEX_INCLUDE: |-
+  (src|tests|docs|examples|terraform|deployment|\.github)/.*
+  |(Dockerfile|\..*rc|\..*rc\.[a-z]+|.*\.config\.[a-z]+|tsconfig\.json|package\.json)$
+
+# ============================================================================
+# REPORTING CONFIGURATION
+# ============================================================================
+
+# Enable multiple reporters
+FORMATTERS_DISABLE_ERRORS: true
+
+# File-based reporters
+FILEIO_REPORTER: true
+TEXT_REPORTER: true
+JSON_REPORTER: true
+SARIF_REPORTER: true
+MARKDOWN_REPORTER: true
+CONSOLE_REPORTER: true
+
+# GitHub integration
+GITHUB_COMMENT_REPORTER: true
+GITHUB_STATUS_REPORTER: true
+UPDATED_SOURCES_REPORTER: true
+
+# Report output directory
+REPORT_OUTPUT_FOLDER: megalinter-reports
+
+# ============================================================================
+# PERFORMANCE OPTIMIZATION
+# ============================================================================
+
+# Increase performance with caching
+PLUGINS:
+  - https://raw.githubusercontent.com/oxsecurity/megalinter/main/TEMPLATES/mega-linter-plugin-cache/mega-linter-plugin-cache.sh
+
+# Validate only changed files in PRs
+VALIDATE_ALL_CODEBASE: false  # Override in CI for main branch pushes
+
+# Skip files that haven't changed
+SKIP_CLI_LINT_MODES:
+  - file
+  - project
+
+# ============================================================================
+# SECURITY CONFIGURATION
+# ============================================================================
+
+# Fail on security issues
+FAIL_IF_MISSING_LINTER_IN_FLAVOR: false
+DISABLE_ERRORS: false
+
+# Security-specific settings
+SECURED_ENV_VARIABLES:
+  - GCP_PROJECT_ID
+  - GCP_WIF_PROVIDER
+  - GCP_SA_EMAIL
+  - GITHUB_TOKEN
+
+# ============================================================================
+# PRE-COMMANDS & POST-COMMANDS
+# ============================================================================
+
+# Pre-commands to run before linting
+PRE_COMMANDS:
+  - command: npm ci
+    cwd: workspace
+    continue_if_failed: true
+
+  - command: |
+      echo "::group::Environment Info"
+      echo "Node version: $(node --version)"
+      echo "NPM version: $(npm --version)"
+      echo "Git branch: $(git branch --show-current)"
+      echo "::endgroup::"
+    cwd: workspace
+    continue_if_failed: true
+
+# Post-commands to run after linting
+POST_COMMANDS:
+  - command: |
+      echo "::group::MegaLinter Summary"
+      if [ -f megalinter-reports/megalinter-report.txt ]; then
+        cat megalinter-reports/megalinter-report.txt
+      fi
+      echo "::endgroup::"
+    cwd: workspace
+    continue_if_failed: true
+
+  - command: npm audit --json > megalinter-reports/npm-audit.json || true
+    cwd: workspace
+    continue_if_failed: true
+
+# ============================================================================
+# CUSTOM LINTER CONFIGURATIONS
+# ============================================================================
+
+# Additional configuration files to be created in separate files:
+# - .hadolint.yaml (Dockerfile linting rules)
+# - .tflint.hcl (Terraform linting rules)
+# - .yamllint.yml (YAML linting rules)
+# - .markdownlint.json (Markdown linting rules)
+# - .cspell.json (Spell checking dictionary)
+# - .jscpd.json (Copy-paste detection config)
+# - .prettierrc (Prettier formatting rules)
+# - .prettierignore (Prettier ignore patterns)

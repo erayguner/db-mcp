@@ -1,0 +1,25 @@
+{
+  "threshold": 5,
+  "reporters": ["html", "console", "json"],
+  "format": ["typescript", "javascript", "markup"],
+  "ignore": [
+    "**/__snapshots__/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/*.min.js",
+    "**/package-lock.json"
+  ],
+  "absolute": true,
+  "gitignore": true,
+  "minLines": 5,
+  "minTokens": 50,
+  "maxLines": 500,
+  "maxSize": "100kb",
+  "formatsExts": {
+    "typescript": ["ts", "tsx"],
+    "javascript": ["js", "jsx", "mjs", "cjs"]
+  },
+  "output": "megalinter-reports/jscpd"
+}

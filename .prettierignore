@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.cache/
+
+# Coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Generated files
+*.generated.*
+*.min.js
+*.min.css
+*.map
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Git
+.git/
+.gitignore
+
+# MegaLinter
+megalinter-reports/
+npm-audit-report.json
+
+# Test snapshots (preserve formatting)
+**/__snapshots__/**
