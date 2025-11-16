@@ -1,0 +1,147 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: bigquery-mcp-server
+  labels:
+    app: bigquery-mcp
+    version: v1.0.0
+    environment: production
+  annotations:
+    run.googleapis.com/ingress: internal-and-cloud-load-balancing
+    run.googleapis.com/execution-environment: gen2
+spec:
+  template:
+    metadata:
+      annotations:
+        # Autoscaling configuration
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/target: "80"
+
+        # Workload Identity Federation
+        run.googleapis.com/service-account: mcp-server-prod@PROJECT_ID.iam.gserviceaccount.com
+
+        # VPC access (optional)
+        run.googleapis.com/vpc-access-connector: projects/PROJECT_ID/locations/REGION/connectors/bigquery-mcp-connector
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+
+        # Cloud SQL (if needed)
+        # run.googleapis.com/cloudsql-instances: PROJECT_ID:REGION:INSTANCE_NAME
+
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+
+      containers:
+      - name: bigquery-mcp
+        image: gcr.io/PROJECT_ID/bigquery-mcp-server:latest
+
+        ports:
+        - name: http1
+          containerPort: 8080
+
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+          requests:
+            cpu: "1000m"
+            memory: "1Gi"
+
+        env:
+        # Application configuration
+        - name: NODE_ENV
+          value: "production"
+
+        - name: PORT
+          value: "8080"
+
+        - name: LOG_LEVEL
+          value: "info"
+
+        # Google Cloud Project
+        - name: GOOGLE_CLOUD_PROJECT
+          value: "PROJECT_ID"
+
+        # Workload Identity Federation
+        - name: WIF_POOL_ID
+          value: "bigquery-mcp-pool"
+
+        - name: WIF_PROVIDER_ID
+          value: "cloud-run-identity"
+
+        - name: WIF_SERVICE_ACCOUNT
+          value: "mcp-server-prod@PROJECT_ID.iam.gserviceaccount.com"
+
+        # Connection pool configuration
+        - name: POOL_MIN_CONNECTIONS
+          value: "2"
+
+        - name: POOL_MAX_CONNECTIONS
+          value: "10"
+
+        # Cache configuration
+        - name: CACHE_SIZE
+          value: "1000"
+
+        - name: CACHE_TTL_MS
+          value: "3600000"  # 1 hour
+
+        # Health check configuration
+        - name: HEALTH_CHECK_INTERVAL_MS
+          value: "30000"  # 30 seconds
+
+        # Query defaults
+        - name: QUERY_TIMEOUT_MS
+          value: "300000"  # 5 minutes
+
+        - name: QUERY_MAX_RETRIES
+          value: "3"
+
+        # Telemetry
+        - name: ENABLE_TELEMETRY
+          value: "true"
+
+        - name: ENABLE_TRACING
+          value: "true"
+
+        # Security
+        - name: ENABLE_PERMISSION_VALIDATION
+          value: "true"
+
+        - name: PERMISSION_CACHE_TTL_MS
+          value: "300000"  # 5 minutes
+
+        # Startup probe (allows time for initialization)
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 3
+          timeoutSeconds: 3
+          failureThreshold: 10
+
+        # Liveness probe
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        # Readiness probe
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+  traffic:
+  - percent: 100
+    latestRevision: true

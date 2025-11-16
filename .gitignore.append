@@ -1,0 +1,6 @@
+# Additions to be merged into .gitignore (append at MCP section or end)
+.claude/
+memory/claude-flow@*-data.json
+docs/.claude-flow/
+terraform/.claude-flow/
+

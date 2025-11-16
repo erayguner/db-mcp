@@ -1,0 +1,358 @@
+# ===================================
+# GCP BigQuery MCP Server .gitignore
+# ===================================
+
+# ============================================
+# CRITICAL: Secrets and Credentials (NEVER COMMIT)
+# ============================================
+.claude/
+memory/claude-flow@*-data.json
+docs/.claude-flow/
+terraform/.claude-flow/
+
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+*.pfx
+service-account*.json
+credentials*.json
+*-credentials.json
+secret*.yaml
+secret*.yml
+*.secret
+.secrets/
+secrets/
+
+# Terraform sensitive files
+*.tfvars
+!*.tfvars.example
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform.tfstate.lock.info
+terraform.tfstate.d/
+
+# ============================================
+# Dependencies and Build Artifacts
+# ============================================
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.npm
+.yarn/
+.pnp.*
+
+# TypeScript
+dist/
+build/
+*.tsbuildinfo
+.tsbuildinfo
+
+# ============================================
+# IDE and Editor Files
+# ============================================
+
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ============================================
+# Operating System Files
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ============================================
+# Logs and Temporary Files
+# ============================================
+
+# Log files
+*.log
+logs/
+*.log.*
+log/
+deployment.log
+rollback.log
+validation.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*.swo
+*.cache
+.cache/
+tmp/
+temp/
+
+# ============================================
+# Testing and Coverage
+# ============================================
+
+# Test coverage
+coverage/
+.nyc_output/
+*.lcov
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Test artifacts
+test-results/
+*.test.js
+*.spec.js
+
+# ============================================
+# Docker
+# ============================================
+
+# Docker
+.docker/
+docker-compose.override.yml
+*.dockerignore.local
+
+# ============================================
+# Terraform
+# ============================================
+
+# Terraform local files
+.terraform/
+.terraform.lock.hcl
+*.tfplan
+*.tfplan.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# ============================================
+# Cloud and Deployment
+# ============================================
+
+# GCP
+gcloud-config/
+.config/gcloud/
+
+# Cloud Run
+.cloudrun/
+
+# ============================================
+# MCP and AI Tools
+# ============================================
+
+# Claude Flow
+.claude/settings.local.json
+.mcp.json
+claude-flow.config.json
+.swarm/
+.hive-mind/
+.claude-flow/
+memory/claude-flow-data.json
+memory/sessions/*
+!memory/sessions/README.md
+memory/agents/*
+!memory/agents/README.md
+coordination/memory_bank/*
+coordination/subtasks/*
+coordination/orchestration/*
+hive-mind-prompt-*.txt
+
+# MCP specific
+mcp-config.local.json
+.mcp-cache/
+
+# ============================================
+# Database Files
+# ============================================
+
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+
+# ============================================
+# Backup Files
+# ============================================
+
+# Source file backups
+*.backup
+*.bak
+*.old
+*.orig
+*~
+src/index.ts.backup
+src/**/*.backup
+
+# Script backups
+scripts/*.backup
+
+# ============================================
+# Package and Lock Files
+# ============================================
+
+# Keep package-lock.json for reproducible builds
+# package-lock.json can be committed
+# But some teams prefer to ignore it
+# Uncomment the line below if your team ignores it:
+# package-lock.json
+
+# ============================================
+# Documentation Build Artifacts
+# ============================================
+
+# Documentation generators
+.docusaurus/
+.cache-loader/
+.vuepress/dist
+.vitepress/cache
+.vitepress/dist
+
+# ============================================
+# Misc
+# ============================================
+
+# Environment info
+.envrc
+.env.production.local
+.env.development.local
+.env.test.local
+
+# Lock files (except npm)
+# yarn.lock  # Uncomment if using npm only
+# pnpm-lock.yaml  # Uncomment if using npm only
+
+# Benchmark results
+benchmark-results/
+*.bench
+
+# Debug files
+debug/
+.debug/
+
+# Local configuration overrides
+config.local.js
+config.local.json
+config.local.yaml
+config.local.yml
+
+# ============================================
+# Project Specific
+# ============================================
+
+# Deployment artifacts
+deployment-artifacts/
+
+# Local testing data
+test-data/local/
+fixtures/local/
+
+# Performance profiling
+*.cpuprofile
+*.heapprofile
+*.heapsnapshot
+
+# ============================================
+# Keep These Files (Whitelist)
+# ============================================
+
+# Documentation should be committed
+!docs/**/*.md
+!README.md
+!CHANGELOG.md
+!LICENSE
+
+# Example/template files should be committed
+!.env.example
+!.env.template
+!terraform.tfvars.example
+
+# Configuration examples
+!config.example.json
+!config.example.yaml
+!docker-compose.example.yml
+
+# Scripts should be committed
+!scripts/*.sh
+
+# GitHub workflows should be committed
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
+
+# Test fixtures (non-sensitive)
+!tests/fixtures/**/*
+!tests/data/**/*
+.terraform/

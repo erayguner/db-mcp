@@ -1,0 +1,52 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+
+# TypeScript source files (exclude from image, but keep config)
+*.ts
+!dist/**/*.js
+
+# Tests
+tests
+*.test.ts
+*.spec.ts
+coverage
+
+# Documentation
+docs
+*.md
+!README.md
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# Terraform
+terraform
+*.tf
+*.tfvars
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+tmp
+temp

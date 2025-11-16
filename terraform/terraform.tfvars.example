@@ -1,0 +1,141 @@
+# ==========================================
+# Project Configuration
+# ==========================================
+
+project_id  = "your-gcp-project-id"
+region      = "us-central1"
+environment = "production" # dev, staging, or production
+
+# ==========================================
+# Workload Identity Federation
+# ==========================================
+
+# Google Workspace domain (for OIDC authentication)
+workspace_domain = "example.com"
+
+# GitHub configuration (for CI/CD authentication)
+github_org  = "your-github-org"
+github_repo = "your-repo-name"
+
+# Allowed audiences for OIDC tokens
+allowed_audiences = [
+  "https://your-workspace.com"
+]
+
+# ==========================================
+# BigQuery Configuration
+# ==========================================
+
+bigquery_location = "US" # or "EU", "asia-northeast1", etc.
+
+bigquery_datasets = {
+  analytics = {
+    location                    = "US"
+    description                 = "Analytics data"
+    delete_contents_on_destroy  = false
+    default_table_expiration_ms = 7776000000 # 90 days
+    labels = {
+      environment = "production"
+      purpose     = "analytics"
+      managed_by  = "terraform"
+    }
+  }
+  audit = {
+    location                    = "US"
+    description                 = "Audit logs"
+    delete_contents_on_destroy  = false
+    default_table_expiration_ms = 15552000000 # 180 days
+    labels = {
+      environment = "production"
+      purpose     = "audit"
+      managed_by  = "terraform"
+    }
+  }
+}
+
+# ==========================================
+# Networking
+# ==========================================
+
+vpc_cidr = "10.0.0.0/24"
+
+# Enable Cloud Armor WAF and DDoS protection
+enable_cloud_armor = true
+
+# Enable VPC Service Controls (requires Access Context Manager policy)
+enable_vpc_service_controls = false
+access_policy_name          = "" # Required if enable_vpc_service_controls = true
+
+# Allowed IP ranges for Cloud Armor (empty = allow all)
+# For production, restrict to your organization's IPs
+allowed_ip_ranges = [
+  # "203.0.113.0/24",  # Example: Your office IP range
+  # "198.51.100.0/24", # Example: Your VPN IP range
+]
+
+# ==========================================
+# Cloud Run Configuration
+# ==========================================
+
+# Container image (build and push to Artifact Registry or GCR first)
+mcp_server_image = "gcr.io/your-project-id/mcp-bigquery-server:latest"
+
+# Resource allocation
+mcp_server_cpu    = "1"      # 1 vCPU
+mcp_server_memory = "512Mi"  # 512 MB
+
+# Auto-scaling
+mcp_server_min_instances = 0   # Scale to zero when idle
+mcp_server_max_instances = 10  # Maximum concurrent instances
+
+# Authentication
+allow_unauthenticated = false # Require authentication
+
+# Custom domain (optional)
+custom_domain = "" # e.g., "api.example.com"
+
+# Binary Authorization (recommended for production)
+enable_binary_authorization = true
+
+# Identity-Aware Proxy (optional, for additional security)
+iap_client_id     = ""
+iap_client_secret = "" # Mark as sensitive
+
+# HTTPS Load Balancer (required if using Cloud Armor with custom domain)
+ssl_certificate_id = "" # SSL certificate resource ID
+static_ip_address  = "" # Reserved static IP address
+
+# ==========================================
+# Security Configuration
+# ==========================================
+
+# Enable comprehensive audit logging
+enable_audit_logging = true
+
+# ==========================================
+# Monitoring & Alerting
+# ==========================================
+
+notification_channels = {
+  alert_email = "alerts@example.com"
+
+  # Slack webhook (optional)
+  slack_webhook_url = "" # e.g., "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+  # PagerDuty (optional, recommended for production)
+  pagerduty_service_key = "" # Your PagerDuty integration key
+}
+
+# Enable uptime checks for Cloud Run service
+enable_uptime_checks = true
+
+# ==========================================
+# Resource Labels
+# ==========================================
+
+labels = {
+  managed_by  = "terraform"
+  team        = "platform"
+  cost_center = "engineering"
+  app         = "mcp-bigquery"
+}
