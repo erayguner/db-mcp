@@ -156,7 +156,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
       const result = await this.context.bigQueryClient.query({
         query,
         maxResults,
-        timeoutMs,
+        jobTimeoutMs: timeoutMs,
         useLegacySql,
         location,
       });

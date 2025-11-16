@@ -188,7 +188,9 @@ class MCPBigQueryServer {
               tool: name,
               warnings: responseValidation.warnings,
             });
-            result.content = responseValidation.redacted;
+            result.content = Array.isArray(responseValidation.redacted)
+              ? responseValidation.redacted
+              : [];
           }
         }
 
@@ -246,9 +248,17 @@ class MCPBigQueryServer {
       // Use Application Default Credentials (Workload Identity on Cloud Run)
       this.bigquery = new BigQueryClient({
         projectId: this.env.GCP_PROJECT_ID,
-        location: this.env.BIGQUERY_LOCATION,
-        maxRetries: this.env.BIGQUERY_MAX_RETRIES,
-        timeout: this.env.BIGQUERY_TIMEOUT,
+        queryDefaults: {
+          location: this.env.BIGQUERY_LOCATION,
+          useLegacySql: false,
+        },
+        retry: {
+          maxRetries: this.env.BIGQUERY_MAX_RETRIES,
+          initialDelayMs: 1000,
+          maxDelayMs: 32000,
+          backoffMultiplier: 2,
+          retryableErrors: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'RATE_LIMIT_EXCEEDED', 'BACKEND_ERROR'],
+        },
       });
 
       // Connection is tested lazily on first query
@@ -278,7 +288,7 @@ class MCPBigQueryServer {
         };
       }
 
-      const queryResult = await this.bigquery!.query(args.query);
+      const queryResult = await this.bigquery!.query({ query: args.query });
       const rows = Array.isArray(queryResult) ? queryResult : [];
       return {
         content: [
@@ -342,9 +352,16 @@ class MCPBigQueryServer {
 
   private async handleGetTableSchema(args: { datasetId: string; tableId: string }) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      const schemaResult = await this.bigquery!.getTableSchema(args.datasetId, args.tableId) as unknown[];
-      const schema = Array.isArray(schemaResult) ? schemaResult : [];
+      const tableMetadata = await this.bigquery!.getTable(args.datasetId, args.tableId);
+      const schemaData = tableMetadata.schema as { fields?: unknown[] } | unknown[] | undefined;
+      let schema: unknown[] = [];
+      if (schemaData && typeof schemaData === 'object') {
+        if (Array.isArray(schemaData)) {
+          schema = schemaData;
+        } else if ('fields' in schemaData && Array.isArray(schemaData.fields)) {
+          schema = schemaData.fields;
+        }
+      }
       return {
         content: [
           {

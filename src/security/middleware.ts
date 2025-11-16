@@ -384,9 +384,12 @@ export class SensitiveDataDetector {
       return data;
     }
 
-    const redacted: Record<string, unknown> = Array.isArray(data)
-      ? (data as unknown[]).slice() as Record<string, unknown>
-      : { ...(data as Record<string, unknown>) };
+    if (Array.isArray(data)) {
+      const redacted = (data as unknown[]).slice();
+      return redacted.map(item => this.redactSensitiveData(item));
+    }
+
+    const redacted: Record<string, unknown> = { ...(data as Record<string, unknown>) };
 
     for (const [key, value] of Object.entries(redacted)) {
       const keyLower = key.toLowerCase();

@@ -161,7 +161,9 @@ class PermissionCache {
     // Evict oldest entry if cache is full
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      if (firstKey) {
+        this.cache.delete(firstKey);
+      }
     }
 
     this.cache.set(key, {
@@ -302,7 +304,7 @@ class PermissionAuditLogger {
     }
 
     if (options?.resource) {
-      filtered = filtered.filter(e => e.resource.includes(options.resource));
+      filtered = filtered.filter(e => e.resource.includes(options.resource!));
     }
 
     if (options?.allowedOnly) {

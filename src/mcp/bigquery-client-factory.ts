@@ -165,15 +165,22 @@ export class BigQueryClientFactory extends EventEmitter {
           maxConnections: this.config.pooling.maxConnections!,
           acquireTimeoutMs: this.config.pooling.acquireTimeoutMs!,
           idleTimeoutMs: this.config.pooling.idleTimeoutMs!,
+          healthCheckIntervalMs: 60000,
+          maxRetries: 3,
+          retryDelayMs: 1000,
         } : undefined,
         datasetManager: this.config.caching.enabled ? {
           cacheSize: this.config.caching.cacheSize!,
           cacheTTLMs: this.config.caching.cacheTTLMs!,
           autoDiscovery: true,
+          discoveryIntervalMs: 300000,
         } : undefined,
         retry: this.config.retry.enabled ? {
           maxRetries: this.config.retry.maxRetries!,
           initialDelayMs: this.config.retry.initialDelayMs!,
+          maxDelayMs: 32000,
+          backoffMultiplier: 2,
+          retryableErrors: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'RATE_LIMIT_EXCEEDED', 'BACKEND_ERROR'],
         } : undefined,
         queryDefaults: {
           useLegacySql: false,

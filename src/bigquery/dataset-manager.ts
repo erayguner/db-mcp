@@ -588,7 +588,7 @@ export class DatasetManager extends EventEmitter {
     const cache = type === 'dataset' ? this.datasetCache : this.tableCache;
     if (cache.size === 0) return 0;
 
-    const totalAccess = Array.from(cache.values()).reduce(
+    const totalAccess = Array.from(cache.values() as IterableIterator<CacheEntry<TableMetadata | DatasetMetadata>>).reduce(
       (sum, entry) => sum + entry.accessCount,
       0
     );

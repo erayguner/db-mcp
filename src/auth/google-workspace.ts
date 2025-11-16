@@ -69,7 +69,7 @@ export class GoogleWorkspaceAuth {
         hostedDomain: payload.hd ?? '',
         emailVerified: payload.email_verified ?? false,
         subject: payload.sub ?? '',
-        groups: (payload as Record<string, unknown>).groups as string[] | undefined,
+        groups: (payload as unknown as Record<string, unknown>).groups as string[] | undefined,
       };
 
       // Check group membership if configured

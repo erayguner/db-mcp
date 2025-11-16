@@ -77,7 +77,6 @@ export class MCPServerFactory extends EventEmitter {
     this.server = new Server({
       name: this.config.name,
       version: this.config.version,
-    }, {
       capabilities: {
         tools: this.config.capabilities.tools ? {} : undefined,
         resources: this.config.capabilities.resources ? {} : undefined,
@@ -100,7 +99,7 @@ export class MCPServerFactory extends EventEmitter {
     return {
       name: parsed.name,
       version: parsed.version,
-      description: parsed.description,
+      description: parsed.description ?? '',
       capabilities: {
         tools: parsed.capabilities.tools ?? true,
         resources: parsed.capabilities.resources ?? true,
@@ -108,8 +107,8 @@ export class MCPServerFactory extends EventEmitter {
         logging: parsed.capabilities.logging ?? true,
       },
       transport: parsed.transport,
-      gracefulShutdownTimeoutMs: parsed.gracefulShutdownTimeoutMs,
-      healthCheckIntervalMs: parsed.healthCheckIntervalMs,
+      gracefulShutdownTimeoutMs: parsed.gracefulShutdownTimeoutMs ?? 30000,
+      healthCheckIntervalMs: parsed.healthCheckIntervalMs ?? 60000,
     };
   }
 

@@ -140,8 +140,8 @@ export class BigQueryClient extends EventEmitter {
     const parsed = BigQueryClientConfigSchema.parse(config);
 
     return {
-      projectId: parsed.projectId,
-      keyFilename: parsed.keyFilename,
+      projectId: parsed.projectId ?? '',
+      keyFilename: parsed.keyFilename ?? '',
       credentials: parsed.credentials,
       connectionPool: parsed.connectionPool || {
         minConnections: 2,

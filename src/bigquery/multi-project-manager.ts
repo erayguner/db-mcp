@@ -318,10 +318,16 @@ export class MultiProjectManager extends EventEmitter {
 
       // Create dedicated connection pool
       const connectionPool = new ConnectionPool({
-        ...this.config.connectionPool,
         projectId,
         keyFilename: projectConfig.keyFilename,
         credentials: projectConfig.credentials,
+        minConnections: this.config.connectionPool.minConnectionsPerProject,
+        maxConnections: this.config.connectionPool.maxConnectionsPerProject,
+        acquireTimeoutMs: this.config.connectionPool.acquireTimeoutMs,
+        idleTimeoutMs: this.config.connectionPool.idleTimeoutMs,
+        healthCheckIntervalMs: 60000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
       });
 
       // Create dataset manager

@@ -270,8 +270,14 @@ export class CredentialManager {
     try {
       // Get fresh token
       const client = await this.getClient();
+
+      // Type guard for getAccessToken method
+      if (!('getAccessToken' in client) || typeof client.getAccessToken !== 'function') {
+        throw new Error('Auth client does not support getAccessToken');
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       const tokenResponseRaw: { token?: string | null } | string | null | undefined =
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         await client.getAccessToken() as { token?: string | null } | string | null | undefined;
 
       // Properly type the token response

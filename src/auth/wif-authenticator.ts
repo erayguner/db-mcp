@@ -188,9 +188,7 @@ export class WIFAuthenticator {
 
   constructor(config: Partial<WIFAuthConfig>) {
     this.config = WIFAuthConfigSchema.parse(config);
-    this.auditLogger = getAuditLogger({
-      enableCloudLogging: this.config.enableAuditLogging,
-    });
+    this.auditLogger = getAuditLogger();
 
     // Initialize credential manager with WIF config
     const credConfig: Partial<CredentialConfig> = {

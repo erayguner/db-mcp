@@ -117,11 +117,19 @@ export class ConnectionPool extends EventEmitter {
     const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     try {
-      const client = new BigQuery({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      const clientConfig: any = {
         projectId: this.config.projectId,
         keyFilename: this.config.keyFilename,
-        credentials: this.config.credentials,
-      });
+      };
+
+      if (this.config.credentials !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        clientConfig.credentials = this.config.credentials;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      const client = new BigQuery(clientConfig);
 
       const connection: PooledConnection = {
         client,

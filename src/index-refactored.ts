@@ -203,7 +203,10 @@ export class MCPBigQueryServer {
 
       this.bigQueryClient = new BigQueryClient({
         projectId: this.env.GCP_PROJECT_ID,
-        location: this.env.BIGQUERY_LOCATION,
+        queryDefaults: {
+          location: this.env.BIGQUERY_LOCATION,
+          useLegacySql: false,
+        },
       });
 
       // Test connection
@@ -446,7 +449,10 @@ export class MCPBigQueryServer {
               warnings: responseValidation.warnings,
               requestId,
             });
-            result.content = responseValidation.redacted;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            result.content = Array.isArray(responseValidation.redacted)
+              ? responseValidation.redacted
+              : [];
           }
         }
 
@@ -522,7 +528,7 @@ export class MCPBigQueryServer {
       }
 
       if (uri === 'bigquery://datasets') {
-        const datasets = await this.bigQueryClient.listDatasets();
+        const datasets = await this.bigQueryClient!.listDatasets();
 
         return {
           contents: [{

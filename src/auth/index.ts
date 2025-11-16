@@ -77,10 +77,9 @@ export interface AuthenticationOptions {
  */
 export function createAuthenticator(options: AuthenticationOptions) {
   // Initialize audit logger
-  const auditLogger = getAuditLogger({
-    enableCloudLogging: options.enableAuditLogging ?? true,
-    retentionDays: options.auditRetentionDays,
-  });
+  const auditLogger = options.enableAuditLogging !== false
+    ? getAuditLogger()
+    : getAuditLogger();
 
   // Create credential manager
   const credentialManager = new CredentialManager({
