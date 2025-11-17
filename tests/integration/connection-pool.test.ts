@@ -5,7 +5,7 @@
  * concurrent requests, connection lifecycle, health checks, and resource limits.
  */
 
-import { ConnectionPool, ConnectionPoolError } from '../../src/bigquery/connection-pool.js';
+import { ConnectionPool } from '../../src/bigquery/connection-pool.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
 describe('Connection Pool Integration Tests', () => {
@@ -43,6 +43,11 @@ describe('Connection Pool Integration Tests', () => {
         projectId: 'init-test',
         minConnections: 1,
         maxConnections: 3,
+        acquireTimeoutMs: 5000,
+        idleTimeoutMs: 10000,
+        healthCheckIntervalMs: 2000,
+        maxRetries: 3,
+        retryDelayMs: 500,
       });
 
       newPool.once('initialized', (data) => {

@@ -4,7 +4,6 @@ import {
   ServerFactoryConfig,
   ServerState,
   ServerFactoryError,
-  ServerFactoryConfigSchema,
 } from '../../../src/mcp/server-factory.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -24,6 +23,20 @@ jest.mock('../../../src/utils/logger.js', () => ({
 describe('MCPServerFactory', () => {
   let mockServer: jest.Mocked<Server>;
   let mockTransport: jest.Mocked<StdioServerTransport>;
+
+  const createDefaultConfig = (overrides: Partial<ServerFactoryConfig> = {}): ServerFactoryConfig => ({
+    name: 'test-server',
+    version: '1.0.0',
+    capabilities: {
+      tools: true,
+      resources: true,
+      prompts: false,
+      logging: true,
+    },
+    transport: 'stdio',
+    gracefulShutdownTimeoutMs: 30000,
+    ...overrides,
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -50,7 +63,16 @@ describe('MCPServerFactory', () => {
   describe('Constructor and Initialization', () => {
     it('should create factory with default configuration', () => {
       const config: ServerFactoryConfig = {
+        name: 'test-server',
+        version: '1.0.0',
+        capabilities: {
+          tools: true,
+          resources: true,
+          prompts: false,
+          logging: true,
+        },
         transport: 'stdio',
+        gracefulShutdownTimeoutMs: 30000,
       };
 
       const factory = new MCPServerFactory(config);
@@ -113,11 +135,9 @@ describe('MCPServerFactory', () => {
     });
 
     it('should create MCP Server with correct options', () => {
-      const config: ServerFactoryConfig = {
-        name: 'test-server',
+      const config = createDefaultConfig({
         version: '1.5.0',
-        transport: 'stdio',
-      };
+      });
 
       new MCPServerFactory(config);
 
@@ -135,7 +155,7 @@ describe('MCPServerFactory', () => {
 
   describe('State Management', () => {
     it('should initialize in READY state', () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       expect(factory.getState()).toBe(ServerState.READY);
@@ -143,7 +163,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should transition to RUNNING state on start', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -155,7 +175,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should transition to SHUTTING_DOWN state on shutdown', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -169,7 +189,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should transition to STOPPED state after shutdown completes', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -181,7 +201,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should transition to ERROR state on start failure', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockRejectedValue(new Error('Connection failed'));
@@ -192,7 +212,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should emit state:changed events', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       const stateChanges: any[] = [];
@@ -210,7 +230,7 @@ describe('MCPServerFactory', () => {
 
   describe('Server Lifecycle', () => {
     it('should start server successfully', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -222,7 +242,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should throw error when starting from invalid state', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -234,7 +254,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should emit started event on successful start', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       const startedHandler = jest.fn();
@@ -247,7 +267,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should emit error event on start failure', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       const errorHandler = jest.fn();
@@ -261,7 +281,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should shutdown gracefully', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -274,7 +294,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should emit shutdown events', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       const shutdownStarted = jest.fn();
@@ -292,7 +312,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should handle multiple shutdown calls gracefully', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -305,10 +325,9 @@ describe('MCPServerFactory', () => {
     });
 
     it('should timeout shutdown if exceeds graceful timeout', async () => {
-      const config: ServerFactoryConfig = {
-        transport: 'stdio',
+      const config = createDefaultConfig({
         gracefulShutdownTimeoutMs: 100,
-      };
+      });
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -325,7 +344,7 @@ describe('MCPServerFactory', () => {
 
   describe('Transport Management', () => {
     it('should create stdio transport', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -336,7 +355,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should throw error for unimplemented transport types', async () => {
-      const config: ServerFactoryConfig = { transport: 'sse' };
+      const config = createDefaultConfig({ transport: 'sse' });
       const factory = new MCPServerFactory(config);
 
       await expect(factory.start()).rejects.toThrow(ServerFactoryError);
@@ -344,7 +363,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should throw error for unknown transport type', async () => {
-      const config: ServerFactoryConfig = { transport: 'invalid' as any };
+      const config = createDefaultConfig({ transport: 'invalid' as any });
       const factory = new MCPServerFactory(config);
 
       await expect(factory.start()).rejects.toThrow(ServerFactoryError);
@@ -362,10 +381,9 @@ describe('MCPServerFactory', () => {
     });
 
     it('should start health monitoring when configured', async () => {
-      const config: ServerFactoryConfig = {
-        transport: 'stdio',
+      const config = createDefaultConfig({
         healthCheckIntervalMs: 5000,
-      };
+      });
       const factory = new MCPServerFactory(config);
 
       const healthCheckHandler = jest.fn();
@@ -380,10 +398,9 @@ describe('MCPServerFactory', () => {
     });
 
     it('should emit health:check events periodically', async () => {
-      const config: ServerFactoryConfig = {
-        transport: 'stdio',
+      const config = createDefaultConfig({
         healthCheckIntervalMs: 1000,
-      };
+      });
       const factory = new MCPServerFactory(config);
 
       const healthCheckHandler = jest.fn();
@@ -398,10 +415,9 @@ describe('MCPServerFactory', () => {
     });
 
     it('should stop health monitoring on shutdown', async () => {
-      const config: ServerFactoryConfig = {
-        transport: 'stdio',
+      const config = createDefaultConfig({
         healthCheckIntervalMs: 1000,
-      };
+      });
       const factory = new MCPServerFactory(config);
 
       const healthCheckHandler = jest.fn();
@@ -422,9 +438,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should not start health monitoring when not configured', async () => {
-      const config: ServerFactoryConfig = {
-        transport: 'stdio',
-      };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       const healthCheckHandler = jest.fn();
@@ -441,7 +455,7 @@ describe('MCPServerFactory', () => {
 
   describe('Metadata and Getters', () => {
     it('should return server instance', () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       const server = factory.getServer();
@@ -450,8 +464,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should return complete metadata', () => {
-      const config: ServerFactoryConfig = {
-        name: 'test-server',
+      const config = createDefaultConfig({
         version: '3.0.0',
         description: 'Test Description',
         capabilities: {
@@ -460,8 +473,7 @@ describe('MCPServerFactory', () => {
           prompts: true,
           logging: false,
         },
-        transport: 'stdio',
-      };
+      });
       const factory = new MCPServerFactory(config);
 
       const metadata = factory.getMetadata();
@@ -482,7 +494,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should check health correctly', () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       expect(factory.isHealthy()).toBe(true); // READY state
@@ -498,20 +510,15 @@ describe('MCPServerFactory', () => {
 
   describe('Edge Cases and Error Handling', () => {
     it('should handle config validation errors', () => {
-      const invalidConfigs = [
-        { transport: 'stdio', gracefulShutdownTimeoutMs: 100 }, // Below minimum
-        { transport: 'invalid' as any },
-      ];
+      const invalidConfig = createDefaultConfig({ gracefulShutdownTimeoutMs: 100 }); // Below minimum
 
-      invalidConfigs.forEach((config) => {
-        expect(() => {
-          new MCPServerFactory(config);
-        }).toThrow();
-      });
+      expect(() => {
+        new MCPServerFactory(invalidConfig);
+      }).toThrow();
     });
 
     it('should handle transport creation errors', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       (StdioServerTransport as jest.MockedClass<typeof StdioServerTransport>).mockImplementation(() => {
@@ -522,7 +529,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should handle server connection errors', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockRejectedValue(new Error('Connection error'));
@@ -532,7 +539,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should handle shutdown errors gracefully', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
@@ -548,7 +555,7 @@ describe('MCPServerFactory', () => {
     });
 
     it('should not register shutdown handlers multiple times', async () => {
-      const config: ServerFactoryConfig = { transport: 'stdio' };
+      const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);

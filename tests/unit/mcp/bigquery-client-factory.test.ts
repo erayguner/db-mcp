@@ -170,7 +170,7 @@ describe('BigQueryClientFactory', () => {
     it('should use default project when not specified', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
-      const client = await factory.getClient();
+      await factory.getClient();
 
       expect(BigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -232,12 +232,12 @@ describe('BigQueryClientFactory', () => {
     it('should check client health before reuse', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
-      const client1 = await factory.getClient('test-project');
+      await factory.getClient('test-project');
 
       // Make client unhealthy
       mockBigQueryClient.isHealthy.mockReturnValue(false);
 
-      const client2 = await factory.getClient('test-project');
+      await factory.getClient('test-project');
 
       // Should create new client
       expect(BigQueryClient).toHaveBeenCalledTimes(2);
@@ -702,7 +702,7 @@ describe('BigQueryClientFactory', () => {
     it('should be healthy if at least one client is healthy', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
-      const client1 = await factory.getClient('project-1');
+      await factory.getClient('project-1');
       await factory.getClient('project-2');
 
       // Make first client unhealthy

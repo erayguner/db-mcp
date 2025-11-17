@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   MultiProjectManager,
   MultiProjectManagerConfig,
@@ -48,6 +48,7 @@ describe('MultiProjectManager', () => {
   describe('Initialization', () => {
     it('should initialize with multiple projects', async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         defaultProjectId: 'project-1',
         autoDiscovery: false,
@@ -64,6 +65,7 @@ describe('MultiProjectManager', () => {
 
     it('should set default project', async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         defaultProjectId: 'project-2',
         autoDiscovery: false,
@@ -76,8 +78,9 @@ describe('MultiProjectManager', () => {
       expect(current.projectId).toBe('project-2');
     });
 
-    it('should emit initialization events', (done) => {
+    it('should emit initialization events', (done: jest.DoneCallback) => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
       };
@@ -103,6 +106,7 @@ describe('MultiProjectManager', () => {
   describe('Project Context Management', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         defaultProjectId: 'project-1',
         autoDiscovery: false,
@@ -146,6 +150,7 @@ describe('MultiProjectManager', () => {
   describe('Project Listing and Filtering', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         autoDiscovery: false,
       };
@@ -178,6 +183,7 @@ describe('MultiProjectManager', () => {
       mockProjects[1].labels = { env: 'dev', team: 'data' };
 
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         autoDiscovery: false,
       };
@@ -196,6 +202,7 @@ describe('MultiProjectManager', () => {
   describe('Cross-Project Queries', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
         crossProjectQueries: {
@@ -234,7 +241,7 @@ describe('MultiProjectManager', () => {
       ).rejects.toThrow('Cannot query more than');
     });
 
-    it('should emit cross-project events', (done) => {
+    it('should emit cross-project events', (done: jest.DoneCallback) => {
       const query = 'SELECT 1';
       const options = {
         projectIds: ['project-1'],
@@ -252,6 +259,7 @@ describe('MultiProjectManager', () => {
   describe('Permission Validation', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
         permissionValidation: {
@@ -307,6 +315,7 @@ describe('MultiProjectManager', () => {
   describe('Quota Management', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 1),
         autoDiscovery: false,
       };
@@ -321,7 +330,7 @@ describe('MultiProjectManager', () => {
       expect(context.quotaUsage?.queriesExecuted).toBe(0);
     });
 
-    it('should emit quota exceeded events', (done) => {
+    it('should emit quota exceeded events', (done: jest.DoneCallback) => {
       manager.on('quota:exceeded', (data) => {
         expect(data.projectId).toBe('project-1');
         expect(data.quotaType).toBeDefined();
@@ -341,7 +350,7 @@ describe('MultiProjectManager', () => {
       }
     });
 
-    it('should reset quotas daily', (done) => {
+    it('should reset quotas daily', (done: jest.DoneCallback) => {
       manager.on('quota:reset', (data) => {
         expect(data.projectCount).toBeGreaterThan(0);
         done();
@@ -361,6 +370,7 @@ describe('MultiProjectManager', () => {
   describe('Project Discovery', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
       };
@@ -388,7 +398,7 @@ describe('MultiProjectManager', () => {
       });
     });
 
-    it('should emit discovery events', (done) => {
+    it('should emit discovery events', (done: jest.DoneCallback) => {
       manager.on('discovery:completed', (data) => {
         expect(data.total).toBeGreaterThan(0);
         done();
@@ -401,6 +411,7 @@ describe('MultiProjectManager', () => {
   describe('Dynamic Project Management', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 1),
         autoDiscovery: false,
       };
@@ -453,6 +464,7 @@ describe('MultiProjectManager', () => {
   describe('Aggregated Metrics', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         autoDiscovery: false,
       };
@@ -487,6 +499,7 @@ describe('MultiProjectManager', () => {
   describe('Health Checks', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
       };
@@ -517,6 +530,7 @@ describe('MultiProjectManager', () => {
   describe('Shutdown', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
       };
@@ -530,7 +544,7 @@ describe('MultiProjectManager', () => {
       expect(manager.isHealthy()).toBe(false);
     });
 
-    it('should emit shutdown events', (done) => {
+    it('should emit shutdown events', (done: jest.DoneCallback) => {
       manager.on('shutdown:completed', () => {
         done();
       });
