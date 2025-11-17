@@ -62,6 +62,11 @@ describe('Connection Pool Integration Tests', () => {
         projectId: 'error-test',
         minConnections: 1,
         maxConnections: 2,
+        acquireTimeoutMs: 30000,
+        idleTimeoutMs: 300000,
+        healthCheckIntervalMs: 60000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
         credentials: {
           client_email: 'invalid@test.com',
           private_key: 'invalid-key',

@@ -6,7 +6,6 @@
  */
 
 import { BigQueryClient } from '../../src/bigquery/client.js';
-import { ConnectionPool } from '../../src/bigquery/connection-pool.js';
 
 describe('Multi-Project Connection Management', () => {
   let clients: Map<string, BigQueryClient>;

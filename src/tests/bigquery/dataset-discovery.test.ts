@@ -66,7 +66,7 @@ describe('DatasetDiscovery', () => {
 
     // Mock DatasetManager
     mockDatasetManager = {
-      listDatasets: jest.fn().mockImplementation((client: any, projectId?: string) => {
+      listDatasets: jest.fn().mockImplementation((_client: any, projectId?: string) => {
         if (projectId === 'project1') {
           return Promise.resolve([
             createMockDataset('dataset1', 'project1'),

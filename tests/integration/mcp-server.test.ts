@@ -2,7 +2,6 @@
  * Integration Tests - MCP Server
  */
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { createMockBigQueryClient, createMockMCPRequest } from '../fixtures/mocks.js';
 import { mockQueryResults } from '../fixtures/datasets.js';
 

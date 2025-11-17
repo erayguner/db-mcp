@@ -71,7 +71,7 @@ describe('QueryOptimizer', () => {
     it('should estimate query cost', async () => {
       mockClient.dryRun.mockResolvedValue({
         totalBytesProcessed: '1000000000',
-        estimatedCost: 0.00625,
+        estimatedCostUSD: 0.00625,
       });
 
       const cost = await optimizer.estimateCost('SELECT * FROM users');
@@ -84,7 +84,7 @@ describe('QueryOptimizer', () => {
     it('should mark expensive queries', async () => {
       mockClient.dryRun.mockResolvedValue({
         totalBytesProcessed: '100000000000',
-        estimatedCost: 0.625,
+        estimatedCostUSD: 0.625,
       });
 
       const cost = await optimizer.estimateCost('SELECT * FROM large_table');
