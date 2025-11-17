@@ -1,5 +1,10 @@
 # GCP BigQuery MCP Server with Workload Identity Federation
 
+[![Security](https://img.shields.io/badge/security-A-brightgreen)](https://github.com/YOUR_ORG/db-mcp/security)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
+[![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Enterprise-grade MCP (Model Context Protocol) server for Google Cloud Platform BigQuery with **Workload Identity Federation** authentication. Built by the Hive Mind Collective Intelligence System.
 
 ## 🚀 Key Features

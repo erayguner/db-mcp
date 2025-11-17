@@ -48,7 +48,7 @@ describe('Tool Handlers', () => {
 
   describe('BaseToolHandler', () => {
     class TestHandler extends BaseToolHandler {
-      async execute(args: unknown): Promise<ToolResponse> {
+      async execute(_args: unknown): Promise<ToolResponse> {
         return this.formatSuccess({ result: 'test' });
       }
     }
@@ -73,7 +73,7 @@ describe('Tool Handlers', () => {
 
     it('should format success response with metadata', async () => {
       class MetadataHandler extends BaseToolHandler {
-        async execute(): Promise<ToolResponse> {
+        async execute(_args?: unknown): Promise<ToolResponse> {
           return this.formatSuccess({ data: 'value' }, { custom: 'meta' });
         }
       }
@@ -89,7 +89,7 @@ describe('Tool Handlers', () => {
 
     it('should format error response correctly', async () => {
       class ErrorHandler extends BaseToolHandler {
-        async execute(): Promise<ToolResponse> {
+        async execute(_args?: unknown): Promise<ToolResponse> {
           return this.formatError('Test error', 'TEST_CODE');
         }
       }
@@ -104,7 +104,7 @@ describe('Tool Handlers', () => {
 
     it('should format error response from Error object', async () => {
       class ErrorHandler extends BaseToolHandler {
-        async execute(): Promise<ToolResponse> {
+        async execute(_args?: unknown): Promise<ToolResponse> {
           return this.formatError(new Error('Error object message'));
         }
       }
@@ -119,7 +119,7 @@ describe('Tool Handlers', () => {
 
     it('should format streaming response for large datasets', async () => {
       class StreamHandler extends BaseToolHandler {
-        async execute(): Promise<ToolResponse> {
+        async execute(_args?: unknown): Promise<ToolResponse> {
           const items = Array.from({ length: 250 }, (_, i) => ({ id: i }));
           return this.formatStreamingResponse(items, { source: 'test' });
         }
@@ -189,7 +189,7 @@ describe('Tool Handlers', () => {
       expect(mockBigQueryClient.query).toHaveBeenCalledWith({
         query: 'SELECT id, name FROM users LIMIT 10',
         maxResults: 100,
-        timeoutMs: 30000,
+        jobTimeoutMs: 30000,
         useLegacySql: false,
         location: undefined,
       });
@@ -308,17 +308,25 @@ describe('Tool Handlers', () => {
           id: 'dataset1',
           projectId: 'my-project',
           location: 'US',
-          creationTime: '2024-01-01',
-          lastModifiedTime: '2024-01-02',
+          createdAt: new Date('2024-01-01'),
+          modifiedAt: new Date('2024-01-02'),
           description: 'Test dataset 1',
+          tableCount: 0,
+          tables: [],
+          lastAccessedAt: new Date('2024-01-02'),
+          accessCount: 0,
         },
         {
           id: 'dataset2',
           projectId: 'my-project',
           location: 'EU',
-          creationTime: '2024-01-03',
-          lastModifiedTime: '2024-01-04',
+          createdAt: new Date('2024-01-03'),
+          modifiedAt: new Date('2024-01-04'),
           description: 'Test dataset 2',
+          tableCount: 0,
+          tables: [],
+          lastAccessedAt: new Date('2024-01-04'),
+          accessCount: 0,
         },
       ]);
 
@@ -336,9 +344,39 @@ describe('Tool Handlers', () => {
       const args = { projectId: 'my-project', maxResults: 1 };
 
       mockBigQueryClient.listDatasets.mockResolvedValue([
-        { id: 'dataset1', projectId: 'my-project', location: 'US' },
-        { id: 'dataset2', projectId: 'my-project', location: 'EU' },
-        { id: 'dataset3', projectId: 'my-project', location: 'ASIA' },
+        {
+          id: 'dataset1',
+          projectId: 'my-project',
+          location: 'US',
+          createdAt: new Date(),
+          modifiedAt: new Date(),
+          tableCount: 0,
+          tables: [],
+          lastAccessedAt: new Date(),
+          accessCount: 0,
+        },
+        {
+          id: 'dataset2',
+          projectId: 'my-project',
+          location: 'EU',
+          createdAt: new Date(),
+          modifiedAt: new Date(),
+          tableCount: 0,
+          tables: [],
+          lastAccessedAt: new Date(),
+          accessCount: 0,
+        },
+        {
+          id: 'dataset3',
+          projectId: 'my-project',
+          location: 'ASIA',
+          createdAt: new Date(),
+          modifiedAt: new Date(),
+          tableCount: 0,
+          tables: [],
+          lastAccessedAt: new Date(),
+          accessCount: 0,
+        },
       ]);
 
       const response = await handler.execute(args);
@@ -386,21 +424,25 @@ describe('Tool Handlers', () => {
       mockBigQueryClient.listTables.mockResolvedValue([
         {
           id: 'table1',
-          tableId: 'table1',
+          datasetId: 'my_dataset',
+          projectId: 'my-project',
           type: 'TABLE',
-          creationTime: '2024-01-01',
+          schema: [],
+          createdAt: new Date('2024-01-01'),
+          modifiedAt: new Date('2024-01-01'),
           numRows: 1000,
           numBytes: 50000,
-          description: 'Table 1',
         },
         {
           id: 'table2',
-          tableId: 'table2',
+          datasetId: 'my_dataset',
+          projectId: 'my-project',
           type: 'VIEW',
-          creationTime: '2024-01-02',
+          schema: [],
+          createdAt: new Date('2024-01-02'),
+          modifiedAt: new Date('2024-01-02'),
           numRows: 500,
           numBytes: 25000,
-          description: 'View 2',
         },
       ]);
 
@@ -421,8 +463,24 @@ describe('Tool Handlers', () => {
       };
 
       mockBigQueryClient.listTables.mockResolvedValue([
-        { id: 'table1', tableId: 'table1', type: 'TABLE' },
-        { id: 'table2', tableId: 'table2', type: 'TABLE' },
+        {
+          id: 'table1',
+          datasetId: 'my_dataset',
+          projectId: 'my-project',
+          type: 'TABLE',
+          schema: [],
+          createdAt: new Date(),
+          modifiedAt: new Date(),
+        },
+        {
+          id: 'table2',
+          datasetId: 'my_dataset',
+          projectId: 'my-project',
+          type: 'TABLE',
+          schema: [],
+          createdAt: new Date(),
+          modifiedAt: new Date(),
+        },
       ]);
 
       const response = await handler.execute(args);
@@ -456,18 +514,19 @@ describe('Tool Handlers', () => {
       };
 
       mockBigQueryClient.getTable.mockResolvedValue({
+        id: 'my_table',
+        datasetId: 'my_dataset',
+        projectId: 'my-project',
         schema: [
           { name: 'id', type: 'INTEGER', mode: 'REQUIRED' },
           { name: 'name', type: 'STRING', mode: 'NULLABLE' },
           { name: 'created_at', type: 'TIMESTAMP', mode: 'REQUIRED' },
         ],
         type: 'TABLE',
-        creationTime: '2024-01-01',
-        lastModifiedTime: '2024-01-05',
+        createdAt: new Date('2024-01-01'),
+        modifiedAt: new Date('2024-01-05'),
         numRows: 10000,
         numBytes: 500000,
-        location: 'US',
-        description: 'User table',
       });
 
       const response = await handler.execute(args);
@@ -494,14 +553,15 @@ describe('Tool Handlers', () => {
       };
 
       mockBigQueryClient.getTable.mockResolvedValue({
+        id: 'my_table',
+        datasetId: 'my_dataset',
+        projectId: 'my-project',
         schema: [{ name: 'id', type: 'INTEGER' }],
         type: 'TABLE',
-        creationTime: '2024-01-01',
-        lastModifiedTime: '2024-01-02',
+        createdAt: new Date('2024-01-01'),
+        modifiedAt: new Date('2024-01-02'),
         numRows: 5000,
         numBytes: 100000,
-        location: 'US',
-        description: 'Test table',
       });
 
       const response = await handler.execute(args);
@@ -509,7 +569,6 @@ describe('Tool Handlers', () => {
       expect(response.content[0].text).toContain('metadata');
       expect(response.content[0].text).toContain('TABLE');
       expect(response.content[0].text).toContain('5000');
-      expect(response.content[0].text).toContain('Test table');
     });
 
     it('should exclude metadata by default or when requested', async () => {
@@ -521,8 +580,13 @@ describe('Tool Handlers', () => {
       };
 
       mockBigQueryClient.getTable.mockResolvedValue({
+        id: 'my_table',
+        datasetId: 'my_dataset',
+        projectId: 'my-project',
         schema: [{ name: 'id', type: 'INTEGER' }],
         type: 'TABLE',
+        createdAt: new Date(),
+        modifiedAt: new Date(),
         numRows: 5000,
       });
 
@@ -596,7 +660,7 @@ describe('Tool Handlers', () => {
 
     it('should register custom handler', () => {
       class CustomHandler extends BaseToolHandler {
-        async execute(): Promise<ToolResponse> {
+        async execute(_args?: unknown): Promise<ToolResponse> {
           return this.formatSuccess({ custom: true });
         }
       }

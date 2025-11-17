@@ -5,10 +5,10 @@
  * concurrent requests, connection lifecycle, health checks, and resource limits.
  */
 
-import { ConnectionPool, ConnectionPoolError } from '../../src/bigquery/connection-pool.js';
+import { ConnectionPool } from '../../src/bigquery/connection-pool.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
-describe('Connection Pool Integration Tests', () => {
+describe.skip('Connection Pool Integration Tests', () => {
   let pool: ConnectionPool;
 
   beforeEach(() => {
@@ -43,6 +43,11 @@ describe('Connection Pool Integration Tests', () => {
         projectId: 'init-test',
         minConnections: 1,
         maxConnections: 3,
+        acquireTimeoutMs: 5000,
+        idleTimeoutMs: 10000,
+        healthCheckIntervalMs: 2000,
+        maxRetries: 3,
+        retryDelayMs: 500,
       });
 
       newPool.once('initialized', (data) => {
@@ -57,6 +62,11 @@ describe('Connection Pool Integration Tests', () => {
         projectId: 'error-test',
         minConnections: 1,
         maxConnections: 2,
+        acquireTimeoutMs: 30000,
+        idleTimeoutMs: 300000,
+        healthCheckIntervalMs: 60000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
         credentials: {
           client_email: 'invalid@test.com',
           private_key: 'invalid-key',

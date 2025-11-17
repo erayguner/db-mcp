@@ -1,11 +1,6 @@
-import { z } from 'zod';
 import { BigQueryClient } from '../../bigquery/client.js';
 import { logger } from '../../utils/logger.js';
 import {
-  QueryBigQueryArgs,
-  ListDatasetsArgs,
-  ListTablesArgs,
-  GetTableSchemaArgs,
   validateToolArgs,
   ToolName,
 } from '../schemas/tool-schemas.js';
@@ -22,7 +17,7 @@ export interface ToolResponse {
     mimeType?: string;
   }>;
   isError?: boolean;
-  _meta?: Record<string, any>;
+  _meta?: Record<string, unknown>;
 }
 
 /**
@@ -32,7 +27,7 @@ export interface ToolHandlerContext {
   bigQueryClient: BigQueryClient;
   userId?: string;
   requestId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -49,7 +44,7 @@ export abstract class BaseToolHandler {
   /**
    * Format success response
    */
-  protected formatSuccess(data: any, meta?: Record<string, any>): ToolResponse {
+  protected formatSuccess(data: unknown, meta?: Record<string, unknown>): ToolResponse {
     return {
       content: [
         {
@@ -96,8 +91,8 @@ export abstract class BaseToolHandler {
    * Format streaming response (for large result sets)
    */
   protected formatStreamingResponse(
-    items: any[],
-    meta?: Record<string, any>
+    items: unknown[],
+    meta?: Record<string, unknown>
   ): ToolResponse {
     const chunks: string[] = [];
     const chunkSize = 100; // Process in chunks of 100 items
@@ -161,7 +156,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
       const result = await this.context.bigQueryClient.query({
         query,
         maxResults,
-        timeoutMs,
+        jobTimeoutMs: timeoutMs,
         useLegacySql,
         location,
       });
@@ -187,7 +182,8 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         totalBytesProcessed: result.totalBytesProcessed,
       });
     } catch (error) {
-      return this.formatError(error as Error, 'QUERY_ERROR');
+      const err = error instanceof Error ? error : new Error(String(error));
+      return this.formatError(err, 'QUERY_ERROR');
     }
   }
 }
@@ -220,15 +216,16 @@ export class ListDatasetsHandler extends BaseToolHandler {
           id: ds.id,
           projectId: ds.projectId,
           location: ds.location,
-          creationTime: ds.creationTime,
-          lastModifiedTime: ds.lastModifiedTime,
+          createdAt: ds.createdAt,
+          modifiedAt: ds.modifiedAt,
           description: ds.description,
         })),
       }, {
         projectId: projectId || 'default',
       });
     } catch (error) {
-      return this.formatError(error as Error, 'LIST_DATASETS_ERROR');
+      const err = error instanceof Error ? error : new Error(String(error));
+      return this.formatError(err, 'LIST_DATASETS_ERROR');
     }
   }
 }
@@ -261,19 +258,19 @@ export class ListTablesHandler extends BaseToolHandler {
         count: tables.length,
         tables: tables.map(table => ({
           id: table.id,
-          tableId: table.tableId,
+          datasetId: table.datasetId,
           type: table.type,
-          creationTime: table.creationTime,
+          createdAt: table.createdAt,
           numRows: table.numRows,
           numBytes: table.numBytes,
-          description: table.description,
         })),
       }, {
         datasetId,
         projectId: projectId || 'default',
       });
     } catch (error) {
-      return this.formatError(error as Error, 'LIST_TABLES_ERROR');
+      const err = error instanceof Error ? error : new Error(String(error));
+      return this.formatError(err, 'LIST_TABLES_ERROR');
     }
   }
 }
@@ -300,7 +297,7 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         projectId
       );
 
-      const response: any = {
+      const response: Record<string, unknown> = {
         datasetId,
         tableId,
         schema: table.schema,
@@ -309,12 +306,10 @@ export class GetTableSchemaHandler extends BaseToolHandler {
       if (includeMetadata) {
         response.metadata = {
           type: table.type,
-          creationTime: table.creationTime,
-          lastModifiedTime: table.lastModifiedTime,
+          createdAt: table.createdAt,
+          modifiedAt: table.modifiedAt,
           numRows: table.numRows,
           numBytes: table.numBytes,
-          location: table.location,
-          description: table.description,
         };
       }
 
@@ -324,7 +319,8 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         projectId: projectId || 'default',
       });
     } catch (error) {
-      return this.formatError(error as Error, 'GET_SCHEMA_ERROR');
+      const err = error instanceof Error ? error : new Error(String(error));
+      return this.formatError(err, 'GET_SCHEMA_ERROR');
     }
   }
 }
@@ -389,12 +385,13 @@ export class ToolHandlerFactory {
         context: context.metadata,
       });
 
+      const err = error instanceof Error ? error : new Error(String(error));
       return {
         content: [
           {
             type: 'text',
             text: JSON.stringify({
-              error: (error as Error).message,
+              error: err.message,
               code: 'HANDLER_ERROR',
               toolName,
             }, null, 2),

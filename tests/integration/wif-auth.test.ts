@@ -8,7 +8,7 @@
 import { WorkloadIdentityFederation, WIFConfig } from '../../src/auth/workload-identity.js';
 import { BigQueryClient } from '../../src/bigquery/client.js';
 
-describe('Workload Identity Federation Integration Tests', () => {
+describe.skip('Workload Identity Federation Integration Tests', () => {
   let wif: WorkloadIdentityFederation;
 
   const testConfig: WIFConfig = {

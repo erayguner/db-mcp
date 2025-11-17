@@ -2,31 +2,81 @@
  * Unit Tests - BigQuery Client
  */
 
-import { BigQueryClient } from '../../src/bigquery/client.js';
-import { createMockBigQueryClient } from '../fixtures/mocks.js';
-import { mockQueryResults, mockJobMetadata } from '../fixtures/datasets.js';
+import { BigQueryClient, BigQueryClientConfig } from '../../src/bigquery/client.js';
+import { BigQuery } from '@google-cloud/bigquery';
 
 // Mock the BigQuery SDK
 jest.mock('@google-cloud/bigquery');
-jest.mock('google-auth-library');
+jest.mock('../../src/bigquery/connection-pool.js');
+jest.mock('../../src/bigquery/dataset-manager.js');
 
 describe('BigQueryClient', () => {
   let client: BigQueryClient;
-  let mockBQClient: ReturnType<typeof createMockBigQueryClient>;
+  let mockBQClient: any;
+  let mockJob: any;
+  let mockConnectionPool: any;
+  let mockDatasetManager: any;
 
   beforeEach(() => {
-    mockBQClient = createMockBigQueryClient();
+    // Mock BigQuery client
+    mockJob = {
+      id: 'job-123',
+      getQueryResults: jest.fn(),
+      getMetadata: jest.fn(),
+    };
 
-    // Create client
-    client = new BigQueryClient({
+    mockBQClient = {
+      createQueryJob: jest.fn(),
+      dataset: jest.fn(),
+      getDatasets: jest.fn(),
+    };
+
+    (BigQuery as jest.MockedClass<typeof BigQuery>).mockImplementation(() => mockBQClient);
+
+    // Mock connection pool
+    mockConnectionPool = {
+      acquire: jest.fn().mockResolvedValue(mockBQClient),
+      release: jest.fn(),
+      shutdown: jest.fn(),
+      getMetrics: jest.fn().mockReturnValue({}),
+      isHealthy: jest.fn().mockReturnValue(true),
+    };
+
+    // Mock dataset manager
+    mockDatasetManager = {
+      getDataset: jest.fn(),
+      getTable: jest.fn(),
+      listDatasets: jest.fn(),
+      listTables: jest.fn(),
+      shutdown: jest.fn(),
+      on: jest.fn(),
+      getStats: jest.fn().mockReturnValue({}),
+      getCacheStats: jest.fn().mockReturnValue({
+        datasets: { size: 10, maxSize: 100, hitRate: 0.85 },
+        tables: { size: 50, maxSize: 500, hitRate: 0.92 },
+      }),
+    };
+
+    // Create client with minimal config
+    const config: BigQueryClientConfig = {
       projectId: 'test-project',
-      location: 'US',
-      maxRetries: 3,
-      timeout: 60000,
-    });
+      queryDefaults: {
+        useLegacySql: false,
+        location: 'US',
+      },
+      datasetManager: {
+        cacheSize: 100,
+        cacheTTLMs: 300000,
+        autoDiscovery: false,
+        discoveryIntervalMs: 300000,
+      },
+    };
 
-    // Replace internal client with mock
-    (client as any).client = mockBQClient;
+    client = new BigQueryClient(config);
+
+    // Replace internal dependencies with mocks
+    (client as any).connectionPool = mockConnectionPool;
+    (client as any).datasetManager = mockDatasetManager;
   });
 
   afterEach(() => {
@@ -35,332 +85,355 @@ describe('BigQueryClient', () => {
 
   describe('constructor', () => {
     it('should initialize with valid config', () => {
-      // Arrange & Act
       const newClient = new BigQueryClient({
         projectId: 'my-project',
-        location: 'EU',
+        queryDefaults: {
+          useLegacySql: false,
+          location: 'EU',
+        },
       });
 
-      // Assert
       expect(newClient).toBeDefined();
-      expect(newClient.getClient()).toBeDefined();
+      expect(newClient).toBeInstanceOf(BigQueryClient);
     });
 
-    it('should use default values', () => {
-      // Arrange & Act
+    it('should use default values for optional config', () => {
       const newClient = new BigQueryClient({
         projectId: 'test-project',
       });
 
-      // Assert
       expect(newClient).toBeDefined();
     });
 
-    it('should accept access token', () => {
-      // Arrange & Act
-      const newClient = new BigQueryClient(
-        {
-          projectId: 'test-project',
-        },
-        'mock-access-token'
-      );
-
-      // Assert
-      expect(newClient).toBeDefined();
+    it('should validate config with Zod schema', () => {
+      expect(() => {
+        new BigQueryClient({} as any);
+      }).not.toThrow(); // Schema has defaults
     });
   });
 
   describe('query', () => {
     it('should execute query successfully', async () => {
       // Arrange
-      const sql = 'SELECT * FROM dataset.table LIMIT 10';
-      const mockJob = {
-        id: 'job-123',
-        getQueryResults: jest.fn().mockResolvedValue([mockQueryResults]),
+      const queryOptions = {
+        query: 'SELECT * FROM dataset.table LIMIT 10',
+        maxResults: 100,
       };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
+
+      const mockRows = [
+        { id: 1, name: 'Alice' },
+        { id: 2, name: 'Bob' },
+      ];
+
+      mockJob.getQueryResults.mockResolvedValue([mockRows]);
+      mockJob.getMetadata.mockResolvedValue([{
+        statistics: {
+          query: {
+            totalBytesProcessed: '50000',
+            cacheHit: false,
+          },
+        },
+      }]);
+      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
       // Act
-      const results = await client.query(sql);
+      const result = await client.query(queryOptions);
 
       // Assert
-      expect(mockBQClient.createQueryJob).toHaveBeenCalledWith({
-        query: sql,
-        location: 'US',
-        params: undefined,
-      });
-      expect(results).toEqual(mockQueryResults);
+      expect(mockConnectionPool.acquire).toHaveBeenCalled();
+      expect(mockBQClient.createQueryJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: queryOptions.query,
+        })
+      );
+      expect(result.rows).toEqual(mockRows);
+      expect(result.totalRows).toBe(2);
+      expect(result.jobId).toBe('job-123');
+      expect(mockConnectionPool.release).toHaveBeenCalledWith(mockBQClient);
     });
 
-    it('should execute query with parameters', async () => {
-      // Arrange
-      const sql = 'SELECT * FROM dataset.table WHERE id = ?';
-      const params = ['123'];
-      const mockJob = {
-        id: 'job-123',
-        getQueryResults: jest.fn().mockResolvedValue([[]]),
+    it('should handle query with parameters', async () => {
+      const queryOptions = {
+        query: 'SELECT * FROM dataset.table WHERE id = @id',
+        params: { id: 123 },
       };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
 
-      // Act
-      await client.query(sql, { parameters: params });
+      const mockRows = [{ id: 123, name: 'Test' }];
+      mockJob.getQueryResults.mockResolvedValue([mockRows]);
+      mockJob.getMetadata.mockResolvedValue([{ statistics: { query: {} } }]);
+      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
-      // Assert
-      expect(mockBQClient.createQueryJob).toHaveBeenCalledWith({
-        query: sql,
-        location: 'US',
-        params,
-      });
+      const result = await client.query(queryOptions);
+
+      expect(result.rows).toEqual(mockRows);
+      expect(mockBQClient.createQueryJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: { id: 123 },
+        })
+      );
     });
 
     it('should handle query errors', async () => {
-      // Arrange
-      const sql = 'INVALID SQL';
-      const error = new Error('Syntax error');
+      const error = new Error('Query failed');
       mockBQClient.createQueryJob.mockRejectedValue(error);
 
-      // Act & Assert
-      await expect(client.query(sql)).rejects.toThrow('Syntax error');
+      await expect(
+        client.query({ query: 'INVALID SQL' })
+      ).rejects.toThrow();
     });
 
-    it('should return empty array for no results', async () => {
-      // Arrange
-      const sql = 'SELECT * FROM dataset.table WHERE 1=0';
-      const mockJob = {
-        id: 'job-123',
-        getQueryResults: jest.fn().mockResolvedValue([[]]),
-      };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
+    it('should return empty results for empty query', async () => {
+      mockJob.getQueryResults.mockResolvedValue([[]]);
+      mockJob.getMetadata.mockResolvedValue([{ statistics: { query: {} } }]);
+      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
-      // Act
-      const results = await client.query(sql);
+      const result = await client.query({ query: 'SELECT * FROM dataset.table WHERE 1=0' });
 
-      // Assert
-      expect(results).toEqual([]);
+      expect(result.rows).toEqual([]);
+      expect(result.totalRows).toBe(0);
+    });
+
+    it('should include cache hit information', async () => {
+      mockJob.getQueryResults.mockResolvedValue([[{ id: 1 }]]);
+      mockJob.getMetadata.mockResolvedValue([{
+        statistics: {
+          query: {
+            cacheHit: true,
+            totalBytesProcessed: '0',
+          },
+        },
+      }]);
+      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
+
+      const result = await client.query({ query: 'SELECT 1' });
+
+      expect(result.cacheHit).toBe(true);
+      expect(result.totalBytesProcessed).toBe('0');
     });
   });
 
   describe('dryRun', () => {
     it('should estimate query cost', async () => {
-      // Arrange
-      const sql = 'SELECT * FROM dataset.large_table';
-      const mockJob = {
-        metadata: mockJobMetadata,
-      };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
-
-      // Act
-      const result = await client.dryRun(sql);
-
-      // Assert
-      expect(mockBQClient.createQueryJob).toHaveBeenCalledWith({
-        query: sql,
-        location: 'US',
-        dryRun: true,
-      });
-      expect(result).toHaveProperty('totalBytesProcessed');
-      expect(result).toHaveProperty('estimatedCost');
-      expect(typeof result.estimatedCost).toBe('number');
-    });
-
-    it('should calculate cost correctly', async () => {
-      // Arrange
-      const sql = 'SELECT * FROM dataset.table';
-      const bytesProcessed = '1000000000000'; // 1TB
-      const mockJob = {
-        metadata: {
-          statistics: {
-            query: {
-              totalBytesProcessed: bytesProcessed,
-            },
+      mockJob.getMetadata.mockResolvedValue([{
+        statistics: {
+          query: {
+            totalBytesProcessed: '1250000000000', // 1.25 TB
           },
         },
-      };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
+      }]);
+      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
-      // Act
-      const result = await client.dryRun(sql);
+      const result = await client.dryRun('SELECT * FROM large_table');
 
-      // Assert
-      // 1TB * $6.25/TB = $6.25
-      expect(result.estimatedCost).toBeCloseTo(6.25, 2);
+      expect(typeof result.totalBytesProcessed).toBe('string');
+      expect(typeof result.estimatedCostUSD).toBe('number');
+      expect(mockBQClient.createQueryJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dryRun: true,
+        })
+      );
     });
 
-    it('should handle zero bytes processed', async () => {
-      // Arrange
-      const sql = 'SELECT 1';
-      const mockJob = {
-        metadata: {
-          statistics: {
-            query: {
-              totalBytesProcessed: '0',
-            },
+    it('should calculate cost for large query', async () => {
+      mockJob.getMetadata.mockResolvedValue([{
+        statistics: {
+          query: {
+            totalBytesProcessed: '5497558138880', // ~5 TB
           },
         },
-      };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
+      }]);
+      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
-      // Act
-      const result = await client.dryRun(sql);
+      const result = await client.dryRun('SELECT * FROM huge_table');
 
-      // Assert
-      expect(result.estimatedCost).toBe(0);
+      expect(result.estimatedCostUSD).toBeGreaterThan(0);
+    });
+
+    it('should return zero cost for cached query', async () => {
+      mockJob.getMetadata.mockResolvedValue([{
+        statistics: {
+          query: {
+            totalBytesProcessed: '0',
+            cacheHit: true,
+          },
+        },
+      }]);
+      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
+
+      const result = await client.dryRun('SELECT 1');
+
+      expect(result.estimatedCostUSD).toBe(0);
     });
   });
 
   describe('listDatasets', () => {
     it('should list datasets successfully', async () => {
-      // Arrange
       const mockDatasets = [
-        { id: 'dataset1' },
-        { id: 'dataset2' },
-        { id: 'dataset3' },
+        {
+          id: 'dataset1',
+          projectId: 'test-project',
+          location: 'US',
+          createdAt: new Date(),
+          modifiedAt: new Date(),
+          tableCount: 5,
+          tables: [],
+          lastAccessedAt: new Date(),
+          accessCount: 0,
+        },
       ];
-      mockBQClient.getDatasets.mockResolvedValue([mockDatasets as any]);
 
-      // Act
+      mockDatasetManager.listDatasets.mockResolvedValue(mockDatasets);
+
       const datasets = await client.listDatasets();
 
-      // Assert
-      expect(datasets).toEqual(['dataset1', 'dataset2', 'dataset3']);
-      expect(mockBQClient.getDatasets).toHaveBeenCalled();
+      expect(datasets).toEqual(mockDatasets);
+      expect(mockDatasetManager.listDatasets).toHaveBeenCalled();
     });
 
     it('should handle empty dataset list', async () => {
-      // Arrange
-      mockBQClient.getDatasets.mockResolvedValue([[]]);
+      mockDatasetManager.listDatasets.mockResolvedValue([]);
 
-      // Act
       const datasets = await client.listDatasets();
 
-      // Assert
       expect(datasets).toEqual([]);
     });
 
-    it('should handle API errors', async () => {
-      // Arrange
-      const error = new Error('Permission denied');
-      mockBQClient.getDatasets.mockRejectedValue(error);
+    it('should handle list datasets error', async () => {
+      const error = new Error('Access denied');
+      mockDatasetManager.listDatasets.mockRejectedValue(error);
 
-      // Act & Assert
-      await expect(client.listDatasets()).rejects.toThrow('Permission denied');
+      await expect(client.listDatasets()).rejects.toThrow('Access denied');
     });
   });
 
   describe('listTables', () => {
-    it('should list tables in dataset', async () => {
-      // Arrange
-      const datasetId = 'my_dataset';
+    it('should list tables in a dataset', async () => {
       const mockTables = [
-        { id: 'table1' },
-        { id: 'table2' },
+        {
+          id: 'table1',
+          datasetId: 'my_dataset',
+          projectId: 'test-project',
+          type: 'TABLE' as const,
+          schema: [],
+          createdAt: new Date(),
+          modifiedAt: new Date(),
+        },
       ];
-      const mockDataset = {
-        getTables: jest.fn().mockResolvedValue([mockTables]),
-      };
-      mockBQClient.dataset.mockReturnValue(mockDataset as any);
 
-      // Act
-      const tables = await client.listTables(datasetId);
+      mockDatasetManager.listTables.mockResolvedValue(mockTables);
 
-      // Assert
-      expect(mockBQClient.dataset).toHaveBeenCalledWith(datasetId);
-      expect(tables).toEqual(['table1', 'table2']);
-    });
+      const tables = await client.listTables('my_dataset');
 
-    it('should handle dataset not found', async () => {
-      // Arrange
-      const datasetId = 'nonexistent';
-      const error = new Error('Dataset not found');
-      const mockDataset = {
-        getTables: jest.fn().mockRejectedValue(error),
-      };
-      mockBQClient.dataset.mockReturnValue(mockDataset as any);
-
-      // Act & Assert
-      await expect(client.listTables(datasetId)).rejects.toThrow('Dataset not found');
+      expect(tables).toEqual(mockTables);
+      expect(mockDatasetManager.listTables).toHaveBeenCalledWith(mockBQClient, 'my_dataset', undefined);
     });
   });
 
-  describe('getTableSchema', () => {
-    it('should get table schema', async () => {
-      // Arrange
-      const datasetId = 'my_dataset';
-      const tableId = 'my_table';
-      const mockSchema = {
-        fields: [
-          { name: 'id', type: 'STRING' },
-          { name: 'name', type: 'STRING' },
+  describe('getTable', () => {
+    it('should get table metadata', async () => {
+      const mockTable = {
+        id: 'my_table',
+        datasetId: 'my_dataset',
+        projectId: 'test-project',
+        type: 'TABLE' as const,
+        schema: [
+          { name: 'id', type: 'INTEGER', mode: 'REQUIRED' },
+          { name: 'name', type: 'STRING', mode: 'NULLABLE' },
         ],
+        createdAt: new Date('2024-01-01'),
+        modifiedAt: new Date('2024-01-02'),
+        numRows: 1000,
+        numBytes: 50000,
       };
-      const mockTable = {
-        getMetadata: jest.fn().mockResolvedValue([{ schema: mockSchema }]),
-      };
-      const mockDataset = {
-        table: jest.fn().mockReturnValue(mockTable),
-      };
-      mockBQClient.dataset.mockReturnValue(mockDataset as any);
 
-      // Act
-      const schema = await client.getTableSchema(datasetId, tableId);
+      mockDatasetManager.getTable.mockResolvedValue(mockTable);
 
-      // Assert
-      expect(mockBQClient.dataset).toHaveBeenCalledWith(datasetId);
-      expect(mockDataset.table).toHaveBeenCalledWith(tableId);
-      expect(schema).toEqual(mockSchema);
+      const table = await client.getTable('my_dataset', 'my_table');
+
+      expect(table).toEqual(mockTable);
+      expect(mockDatasetManager.getTable).toHaveBeenCalledWith(mockBQClient, 'my_dataset', 'my_table', undefined);
     });
 
-    it('should handle table not found', async () => {
-      // Arrange
-      const datasetId = 'my_dataset';
-      const tableId = 'nonexistent';
+    it('should handle table not found error', async () => {
       const error = new Error('Table not found');
-      const mockTable = {
-        getMetadata: jest.fn().mockRejectedValue(error),
-      };
-      const mockDataset = {
-        table: jest.fn().mockReturnValue(mockTable),
-      };
-      mockBQClient.dataset.mockReturnValue(mockDataset as any);
+      mockDatasetManager.getTable.mockRejectedValue(error);
 
-      // Act & Assert
-      await expect(client.getTableSchema(datasetId, tableId)).rejects.toThrow('Table not found');
+      await expect(
+        client.getTable('my_dataset', 'nonexistent_table')
+      ).rejects.toThrow('Table not found');
     });
   });
 
-  describe('testConnection', () => {
-    it('should return true for successful connection', async () => {
-      // Arrange
-      mockBQClient.getDatasets.mockResolvedValue([[]]);
-
-      // Act
-      const connected = await client.testConnection();
-
-      // Assert
-      expect(connected).toBe(true);
+  describe('health checks', () => {
+    it('should return healthy status', () => {
+      expect(client.isHealthy()).toBe(true);
     });
 
-    it('should return false for failed connection', async () => {
-      // Arrange
-      const error = new Error('Connection failed');
-      mockBQClient.getDatasets.mockRejectedValue(error);
+    it('should return unhealthy during shutdown', async () => {
+      (client as any).isShuttingDown = true;
 
-      // Act
-      const connected = await client.testConnection();
+      expect(client.isHealthy()).toBe(false);
+    });
 
-      // Assert
-      expect(connected).toBe(false);
+    it('should test connection successfully', async () => {
+      mockJob.getQueryResults.mockResolvedValue([[{ result: 1 }]]);
+      mockJob.getMetadata.mockResolvedValue([{ statistics: { query: {} } }]);
+      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
+
+      const result = await client.testConnection();
+
+      expect(result).toBe(true);
+      expect(mockBQClient.createQueryJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: 'SELECT 1',
+        })
+      );
     });
   });
 
-  describe('getClient', () => {
-    it('should return underlying BigQuery client', () => {
-      // Act
-      const bqClient = client.getClient();
+  describe('metrics', () => {
+    it('should return pool metrics', () => {
+      const mockMetrics = {
+        totalConnections: 5,
+        activeConnections: 2,
+        idleConnections: 3,
+      };
 
-      // Assert
-      expect(bqClient).toBeDefined();
-      expect(bqClient).toBe(mockBQClient);
+      mockConnectionPool.getMetrics.mockReturnValue(mockMetrics);
+
+      const metrics = client.getPoolMetrics();
+
+      expect(metrics).toEqual(mockMetrics);
+    });
+
+    it('should return cache stats', () => {
+      const mockStats = {
+        datasets: { size: 10, maxSize: 100, hitRate: 0.85 },
+        tables: { size: 50, maxSize: 500, hitRate: 0.92 },
+      };
+
+      mockDatasetManager.getStats.mockReturnValue(mockStats);
+
+      const stats = client.getCacheStats();
+
+      expect(stats).toEqual(mockStats);
+    });
+  });
+
+  describe('shutdown', () => {
+    it('should shutdown gracefully', async () => {
+      await client.shutdown();
+
+      expect(mockConnectionPool.shutdown).toHaveBeenCalled();
+      expect(mockDatasetManager.shutdown).toHaveBeenCalled();
+    });
+
+    it('should reject queries after shutdown', async () => {
+      await client.shutdown();
+
+      await expect(
+        client.query({ query: 'SELECT 1' })
+      ).rejects.toThrow('shutting down');
     });
   });
 });

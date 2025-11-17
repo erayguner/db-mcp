@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   MultiProjectManager,
   MultiProjectManagerConfig,
@@ -48,6 +48,7 @@ describe('MultiProjectManager', () => {
   describe('Initialization', () => {
     it('should initialize with multiple projects', async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         defaultProjectId: 'project-1',
         autoDiscovery: false,
@@ -64,6 +65,7 @@ describe('MultiProjectManager', () => {
 
     it('should set default project', async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         defaultProjectId: 'project-2',
         autoDiscovery: false,
@@ -78,6 +80,7 @@ describe('MultiProjectManager', () => {
 
     it('should emit initialization events', (done) => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
       };
@@ -103,6 +106,7 @@ describe('MultiProjectManager', () => {
   describe('Project Context Management', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         defaultProjectId: 'project-1',
         autoDiscovery: false,
@@ -146,6 +150,7 @@ describe('MultiProjectManager', () => {
   describe('Project Listing and Filtering', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         autoDiscovery: false,
       };
@@ -178,6 +183,7 @@ describe('MultiProjectManager', () => {
       mockProjects[1].labels = { env: 'dev', team: 'data' };
 
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         autoDiscovery: false,
       };
@@ -196,6 +202,7 @@ describe('MultiProjectManager', () => {
   describe('Cross-Project Queries', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
         crossProjectQueries: {
@@ -216,7 +223,7 @@ describe('MultiProjectManager', () => {
       };
 
       // Mock the query execution
-      const spy = vi.spyOn(manager as any, 'executeCrossProjectQuery');
+      const spy = jest.spyOn(manager as any, 'executeCrossProjectQuery');
 
       await manager.executeCrossProjectQuery(query, options);
 
@@ -252,6 +259,7 @@ describe('MultiProjectManager', () => {
   describe('Permission Validation', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
         permissionValidation: {
@@ -278,7 +286,7 @@ describe('MultiProjectManager', () => {
 
     it('should throw on missing permissions', async () => {
       // Mock the permission check to fail
-      const mockGetPermissions = vi.spyOn(manager as any, 'getProjectPermissions');
+      const mockGetPermissions = jest.spyOn(manager as any, 'getProjectPermissions');
       mockGetPermissions.mockResolvedValue([]);
 
       await expect(
@@ -291,7 +299,7 @@ describe('MultiProjectManager', () => {
     });
 
     it('should cache permission results', async () => {
-      const spy = vi.spyOn(manager as any, 'getProjectPermissions');
+      const spy = jest.spyOn(manager as any, 'getProjectPermissions');
 
       // First call
       await manager.validatePermission('project-1', 'query', ['bigquery.jobs.create']);
@@ -307,6 +315,7 @@ describe('MultiProjectManager', () => {
   describe('Quota Management', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 1),
         autoDiscovery: false,
       };
@@ -361,6 +370,7 @@ describe('MultiProjectManager', () => {
   describe('Project Discovery', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
       };
@@ -401,6 +411,7 @@ describe('MultiProjectManager', () => {
   describe('Dynamic Project Management', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 1),
         autoDiscovery: false,
       };
@@ -453,6 +464,7 @@ describe('MultiProjectManager', () => {
   describe('Aggregated Metrics', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects,
         autoDiscovery: false,
       };
@@ -487,6 +499,7 @@ describe('MultiProjectManager', () => {
   describe('Health Checks', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
       };
@@ -517,6 +530,7 @@ describe('MultiProjectManager', () => {
   describe('Shutdown', () => {
     beforeEach(async () => {
       const config: MultiProjectManagerConfig = {
+        discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
         autoDiscovery: false,
       };

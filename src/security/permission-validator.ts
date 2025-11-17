@@ -1,4 +1,3 @@
-import { BigQuery } from '@google-cloud/bigquery';
 import { GoogleAuth } from 'google-auth-library';
 import { z } from 'zod';
 import { logger } from '../utils/logger.js';
@@ -80,7 +79,7 @@ export interface AuditEntry {
   resource: string;
   allowed: boolean;
   deniedReason?: string;
-  requestMetadata?: Record<string, any>;
+  requestMetadata?: Record<string, unknown>;
 }
 
 interface CachedPermission {
@@ -162,7 +161,9 @@ class PermissionCache {
     // Evict oldest entry if cache is full
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      if (firstKey) {
+        this.cache.delete(firstKey);
+      }
     }
 
     this.cache.set(key, {
@@ -258,7 +259,6 @@ class PermissionAuditLogger {
     }
 
     // Log to Cloud Logging
-    const severity = entry.allowed ? 'info' : 'warning';
     const logMethod = entry.allowed ? logger.info : logger.warn;
 
     logMethod('Permission check', {
@@ -304,7 +304,7 @@ class PermissionAuditLogger {
     }
 
     if (options?.resource) {
-      filtered = filtered.filter(e => e.resource.includes(options.resource));
+      filtered = filtered.filter(e => e.resource.includes(options.resource!));
     }
 
     if (options?.allowedOnly) {
@@ -735,8 +735,9 @@ export class PermissionValidator {
       const projectId = await this.auth.getProjectId();
 
       // For service accounts
-      if ('email' in client && typeof (client as any).email === 'string') {
-        return (client as any).email;
+      const clientWithEmail = client as { email?: string };
+      if ('email' in client && typeof clientWithEmail.email === 'string') {
+        return clientWithEmail.email;
       }
 
       // For WIF

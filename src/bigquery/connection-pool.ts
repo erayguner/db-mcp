@@ -13,7 +13,7 @@ export const ConnectionPoolConfigSchema = z.object({
   retryDelayMs: z.number().min(100).default(1000),
   projectId: z.string().optional(),
   keyFilename: z.string().optional(),
-  credentials: z.any().optional(),
+  credentials: z.unknown().optional(),
 });
 
 export type ConnectionPoolConfig = z.infer<typeof ConnectionPoolConfigSchema>;
@@ -80,14 +80,19 @@ export class ConnectionPool extends EventEmitter {
     super();
     this.config = ConnectionPoolConfigSchema.parse(config) as Required<ConnectionPoolConfig>;
     this.startTime = new Date();
-    this.initialize();
+    try {
+      this.initialize();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.emit('error', error);
+    }
   }
 
-  private async initialize(): Promise<void> {
+  private initialize(): void {
     try {
       // Create minimum connections
       for (let i = 0; i < this.config.minConnections; i++) {
-        await this.createConnection();
+        this.createConnection();
       }
 
       // Start health check interval
@@ -98,24 +103,33 @@ export class ConnectionPool extends EventEmitter {
         maxConnections: this.config.maxConnections,
       });
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.emit('error', new ConnectionPoolError(
         'Failed to initialize connection pool',
         'INIT_ERROR',
-        error
+        err
       ));
-      throw error;
+      throw err;
     }
   }
 
-  private async createConnection(): Promise<PooledConnection> {
+  private createConnection(): PooledConnection {
     const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     try {
-      const client = new BigQuery({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      const clientConfig: any = {
         projectId: this.config.projectId,
         keyFilename: this.config.keyFilename,
-        credentials: this.config.credentials,
-      });
+      };
+
+      if (this.config.credentials !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        clientConfig.credentials = this.config.credentials;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      const client = new BigQuery(clientConfig);
 
       const connection: PooledConnection = {
         client,
@@ -132,12 +146,13 @@ export class ConnectionPool extends EventEmitter {
 
       return connection;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.emit('error', new ConnectionPoolError(
         `Failed to create connection ${connectionId}`,
         'CREATE_ERROR',
-        error
+        err
       ));
-      throw error;
+      throw err;
     }
   }
 
@@ -153,7 +168,7 @@ export class ConnectionPool extends EventEmitter {
 
     return new Promise<BigQuery>((resolve, reject) => {
       const request: AcquireRequest = {
-        resolve: (connection: PooledConnection) => {
+        resolve: (connection: PooledConnection): void => {
           const acquireTime = Date.now() - startTime;
           this.metrics.acquireTimes.push(acquireTime);
           if (this.metrics.acquireTimes.length > 100) {
@@ -194,11 +209,16 @@ export class ConnectionPool extends EventEmitter {
       }, this.config.acquireTimeoutMs);
 
       // Try to get an available connection
-      this.processAcquireRequest(request);
+      try {
+        this.processAcquireRequest(request);
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        request.reject(error);
+      }
     });
   }
 
-  private async processAcquireRequest(request: AcquireRequest): Promise<void> {
+  private processAcquireRequest(request: AcquireRequest): void {
     // Check for idle connections
     const idleConnection = Array.from(this.connections.values()).find(
       conn => !conn.inUse && conn.failureCount < this.config.maxRetries
@@ -215,14 +235,15 @@ export class ConnectionPool extends EventEmitter {
     // Create new connection if under max limit
     if (this.connections.size < this.config.maxConnections) {
       try {
-        const newConnection = await this.createConnection();
+        const newConnection = this.createConnection();
         if (request.timeoutHandle) {
           clearTimeout(request.timeoutHandle);
         }
         request.resolve(newConnection);
         return;
       } catch (error) {
-        request.reject(error as Error);
+        const err = error instanceof Error ? error : new Error(String(error));
+        request.reject(err);
         return;
       }
     }
@@ -290,7 +311,10 @@ export class ConnectionPool extends EventEmitter {
 
   private startHealthCheck(): void {
     this.healthCheckInterval = setInterval(() => {
-      this.performHealthCheck();
+      void this.performHealthCheck().catch(err => {
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.emit('health:check:error', { error: error.message });
+      });
     }, this.config.healthCheckIntervalMs);
   }
 
@@ -310,11 +334,12 @@ export class ConnectionPool extends EventEmitter {
         conn.failureCount = 0;
         this.emit('health:check:success', { id: conn.id });
       } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
         conn.failureCount++;
         this.emit('health:check:failed', {
           id: conn.id,
           failureCount: conn.failureCount,
-          error
+          error: err.message
         });
 
         // Remove connection if it has exceeded max retries
@@ -328,12 +353,13 @@ export class ConnectionPool extends EventEmitter {
           // Create replacement if below minimum
           if (this.connections.size < this.config.minConnections) {
             try {
-              await this.createConnection();
+              this.createConnection();
             } catch (createError) {
+              const err = createError instanceof Error ? createError : new Error(String(createError));
               this.emit('error', new ConnectionPoolError(
                 'Failed to create replacement connection',
                 'REPLACEMENT_ERROR',
-                createError
+                err
               ));
             }
           }

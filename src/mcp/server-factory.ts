@@ -77,7 +77,6 @@ export class MCPServerFactory extends EventEmitter {
     this.server = new Server({
       name: this.config.name,
       version: this.config.version,
-    }, {
       capabilities: {
         tools: this.config.capabilities.tools ? {} : undefined,
         resources: this.config.capabilities.resources ? {} : undefined,
@@ -100,7 +99,7 @@ export class MCPServerFactory extends EventEmitter {
     return {
       name: parsed.name,
       version: parsed.version,
-      description: parsed.description,
+      description: parsed.description ?? '',
       capabilities: {
         tools: parsed.capabilities.tools ?? true,
         resources: parsed.capabilities.resources ?? true,
@@ -108,8 +107,8 @@ export class MCPServerFactory extends EventEmitter {
         logging: parsed.capabilities.logging ?? true,
       },
       transport: parsed.transport,
-      gracefulShutdownTimeoutMs: parsed.gracefulShutdownTimeoutMs,
-      healthCheckIntervalMs: parsed.healthCheckIntervalMs,
+      gracefulShutdownTimeoutMs: parsed.gracefulShutdownTimeoutMs ?? 30000,
+      healthCheckIntervalMs: parsed.healthCheckIntervalMs ?? 60000,
     };
   }
 
@@ -148,7 +147,7 @@ export class MCPServerFactory extends EventEmitter {
   /**
    * Create and configure transport based on config
    */
-  private async createTransport(): Promise<Transport> {
+  private createTransport(): Transport {
     switch (this.config.transport) {
       case 'stdio':
         return new StdioServerTransport();
@@ -160,11 +159,13 @@ export class MCPServerFactory extends EventEmitter {
           'TRANSPORT_NOT_IMPLEMENTED'
         );
 
-      default:
+      default: {
+        const transport: never = this.config.transport;
         throw new ServerFactoryError(
-          `Unknown transport: ${this.config.transport}`,
+          `Unknown transport: ${String(transport)}`,
           'UNKNOWN_TRANSPORT'
         );
+      }
     }
   }
 
@@ -183,7 +184,7 @@ export class MCPServerFactory extends EventEmitter {
       this.setState(ServerState.RUNNING);
 
       // Create transport
-      this.transport = await this.createTransport();
+      this.transport = this.createTransport();
 
       // Connect server to transport
       await this.server.connect(this.transport);
@@ -259,8 +260,8 @@ export class MCPServerFactory extends EventEmitter {
   private async closeServer(): Promise<void> {
     // MCP SDK Server currently doesn't have a close method
     // This is a placeholder for future implementation
-    if (this.transport && typeof (this.transport as any).close === 'function') {
-      await (this.transport as any).close();
+    if (this.transport && typeof (this.transport as { close?: () => Promise<void> }).close === 'function') {
+      await (this.transport as { close: () => Promise<void> }).close();
     }
   }
 

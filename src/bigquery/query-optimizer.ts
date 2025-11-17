@@ -115,10 +115,10 @@ export class QueryOptimizer {
   /**
    * Validate and sanitize SQL query
    */
-  async validate(query: string): Promise<ValidationResult> {
+  validate(query: string): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
-    let sanitized = query.trim();
+    const sanitized = query.trim();
 
     // Check for empty query
     if (!sanitized) {
@@ -203,7 +203,8 @@ export class QueryOptimizer {
         recommendation,
       };
     } catch (error) {
-      logger.error('Cost estimation failed', { error });
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('Cost estimation failed', { error: errorMsg });
       throw error;
     }
   }
@@ -248,7 +249,7 @@ export class QueryOptimizer {
     let optimized = query;
 
     // Validate query first
-    const validation = await this.validate(query);
+    const validation = this.validate(query);
     if (!validation.valid) {
       throw new Error(`Query validation failed: ${validation.errors.join(', ')}`);
     }
@@ -306,7 +307,7 @@ export class QueryOptimizer {
   /**
    * Analyze query plan (mock implementation - would use BigQuery API in production)
    */
-  async analyzeQueryPlan(query: string): Promise<QueryPlan> {
+  analyzeQueryPlan(query: string): QueryPlan {
     // This is a simplified mock. In production, you would:
     // 1. Execute query with explain plan
     // 2. Parse the execution plan from BigQuery
@@ -376,9 +377,9 @@ export class QueryOptimizer {
     suggestions: OptimizationSuggestion[];
     score: number; // 0-100, higher is better
   }> {
-    const validation = await this.validate(query);
+    const validation = this.validate(query);
     const cost = await this.estimateCost(query);
-    const plan = await this.analyzeQueryPlan(query);
+    const plan = this.analyzeQueryPlan(query);
     const suggestions: OptimizationSuggestion[] = [];
 
     // Calculate optimization score

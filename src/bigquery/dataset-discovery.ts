@@ -263,7 +263,7 @@ export class DatasetDiscovery extends EventEmitter {
 
         // Build relationship graph
         if (this.config.buildRelationshipGraph) {
-          await this.buildRelationshipGraph(allDiscovered);
+          this.buildRelationshipGraph(allDiscovered);
         }
 
         // Update statistics
@@ -279,11 +279,12 @@ export class DatasetDiscovery extends EventEmitter {
         this.connectionPool.release(client);
       }
     } catch (error) {
-      this.emit('discovery:error', error);
+      const errorDetails = error instanceof Error ? error : new Error(String(error));
+      this.emit('discovery:error', errorDetails);
       throw new DatasetDiscoveryError(
         'Failed to discover datasets',
         'DISCOVERY_ERROR',
-        error
+        errorDetails
       );
     } finally {
       this.isScanning = false;
@@ -294,15 +295,15 @@ export class DatasetDiscovery extends EventEmitter {
    * Discover datasets in a single project
    */
   private async discoverProjectDatasets(
-    _client: BigQuery,
+    client: BigQuery,
     projectId: string
   ): Promise<DiscoveredDataset[]> {
     try {
-      const datasets = await this.datasetManager.listDatasets(_client, projectId);
+      const datasets = await this.datasetManager.listDatasets(client, projectId);
       const discovered: DiscoveredDataset[] = [];
 
       for (const dataset of datasets) {
-        const discoveredDataset = await this.enhanceDatasetMetadata(dataset, _client);
+        const discoveredDataset = this.enhanceDatasetMetadata(dataset);
 
         // Apply filters
         if (this.shouldIncludeDataset(discoveredDataset)) {
@@ -321,11 +322,13 @@ export class DatasetDiscovery extends EventEmitter {
 
       return discovered;
     } catch (error) {
-      this.emit('project:error', { projectId, error });
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorDetails = error instanceof Error ? error : new Error(String(error));
+      this.emit('project:error', { projectId, error: errorMsg });
       throw new DatasetDiscoveryError(
         `Failed to discover datasets in project ${projectId}`,
         'PROJECT_DISCOVERY_ERROR',
-        error
+        errorDetails
       );
     }
   }
@@ -333,10 +336,9 @@ export class DatasetDiscovery extends EventEmitter {
   /**
    * Enhance dataset metadata with discovery features
    */
-  private async enhanceDatasetMetadata(
-    dataset: DatasetMetadata,
-    _client: BigQuery
-  ): Promise<DiscoveredDataset> {
+  private enhanceDatasetMetadata(
+    dataset: DatasetMetadata
+  ): DiscoveredDataset {
     const now = new Date();
 
     // Calculate total size
@@ -386,7 +388,7 @@ export class DatasetDiscovery extends EventEmitter {
   /**
    * Search datasets with advanced filtering and ranking
    */
-  public async search(query: SearchQuery): Promise<SearchResult[]> {
+  public search(query: SearchQuery): SearchResult[] {
     const results: SearchResult[] = [];
     const datasets = Array.from(this.discoveredDatasets.values());
 
@@ -504,7 +506,7 @@ export class DatasetDiscovery extends EventEmitter {
     let clusterId = 0;
     for (const [labelKey, datasetIds] of clusterMap.entries()) {
       if (datasetIds.size > 1) {
-        const labels = JSON.parse(labelKey);
+        const labels = JSON.parse(labelKey) as Record<string, string>;
         const totalSize = Array.from(datasetIds).reduce((sum, id) => {
           const dataset = this.discoveredDatasets.get(id);
           return sum + (dataset?.totalSizeBytes || 0);
@@ -546,7 +548,7 @@ export class DatasetDiscovery extends EventEmitter {
           const existing = this.discoveredDatasets.get(key);
 
           if (!existing || dataset.modifiedAt > existing.lastUpdatedAt) {
-            const enhanced = await this.enhanceDatasetMetadata(dataset, client);
+            const enhanced = this.enhanceDatasetMetadata(dataset);
 
             if (existing) {
               enhanced.updateCount = existing.updateCount + 1;
@@ -737,7 +739,7 @@ export class DatasetDiscovery extends EventEmitter {
     this.emit('index:built', { keywordCount: this.stats.indexedKeywords });
   }
 
-  private async buildRelationshipGraph(datasets: DiscoveredDataset[]): Promise<void> {
+  private buildRelationshipGraph(datasets: DiscoveredDataset[]): void {
     this.relationshipGraph.clear();
 
     // Find relationships based on table references, similar schemas, etc.

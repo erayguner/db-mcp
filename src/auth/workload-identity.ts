@@ -71,8 +71,9 @@ export class WorkloadIdentityFederation {
 
       return accessToken.token;
     } catch (error) {
-      logger.error('WIF token exchange failed', { error });
-      throw new Error(`Workload Identity Federation token exchange failed: ${error}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('WIF token exchange failed', { error: errorMsg });
+      throw new Error(`Workload Identity Federation token exchange failed: ${errorMsg}`);
     }
   }
 

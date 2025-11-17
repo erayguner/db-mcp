@@ -1,0 +1,101 @@
+---
+# YAMLLint Configuration
+# https://yamllint.readthedocs.io/
+
+extends: default
+
+# File patterns to ignore
+ignore: |
+  node_modules/
+  dist/
+  .terraform/
+  .git/
+  coverage/
+
+rules:
+  # Line length - allow longer lines for URLs and complex expressions
+  line-length:
+    max: 120
+    level: warning
+    allow-non-breakable-inline-mappings: true
+
+  # Indentation - 2 spaces
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Comments - require space after #
+  comments:
+    require-starting-space: true
+    min-spaces-from-content: 1
+    ignore-shebangs: true
+
+  # Empty lines
+  empty-lines:
+    max: 2
+    max-start: 0
+    max-end: 1
+
+  # Trailing spaces
+  trailing-spaces: enable
+
+  # Key duplicates
+  key-duplicates: enable
+
+  # Brackets
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+    min-spaces-inside-empty: 0
+    max-spaces-inside-empty: 0
+
+  # Braces
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+    min-spaces-inside-empty: 0
+    max-spaces-inside-empty: 0
+
+  # Colons
+  colons:
+    max-spaces-before: 0
+    max-spaces-after: 1
+
+  # Commas
+  commas:
+    max-spaces-before: 0
+    min-spaces-after: 1
+    max-spaces-after: 1
+
+  # Document start/end
+  document-start:
+    present: true
+
+  document-end:
+    present: false
+
+  # Empty values
+  empty-values:
+    forbid-in-block-mappings: true
+    forbid-in-flow-mappings: true
+
+  # Hyphens
+  hyphens:
+    max-spaces-after: 1
+
+  # New lines
+  new-line-at-end-of-file: enable
+
+  new-lines:
+    type: unix
+
+  # Quoted strings - allow both single and double quotes
+  quoted-strings:
+    quote-type: any
+    required: false
+
+  # Truthy values - allow yes/no, true/false, on/off
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    check-keys: false

@@ -16,6 +16,7 @@ describe('RateLimiter', () => {
   let rateLimiter: RateLimiter;
 
   beforeEach(() => {
+    jest.useFakeTimers();
     rateLimiter = new RateLimiter({
       rateLimitEnabled: true,
       rateLimitWindowMs: 60000,
@@ -35,6 +36,7 @@ describe('RateLimiter', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.useRealTimers();
   });
 
   describe('checkRateLimit', () => {
@@ -411,7 +413,7 @@ describe('SensitiveDataDetector', () => {
       };
 
       // Act
-      const redacted = detector.redactSensitiveData(data);
+      const redacted = detector.redactSensitiveData(data) as typeof data;
 
       // Assert
       expect(redacted.id).toBe(1);
@@ -431,7 +433,7 @@ describe('SensitiveDataDetector', () => {
       };
 
       // Act
-      const redacted = detector.redactSensitiveData(data);
+      const redacted = detector.redactSensitiveData(data) as typeof data;
 
       // Assert
       expect(redacted.user.name).toBe('John');
@@ -446,7 +448,7 @@ describe('SensitiveDataDetector', () => {
       ];
 
       // Act
-      const redacted = detector.redactSensitiveData(data);
+      const redacted = detector.redactSensitiveData(data) as typeof data;
 
       // Assert
       expect(redacted[0].password).toBe('[REDACTED]');
@@ -688,7 +690,7 @@ describe('SecurityMiddleware', () => {
       // Assert
       expect(result.allowed).toBe(true);
       expect(result.redacted).toBeDefined();
-      expect(result.redacted.password).toBe('[REDACTED]');
+      expect((result.redacted as typeof data).password).toBe('[REDACTED]');
       expect(result.warnings).toBeDefined();
     });
   });

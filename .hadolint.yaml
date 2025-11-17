@@ -1,0 +1,53 @@
+---
+# Hadolint Configuration for Dockerfile Linting
+# https://github.com/hadolint/hadolint
+
+# Dockerfile linting rules aligned with 2025 security best practices
+
+failure-threshold: warning
+
+# Ignore specific rules if needed
+ignored:
+  # DL3006: Always tag Docker images with specific versions
+  # We handle this in CI/CD with proper tagging
+  # - DL3006
+
+# Trusted registries for base images
+trustedRegistries:
+  - docker.io
+  - gcr.io
+  - ghcr.io
+  - public.ecr.aws
+
+# Override default rules
+override:
+  error:
+    - DL3001  # Avoid sudo in Dockerfile
+    - DL3002  # Last USER should not be root
+    - DL3003  # Use WORKDIR instead of cd
+    - DL3004  # Do not use sudo
+    - DL3007  # Pin versions in FROM statements
+    - DL3008  # Pin versions for apt-get
+    - DL3009  # Clean up apt cache
+    - DL3015  # Avoid additional packages by specifying --no-install-recommends
+    - DL3020  # Use COPY instead of ADD for files/folders
+    - DL3025  # Use JSON notation for CMD and ENTRYPOINT
+    - DL3045  # Use COPY --link when possible
+    - SC2046  # Quote to prevent word splitting
+    - SC2086  # Double quote to prevent globbing
+
+  warning:
+    - DL3006  # Always tag Docker images
+    - DL3018  # Pin versions in apk add
+    - DL4001  # Use wget or curl with explicit versions
+    - DL4003  # Multiple consecutive RUN instructions
+    - DL4006  # Set SHELL option -o pipefail before RUN with pipe
+
+  info:
+    - DL3013  # Pin versions in pip
+    - DL3016  # Pin versions in npm
+    - DL3059  # Multiple consecutive RUN instructions (build optimization)
+
+  style:
+    - DL3010  # Use ADD for URLs and COPY for local files
+    - DL3011  # Valid UNIX port
