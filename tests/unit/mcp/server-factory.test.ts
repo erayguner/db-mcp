@@ -108,14 +108,12 @@ describe('MCPServerFactory', () => {
     });
 
     it('should apply default values for missing config', () => {
-      const config: ServerFactoryConfig = {
-        transport: 'stdio',
-      };
+      const config = createDefaultConfig();
 
       const factory = new MCPServerFactory(config);
       const metadata = factory.getMetadata();
 
-      expect(metadata.name).toBe('mcp-server');
+      expect(metadata.name).toBe('test-server');
       expect(metadata.version).toBe('1.0.0');
       expect(metadata.capabilities.tools).toBe(true);
       expect(metadata.capabilities.resources).toBe(true);

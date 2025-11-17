@@ -206,7 +206,7 @@ describe('SecurityMiddleware', () => {
         email: 'john@example.com',
       };
 
-      const redacted = detector.redactSensitiveData(data);
+      const redacted = detector.redactSensitiveData(data) as typeof data;
       expect(redacted.name).toBe('John');
       expect(redacted.email).toBe('john@example.com');
       expect(redacted.password).toBe('[REDACTED]');

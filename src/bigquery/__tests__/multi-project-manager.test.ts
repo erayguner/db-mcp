@@ -78,7 +78,7 @@ describe('MultiProjectManager', () => {
       expect(current.projectId).toBe('project-2');
     });
 
-    it('should emit initialization events', (done: jest.DoneCallback) => {
+    it('should emit initialization events', (done) => {
       const config: MultiProjectManagerConfig = {
         discoveryIntervalMs: 300000,
         projects: mockProjects.slice(0, 2),
@@ -223,7 +223,7 @@ describe('MultiProjectManager', () => {
       };
 
       // Mock the query execution
-      const spy = vi.spyOn(manager as any, 'executeCrossProjectQuery');
+      const spy = jest.spyOn(manager as any, 'executeCrossProjectQuery');
 
       await manager.executeCrossProjectQuery(query, options);
 
@@ -241,7 +241,7 @@ describe('MultiProjectManager', () => {
       ).rejects.toThrow('Cannot query more than');
     });
 
-    it('should emit cross-project events', (done: jest.DoneCallback) => {
+    it('should emit cross-project events', (done) => {
       const query = 'SELECT 1';
       const options = {
         projectIds: ['project-1'],
@@ -286,7 +286,7 @@ describe('MultiProjectManager', () => {
 
     it('should throw on missing permissions', async () => {
       // Mock the permission check to fail
-      const mockGetPermissions = vi.spyOn(manager as any, 'getProjectPermissions');
+      const mockGetPermissions = jest.spyOn(manager as any, 'getProjectPermissions');
       mockGetPermissions.mockResolvedValue([]);
 
       await expect(
@@ -299,7 +299,7 @@ describe('MultiProjectManager', () => {
     });
 
     it('should cache permission results', async () => {
-      const spy = vi.spyOn(manager as any, 'getProjectPermissions');
+      const spy = jest.spyOn(manager as any, 'getProjectPermissions');
 
       // First call
       await manager.validatePermission('project-1', 'query', ['bigquery.jobs.create']);
@@ -330,7 +330,7 @@ describe('MultiProjectManager', () => {
       expect(context.quotaUsage?.queriesExecuted).toBe(0);
     });
 
-    it('should emit quota exceeded events', (done: jest.DoneCallback) => {
+    it('should emit quota exceeded events', (done) => {
       manager.on('quota:exceeded', (data) => {
         expect(data.projectId).toBe('project-1');
         expect(data.quotaType).toBeDefined();
@@ -350,7 +350,7 @@ describe('MultiProjectManager', () => {
       }
     });
 
-    it('should reset quotas daily', (done: jest.DoneCallback) => {
+    it('should reset quotas daily', (done) => {
       manager.on('quota:reset', (data) => {
         expect(data.projectCount).toBeGreaterThan(0);
         done();
@@ -398,7 +398,7 @@ describe('MultiProjectManager', () => {
       });
     });
 
-    it('should emit discovery events', (done: jest.DoneCallback) => {
+    it('should emit discovery events', (done) => {
       manager.on('discovery:completed', (data) => {
         expect(data.total).toBeGreaterThan(0);
         done();
@@ -544,7 +544,7 @@ describe('MultiProjectManager', () => {
       expect(manager.isHealthy()).toBe(false);
     });
 
-    it('should emit shutdown events', (done: jest.DoneCallback) => {
+    it('should emit shutdown events', (done) => {
       manager.on('shutdown:completed', () => {
         done();
       });
