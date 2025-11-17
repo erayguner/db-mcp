@@ -25,8 +25,8 @@ describe('BigQueryClientFactory', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
 
-    // Create mock BigQuery client
-    mockBigQueryClient = {
+    // Create mock BigQuery client factory function
+    const createMockClient = () => ({
       isHealthy: jest.fn().mockReturnValue(true),
       shutdown: jest.fn().mockResolvedValue(undefined),
       invalidateCache: jest.fn(),
@@ -41,9 +41,13 @@ describe('BigQueryClientFactory', () => {
         size: 15,
       }),
       on: jest.fn(),
-    } as any;
+    } as any);
 
-    (BigQueryClient as jest.MockedClass<typeof BigQueryClient>).mockImplementation(() => mockBigQueryClient);
+    // Mock implementation returns a new instance each time
+    (BigQueryClient as jest.MockedClass<typeof BigQueryClient>).mockImplementation(createMockClient);
+
+    // Keep a reference for tests that need it
+    mockBigQueryClient = createMockClient();
 
     defaultConfig = {
       defaultProjectId: 'test-project',
