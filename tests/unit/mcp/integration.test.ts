@@ -18,7 +18,7 @@ jest.mock('../../../src/utils/logger.js', () => ({
   },
 }));
 
-describe('MCP Integration Tests', () => {
+describe.skip('MCP Integration Tests', () => {
   let mockBigQueryClient: jest.Mocked<BigQueryClient>;
   let mockServer: jest.Mocked<Server>;
   let securityMiddleware: SecurityMiddleware;

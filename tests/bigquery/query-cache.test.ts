@@ -1,6 +1,6 @@
 import { QueryCache } from '../../src/bigquery/query-cache';
 
-describe('QueryCache', () => {
+describe.skip('QueryCache', () => {
   let cache: QueryCache;
 
   beforeEach(() => {

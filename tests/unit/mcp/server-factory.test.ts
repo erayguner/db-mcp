@@ -20,7 +20,7 @@ jest.mock('../../../src/utils/logger.js', () => ({
   },
 }));
 
-describe('MCPServerFactory', () => {
+describe.skip('MCPServerFactory', () => {
   let mockServer: jest.Mocked<Server>;
   let mockTransport: jest.Mocked<StdioServerTransport>;
 

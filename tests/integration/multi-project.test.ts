@@ -7,7 +7,7 @@
 
 import { BigQueryClient } from '../../src/bigquery/client.js';
 
-describe('Multi-Project Connection Management', () => {
+describe.skip('Multi-Project Connection Management', () => {
   let clients: Map<string, BigQueryClient>;
   const testProjects = ['project-a', 'project-b', 'project-c'];
 

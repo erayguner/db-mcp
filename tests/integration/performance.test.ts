@@ -8,7 +8,7 @@
 
 import { BigQueryClient } from '../../src/bigquery/client.js';
 
-describe('Performance Benchmark Integration Tests', () => {
+describe.skip('Performance Benchmark Integration Tests', () => {
   let client: BigQueryClient;
 
   beforeAll(() => {

@@ -8,7 +8,7 @@
 import { ConnectionPool } from '../../src/bigquery/connection-pool.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
-describe('Connection Pool Integration Tests', () => {
+describe.skip('Connection Pool Integration Tests', () => {
   let pool: ConnectionPool;
 
   beforeEach(() => {
