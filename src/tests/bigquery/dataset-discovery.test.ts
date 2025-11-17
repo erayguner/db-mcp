@@ -66,17 +66,35 @@ describe('DatasetDiscovery', () => {
 
     // Mock DatasetManager
     mockDatasetManager = {
-      listDatasets: jest.fn().mockResolvedValue([
-        createMockDataset('dataset1', 'project1'),
-        createMockDataset('dataset2', 'project1', {
-          description: 'Analytics dataset',
-          labels: { env: 'prod', team: 'analytics' },
-        }),
-        createMockDataset('dataset3', 'project2', {
-          location: 'EU',
-          labels: { env: 'dev', team: 'engineering' },
-        }),
-      ]),
+      listDatasets: jest.fn().mockImplementation((client: any, projectId?: string) => {
+        if (projectId === 'project1') {
+          return Promise.resolve([
+            createMockDataset('dataset1', 'project1'),
+            createMockDataset('dataset2', 'project1', {
+              description: 'Analytics dataset',
+              labels: { env: 'prod', team: 'analytics' },
+            }),
+          ]);
+        } else if (projectId === 'project2') {
+          return Promise.resolve([
+            createMockDataset('dataset3', 'project2', {
+              location: 'EU',
+              labels: { env: 'dev', team: 'engineering' },
+            }),
+          ]);
+        }
+        return Promise.resolve([
+          createMockDataset('dataset1', 'project1'),
+          createMockDataset('dataset2', 'project1', {
+            description: 'Analytics dataset',
+            labels: { env: 'prod', team: 'analytics' },
+          }),
+          createMockDataset('dataset3', 'project2', {
+            location: 'EU',
+            labels: { env: 'dev', team: 'engineering' },
+          }),
+        ]);
+      }),
       getDataset: jest.fn(),
       invalidate: jest.fn(),
       shutdown: jest.fn(),
