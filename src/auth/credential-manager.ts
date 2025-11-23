@@ -265,7 +265,7 @@ export class CredentialManager {
     try {
       // Get fresh token
       const client = await this.getClient();
-      const tokenResponse = await client.getAccessToken();
+      const tokenResponse = await (client as any).getAccessToken();
 
       if (!tokenResponse.token) {
         throw new Error('Failed to obtain access token');
@@ -321,7 +321,7 @@ export class CredentialManager {
     if (this.currentClient) {
       // Check if token is still valid
       try {
-        await this.currentClient.getAccessToken();
+        await (this.currentClient as any).getAccessToken();
         return this.currentClient;
       } catch (error) {
         // Token expired or invalid, refresh
@@ -332,9 +332,9 @@ export class CredentialManager {
     try {
       this.currentClient = await this.auth.getClient() as any;
       logger.debug('Auth client initialized', {
-        type: this.currentClient.constructor.name,
+        type: this.currentClient?.constructor.name,
       });
-      return this.currentClient;
+      return this.currentClient!;
     } catch (error) {
       logger.error('Failed to get auth client', { error });
       recordException(error as Error);

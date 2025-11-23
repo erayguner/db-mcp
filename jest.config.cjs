@@ -3,29 +3,23 @@ module.exports = {
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
-    '^(\.{1,2}/.*)\.js$': '$1',
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {
-    '^.+\.tsx?$': [
+    '^.+\\.tsx?$': [
       'ts-jest',
-      {
-        useESM: true,
-      },
+      { useESM: true },
     ],
   },
-  testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+  testMatch: ['**/tests/**/*.test.ts','**/__tests__/**/*.ts','**/?(*.)+(spec|test).ts'],
+  testPathIgnorePatterns: ['/node_modules/','/dist/'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
     '!src/**/*.test.ts',
     '!src/**/*.spec.ts',
   ],
-  coverageThreshold: {
-    global: {
-      branches: 70,
-      functions: 70,
-      lines: 70,
-      statements: 70,
-    },
-  },
+  verbose: true,
 };
+

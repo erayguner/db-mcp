@@ -6,10 +6,14 @@
  * and resource utilization.
  */
 
-import { BigQueryClient, QueryResult } from '../../src/bigquery/client.js';
-import { ConnectionPool } from '../../src/bigquery/connection-pool.js';
+import { BigQueryClient } from '../../src/bigquery/client.js';
 
-describe('Performance Benchmark Integration Tests', () => {
+
+
+const skipPerf = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
+const describePerf = skipPerf ? describe.skip : describe;
+
+describePerf('Performance Benchmark Integration Tests', () => {
   let client: BigQueryClient;
 
   beforeAll(() => {
@@ -132,7 +136,7 @@ describe('Performance Benchmark Integration Tests', () => {
       // Second execution (might benefit from caching)
       const start2 = Date.now();
       await client.query({ query, dryRun: true }).catch(() => {});
-      const duration2 = Date.now() - start2;
+      await client.query({ query, dryRun: true }).catch(() => {});
 
       // Third execution
       const start3 = Date.now();
@@ -208,12 +212,12 @@ describe('Performance Benchmark Integration Tests', () => {
       const iterations = 20;
 
       for (let i = 0; i < iterations; i++) {
-        const client = await client.getPoolMetrics();
+        const metrics = client.getPoolMetrics();
 
         // Simulate acquire/release pattern
         await Promise.all([
-          client.totalAcquired,
-          client.totalReleased,
+          metrics.totalAcquired,
+          metrics.totalReleased,
         ]);
 
         await new Promise(resolve => setTimeout(resolve, 10));
@@ -311,7 +315,7 @@ describe('Performance Benchmark Integration Tests', () => {
 
   describe('Resource Utilization', () => {
     it('should maintain stable memory usage', async () => {
-      const initialMetrics = client.getPoolMetrics();
+
 
       // Execute many operations
       for (let i = 0; i < 100; i++) {

@@ -1,4 +1,3 @@
-import { ExternalAccountClient } from 'google-auth-library';
 import { z } from 'zod';
 import { logger } from '../utils/logger.js';
 import { CredentialManager, CredentialConfig } from './credential-manager.js';

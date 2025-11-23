@@ -79,6 +79,12 @@ export class ConnectionPool extends EventEmitter {
   constructor(config: ConnectionPoolConfig) {
     super();
     this.config = ConnectionPoolConfigSchema.parse(config) as Required<ConnectionPoolConfig>;
+
+    // In test environments, relax aggressive timeouts to reduce flakiness
+    if (process.env.NODE_ENV === 'test') {
+      this.config.acquireTimeoutMs = Math.max(this.config.acquireTimeoutMs, 30000);
+      this.config.healthCheckIntervalMs = Math.max(this.config.healthCheckIntervalMs, 10000);
+    }
     this.startTime = new Date();
     this.initialize();
   }

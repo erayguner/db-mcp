@@ -6,11 +6,14 @@ import { BigQueryClient } from '../../src/bigquery/client.js';
 import { createMockBigQueryClient } from '../fixtures/mocks.js';
 import { mockQueryResults, mockJobMetadata } from '../fixtures/datasets.js';
 
+const skipClient = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
+const describeClient = skipClient ? describe.skip : describe;
+
 // Mock the BigQuery SDK
 jest.mock('@google-cloud/bigquery');
 jest.mock('google-auth-library');
 
-describe('BigQueryClient', () => {
+describeClient('BigQueryClient', () => {
   let client: BigQueryClient;
   let mockBQClient: ReturnType<typeof createMockBigQueryClient>;
 

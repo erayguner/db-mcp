@@ -16,6 +16,7 @@ describe('RateLimiter', () => {
   let rateLimiter: RateLimiter;
 
   beforeEach(() => {
+    jest.useFakeTimers();
     rateLimiter = new RateLimiter({
       rateLimitEnabled: true,
       rateLimitWindowMs: 60000,
@@ -35,6 +36,7 @@ describe('RateLimiter', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.useRealTimers();
   });
 
   describe('checkRateLimit', () => {

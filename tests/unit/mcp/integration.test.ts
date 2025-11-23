@@ -8,8 +8,8 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 // Mock dependencies
 jest.mock('@modelcontextprotocol/sdk/server/index.js');
 jest.mock('@modelcontextprotocol/sdk/server/stdio.js');
-jest.mock('../../../src/bigquery/client.js');
-jest.mock('../../../src/utils/logger.js', () => ({
+jest.mock('../../../src/bigquery/client');
+jest.mock('../../../src/utils/logger', () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
@@ -438,8 +438,8 @@ describe('MCP Integration Tests', () => {
 
       // Step 2: List tables in dataset
       mockBigQueryClient.listTables.mockResolvedValue([
-        { id: 'users', tableId: 'users', type: 'TABLE' },
-        { id: 'events', tableId: 'events', type: 'TABLE' },
+        { id: 'users', type: 'TABLE' },
+        { id: 'events', type: 'TABLE' },
       ]);
 
       const tablesResponse = await toolHandlerFactory.execute(

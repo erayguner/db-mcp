@@ -12,7 +12,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 // Mock dependencies
 jest.mock('@modelcontextprotocol/sdk/server/index.js');
 jest.mock('@modelcontextprotocol/sdk/server/stdio.js');
-jest.mock('../../../src/utils/logger.js', () => ({
+jest.mock('../../../src/utils/logger', () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),

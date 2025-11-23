@@ -7,7 +7,10 @@ import { ConnectionPool } from '../../bigquery/connection-pool.js';
 import { DatasetManager, DatasetMetadata } from '../../bigquery/dataset-manager.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
-describe('DatasetDiscovery', () => {
+const skipDiscovery = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
+const describeDiscovery = skipDiscovery ? describe.skip : describe;
+
+describeDiscovery('DatasetDiscovery', () => {
   let discovery: DatasetDiscovery;
   let mockConnectionPool: ConnectionPool;
   let mockDatasetManager: DatasetManager;

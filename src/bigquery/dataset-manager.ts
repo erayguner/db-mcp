@@ -1,4 +1,4 @@
-import { BigQuery, Dataset, Table } from '@google-cloud/bigquery';
+import { BigQuery } from '@google-cloud/bigquery';
 import { z } from 'zod';
 import { EventEmitter } from 'events';
 
@@ -38,6 +38,7 @@ export interface TableMetadata {
   createdAt: Date;
   modifiedAt: Date;
   expirationTime?: Date;
+  description?: string;
 }
 
 interface CacheEntry<T> {
@@ -268,6 +269,7 @@ export class DatasetManager extends EventEmitter {
         expirationTime: metadata.expirationTime
           ? new Date(parseInt(metadata.expirationTime))
           : undefined,
+        description: metadata.description,
       };
     } catch (error) {
       throw new DatasetManagerError(
@@ -491,7 +493,7 @@ export class DatasetManager extends EventEmitter {
     const cache = type === 'dataset' ? this.datasetCache : this.tableCache;
     if (cache.size === 0) return 0;
 
-    const totalAccess = Array.from(cache.values()).reduce(
+    const totalAccess = Array.from(cache.values() as Iterable<CacheEntry<any>>).reduce(
       (sum, entry) => sum + entry.accessCount,
       0
     );

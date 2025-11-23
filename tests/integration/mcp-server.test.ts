@@ -8,11 +8,11 @@ import { mockQueryResults } from '../fixtures/datasets.js';
 
 // Mock dependencies
 jest.mock('@google-cloud/bigquery');
-jest.mock('../../src/telemetry/index.js', () => ({
+jest.mock('../../src/telemetry/index', () => ({
   initializeTelemetry: jest.fn(),
   shutdownTelemetry: jest.fn(),
 }));
-jest.mock('../../src/telemetry/metrics.js', () => ({
+jest.mock('../../src/telemetry/metrics', () => ({
   recordRequest: jest.fn(),
   trackConnection: jest.fn(),
   recordError: jest.fn(),

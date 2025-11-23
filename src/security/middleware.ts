@@ -65,6 +65,7 @@ export const SecurityConfigSchema = z.object({
   toolValidationEnabled: z.boolean().default(true),
   allowedTools: z.array(z.string()).default([
     'query_bigquery',
+    'execute_query', // alias
     'list_datasets',
     'list_tables',
     'get_table_schema',
@@ -248,11 +249,17 @@ export class InputValidator {
     // SQL injection patterns (basic)
     const dangerousPatterns = [
       /;\s*DROP\s+/i,
+      /^\s*DROP\s+/i,
       /;\s*DELETE\s+/i,
+      /^\s*DELETE\s+/i,
       /;\s*TRUNCATE\s+/i,
+      /^\s*TRUNCATE\s+/i,
       /;\s*ALTER\s+/i,
+      /^\s*ALTER\s+/i,
       /;\s*CREATE\s+USER/i,
+      /^\s*CREATE\s+USER/i,
       /;\s*GRANT\s+/i,
+      /^\s*GRANT\s+/i,
       /UNION\s+SELECT/i,
       /--\s*$/,
       /\/\*.*\*\//,

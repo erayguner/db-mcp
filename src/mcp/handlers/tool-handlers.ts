@@ -1,11 +1,6 @@
-import { z } from 'zod';
 import { BigQueryClient } from '../../bigquery/client.js';
 import { logger } from '../../utils/logger.js';
 import {
-  QueryBigQueryArgs,
-  ListDatasetsArgs,
-  ListTablesArgs,
-  GetTableSchemaArgs,
   validateToolArgs,
   ToolName,
 } from '../schemas/tool-schemas.js';
@@ -22,7 +17,8 @@ export interface ToolResponse {
     mimeType?: string;
   }>;
   isError?: boolean;
-  _meta?: Record<string, any>;
+  _meta?: Record<string, unknown>;
+  structuredContent?: unknown; // added
 }
 
 /**
@@ -39,7 +35,7 @@ export interface ToolHandlerContext {
  * Base Tool Handler
  */
 export abstract class BaseToolHandler {
-  constructor(protected context: ToolHandlerContext) {}
+  constructor(protected context: ToolHandlerContext) { }
 
   /**
    * Execute the tool
@@ -49,7 +45,7 @@ export abstract class BaseToolHandler {
   /**
    * Format success response
    */
-  protected formatSuccess(data: any, meta?: Record<string, any>): ToolResponse {
+  protected formatSuccess(data: unknown, meta?: Record<string, unknown>): ToolResponse {
     return {
       content: [
         {
@@ -57,6 +53,7 @@ export abstract class BaseToolHandler {
           text: JSON.stringify(data, null, 2),
         },
       ],
+      structuredContent: data,
       _meta: {
         ...meta,
         timestamp: new Date().toISOString(),
@@ -88,6 +85,7 @@ export abstract class BaseToolHandler {
           text: JSON.stringify(errorData, null, 2),
         },
       ],
+      structuredContent: errorData,
       isError: true,
     };
   }
@@ -96,8 +94,8 @@ export abstract class BaseToolHandler {
    * Format streaming response (for large result sets)
    */
   protected formatStreamingResponse(
-    items: any[],
-    meta?: Record<string, any>
+    items: QueryRow[],
+    meta?: Record<string, unknown>
   ): ToolResponse {
     const chunks: string[] = [];
     const chunkSize = 100; // Process in chunks of 100 items
@@ -106,18 +104,19 @@ export abstract class BaseToolHandler {
       const chunk = items.slice(i, i + chunkSize);
       chunks.push(JSON.stringify(chunk));
     }
-
+    const streamingSummary = {
+      totalItems: items.length,
+      chunks: chunks.length,
+      items,
+    };
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({
-            totalItems: items.length,
-            chunks: chunks.length,
-            items: items,
-          }, null, 2),
+          text: JSON.stringify(streamingSummary, null, 2),
         },
       ],
+      structuredContent: streamingSummary,
       _meta: {
         ...meta,
         streaming: true,
@@ -161,14 +160,14 @@ export class QueryBigQueryHandler extends BaseToolHandler {
       const result = await this.context.bigQueryClient.query({
         query,
         maxResults,
-        timeoutMs,
+        jobTimeoutMs: timeoutMs,
         useLegacySql,
         location,
       });
 
       // Use streaming response for large result sets
       if (result.rows.length > 1000) {
-        return this.formatStreamingResponse(result.rows, {
+        return this.formatStreamingResponse(result.rows as QueryRow[], {
           totalRows: result.totalRows,
           jobId: result.jobId,
           cacheHit: result.cacheHit,
@@ -220,8 +219,8 @@ export class ListDatasetsHandler extends BaseToolHandler {
           id: ds.id,
           projectId: ds.projectId,
           location: ds.location,
-          creationTime: ds.creationTime,
-          lastModifiedTime: ds.lastModifiedTime,
+          creationTime: ds.createdAt.toISOString(),
+          lastModifiedTime: ds.modifiedAt.toISOString(),
           description: ds.description,
         })),
       }, {
@@ -261,9 +260,9 @@ export class ListTablesHandler extends BaseToolHandler {
         count: tables.length,
         tables: tables.map(table => ({
           id: table.id,
-          tableId: table.tableId,
+          tableId: table.id, // tableId is same as id in metadata
           type: table.type,
-          creationTime: table.creationTime,
+          creationTime: table.createdAt.toISOString(),
           numRows: table.numRows,
           numBytes: table.numBytes,
           description: table.description,
@@ -309,11 +308,11 @@ export class GetTableSchemaHandler extends BaseToolHandler {
       if (includeMetadata) {
         response.metadata = {
           type: table.type,
-          creationTime: table.creationTime,
-          lastModifiedTime: table.lastModifiedTime,
+          creationTime: table.createdAt.toISOString(),
+          lastModifiedTime: table.modifiedAt.toISOString(),
           numRows: table.numRows,
           numBytes: table.numBytes,
-          location: table.location,
+          // location is not on TableMetadata, use dataset location if needed or omit
           description: table.description,
         };
       }
@@ -342,6 +341,7 @@ export class ToolHandlerFactory {
 
   private registerDefaultHandlers(): void {
     this.handlers.set('query_bigquery', QueryBigQueryHandler);
+    this.handlers.set('execute_query', QueryBigQueryHandler); // alias
     this.handlers.set('list_datasets', ListDatasetsHandler);
     this.handlers.set('list_tables', ListTablesHandler);
     this.handlers.set('get_table_schema', GetTableSchemaHandler);
@@ -405,3 +405,5 @@ export class ToolHandlerFactory {
     }
   }
 }
+
+export type QueryRow = Record<string, unknown>;

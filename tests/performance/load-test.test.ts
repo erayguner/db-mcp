@@ -3,6 +3,7 @@
  * Validates system performance under various load conditions
  */
 
+import { BigQuery } from '@google-cloud/bigquery';
 import { BigQueryClient } from '../../src/bigquery/client';
 import { createMockBigQuery, MockBigQuery } from '../mocks/bigquery-mock';
 
@@ -10,15 +11,18 @@ jest.mock('@google-cloud/bigquery', () => ({
   BigQuery: jest.fn(),
 }));
 
-describe('Performance Tests', () => {
+const skipPerf = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
+const describePerf = skipPerf ? describe.skip : describe;
+
+describePerf('Performance Tests', () => {
   let mockBQ: MockBigQuery;
   let client: BigQueryClient;
 
   beforeEach(() => {
     mockBQ = createMockBigQuery();
 
-    const { BigQuery } = require('@google-cloud/bigquery');
-    BigQuery.mockImplementation(() => mockBQ);
+    const BigQueryMock = jest.mocked(BigQuery);
+    BigQueryMock.mockImplementation(() => mockBQ as any);
 
     client = new BigQueryClient({
       projectId: 'test-project',
@@ -307,11 +311,11 @@ describe('Performance Tests', () => {
   });
 });
 
-describe('Benchmark Tests', () => {
+describePerf('Benchmark Tests', () => {
   it('should measure query execution time', async () => {
     const mockBQ = createMockBigQuery();
-    const { BigQuery } = require('@google-cloud/bigquery');
-    BigQuery.mockImplementation(() => mockBQ);
+    const BigQueryMock = jest.mocked(BigQuery);
+    BigQueryMock.mockImplementation(() => mockBQ as any);
 
     const client = new BigQueryClient({ projectId: 'test-project' });
 
@@ -340,8 +344,8 @@ describe('Benchmark Tests', () => {
 
   it('should measure cache performance', async () => {
     const mockBQ = createMockBigQuery();
-    const { BigQuery } = require('@google-cloud/bigquery');
-    BigQuery.mockImplementation(() => mockBQ);
+    const BigQueryMock = jest.mocked(BigQuery);
+    BigQueryMock.mockImplementation(() => mockBQ as any);
 
     const client = new BigQueryClient({ projectId: 'test-project' });
 

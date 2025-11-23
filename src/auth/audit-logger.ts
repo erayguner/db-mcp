@@ -578,7 +578,7 @@ export class SecurityAuditLogger {
 // Export singleton instance
 let auditLoggerInstance: SecurityAuditLogger | null = null;
 
-export function getAuditLogger(options?: Parameters<typeof SecurityAuditLogger.prototype.constructor>[0]): SecurityAuditLogger {
+export function getAuditLogger(options?: ConstructorParameters<typeof SecurityAuditLogger>[0]): SecurityAuditLogger {
   if (!auditLoggerInstance) {
     auditLoggerInstance = new SecurityAuditLogger(options);
   }

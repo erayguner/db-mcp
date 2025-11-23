@@ -51,7 +51,6 @@ export type {
 
 import { CredentialManager, CredentialConfig } from './credential-manager.js';
 import { WIFAuthenticator, WIFAuthConfig } from './wif-authenticator.js';
-import { WorkloadIdentityFederation, WIFConfig } from './workload-identity.js';
 import { GoogleWorkspaceAuth, GoogleWorkspaceConfig } from './google-workspace.js';
 import { getAuditLogger } from './audit-logger.js';
 

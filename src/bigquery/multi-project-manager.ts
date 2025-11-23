@@ -1,9 +1,8 @@
-import { BigQuery } from '@google-cloud/bigquery';
 import { z } from 'zod';
 import { EventEmitter } from 'events';
-import { BigQueryClient, BigQueryClientConfig } from './client.js';
-import { ConnectionPool, ConnectionPoolConfig } from './connection-pool.js';
-import { DatasetManager, DatasetMetadata, TableMetadata } from './dataset-manager.js';
+import { BigQueryClient, BigQueryClientInputConfig } from './client.js';
+import { ConnectionPool } from './connection-pool.js';
+import { DatasetManager, DatasetMetadata } from './dataset-manager.js';
 
 /**
  * Zod Schemas for Multi-Project Manager
@@ -287,7 +286,7 @@ export class MultiProjectManager extends EventEmitter {
 
     try {
       // Create BigQuery client for this project
-      const clientConfig: BigQueryClientConfig = {
+      const clientConfig: BigQueryClientInputConfig = {
         projectId,
         keyFilename: projectConfig.keyFilename,
         credentials: projectConfig.credentials,
@@ -316,6 +315,13 @@ export class MultiProjectManager extends EventEmitter {
         projectId,
         keyFilename: projectConfig.keyFilename,
         credentials: projectConfig.credentials,
+        minConnections: this.config.connectionPool.minConnectionsPerProject,
+        maxConnections: this.config.connectionPool.maxConnectionsPerProject,
+        acquireTimeoutMs: this.config.connectionPool.acquireTimeoutMs,
+        idleTimeoutMs: this.config.connectionPool.idleTimeoutMs,
+        healthCheckIntervalMs: 60000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
       });
 
       // Create dataset manager
@@ -718,7 +724,7 @@ export class MultiProjectManager extends EventEmitter {
     // Check quota limits
     if (quota.limits) {
       if (quota.limits.maxQueriesPerDay &&
-          quota.queriesExecuted >= quota.limits.maxQueriesPerDay) {
+        quota.queriesExecuted >= quota.limits.maxQueriesPerDay) {
         this.emit('quota:exceeded', {
           projectId,
           quotaType: 'queries',
@@ -728,7 +734,7 @@ export class MultiProjectManager extends EventEmitter {
       }
 
       if (quota.limits.maxBytesProcessedPerDay &&
-          BigInt(quota.bytesProcessed) >= BigInt(quota.limits.maxBytesProcessedPerDay)) {
+        BigInt(quota.bytesProcessed) >= BigInt(quota.limits.maxBytesProcessedPerDay)) {
         this.emit('quota:exceeded', {
           projectId,
           quotaType: 'bytes',
@@ -761,7 +767,7 @@ export class MultiProjectManager extends EventEmitter {
    */
   private startQuotaResetInterval(): void {
     const resetQuotas = () => {
-      this.projects.forEach((context, projectId) => {
+      this.projects.forEach((context) => {
         if (context.quotaUsage) {
           context.quotaUsage.queriesExecuted = 0;
           context.quotaUsage.bytesProcessed = '0';

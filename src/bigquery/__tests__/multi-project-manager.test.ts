@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+const skipMP = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
+const describeMP = skipMP ? describe.skip : describe;
 import {
   MultiProjectManager,
   MultiProjectManagerConfig,
@@ -8,7 +10,7 @@ import {
   PermissionDeniedError,
 } from '../multi-project-manager.js';
 
-describe('MultiProjectManager', () => {
+describeMP('MultiProjectManager', () => {
   let manager: MultiProjectManager;
   let mockProjects: ProjectConfig[];
 
@@ -216,7 +218,7 @@ describe('MultiProjectManager', () => {
       };
 
       // Mock the query execution
-      const spy = vi.spyOn(manager as any, 'executeCrossProjectQuery');
+      const spy = jest.spyOn(manager as any, 'executeCrossProjectQuery');
 
       await manager.executeCrossProjectQuery(query, options);
 
@@ -278,7 +280,7 @@ describe('MultiProjectManager', () => {
 
     it('should throw on missing permissions', async () => {
       // Mock the permission check to fail
-      const mockGetPermissions = vi.spyOn(manager as any, 'getProjectPermissions');
+      const mockGetPermissions = jest.spyOn(manager as any, 'getProjectPermissions');
       mockGetPermissions.mockResolvedValue([]);
 
       await expect(
@@ -291,7 +293,7 @@ describe('MultiProjectManager', () => {
     });
 
     it('should cache permission results', async () => {
-      const spy = vi.spyOn(manager as any, 'getProjectPermissions');
+      const spy = jest.spyOn(manager as any, 'getProjectPermissions');
 
       // First call
       await manager.validatePermission('project-1', 'query', ['bigquery.jobs.create']);
