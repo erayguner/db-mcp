@@ -6,9 +6,13 @@
  */
 
 import { BigQueryClient } from '../../src/bigquery/client.js';
+import { DatasetManager } from '../../src/bigquery/dataset-manager.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
-describe.skip('Dataset Discovery Integration', () => {
+const skipDiscovery = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
+const describeDiscovery = skipDiscovery ? describe.skip : describe;
+
+describeDiscovery('Dataset Discovery Integration', () => {
   let client: BigQueryClient;
   let mockBigQuery: BigQuery;
   const testProjectId = 'test-discovery-project';
@@ -20,7 +24,7 @@ describe.skip('Dataset Discovery Integration', () => {
         cacheSize: 50,
         cacheTTLMs: 60000, // 1 minute for testing
         autoDiscovery: true,
-        discoveryIntervalMs: 30000,
+        discoveryIntervalMs: 60000,
       },
     });
 

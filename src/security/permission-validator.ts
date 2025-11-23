@@ -79,7 +79,7 @@ export interface AuditEntry {
   resource: string;
   allowed: boolean;
   deniedReason?: string;
-  requestMetadata?: Record<string, unknown>;
+  requestMetadata?: Record<string, any>;
 }
 
 interface CachedPermission {
@@ -304,7 +304,8 @@ class PermissionAuditLogger {
     }
 
     if (options?.resource) {
-      filtered = filtered.filter(e => e.resource.includes(options.resource!));
+      const resource = options.resource;
+      filtered = filtered.filter(e => e.resource.includes(resource));
     }
 
     if (options?.allowedOnly) {
@@ -735,9 +736,8 @@ export class PermissionValidator {
       const projectId = await this.auth.getProjectId();
 
       // For service accounts
-      const clientWithEmail = client as { email?: string };
-      if ('email' in client && typeof clientWithEmail.email === 'string') {
-        return clientWithEmail.email;
+      if ('email' in client && typeof (client as any).email === 'string') {
+        return (client as any).email;
       }
 
       // For WIF

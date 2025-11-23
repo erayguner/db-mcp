@@ -5,12 +5,15 @@
 import { BigQueryClient, BigQueryClientConfig } from '../../src/bigquery/client.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
+const skipClient = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
+const describeClient = skipClient ? describe.skip : describe;
+
 // Mock the BigQuery SDK
 jest.mock('@google-cloud/bigquery');
 jest.mock('../../src/bigquery/connection-pool.js');
 jest.mock('../../src/bigquery/dataset-manager.js');
 
-describe('BigQueryClient', () => {
+describeClient('BigQueryClient', () => {
   let client: BigQueryClient;
   let mockBQClient: any;
   let mockJob: any;

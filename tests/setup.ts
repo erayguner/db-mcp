@@ -2,9 +2,19 @@
  * Jest Test Setup
  * Configures global test environment for BigQuery MCP Server
  */
+import { jest } from '@jest/globals';
+import * as BigQueryMockModule from '../__mocks__/@google-cloud/bigquery.js';
+
+// Ensure Jest globals are available in ESM tests
+(globalThis as any).jest = jest;
+
+// Use the shared BigQuery mock (provides job.getMetadata etc.)
+jest.mock('@google-cloud/bigquery', () => BigQueryMockModule);
 
 // Set test environment
 process.env.NODE_ENV = 'test';
+process.env.USE_MOCK_BIGQUERY = 'true';
+process.env.MOCK_FAST = 'true';
 process.env.GCP_PROJECT_ID = 'test-project';
 process.env.GCP_REGION = 'us-central1';
 process.env.WORKLOAD_IDENTITY_POOL_ID = 'test-pool';

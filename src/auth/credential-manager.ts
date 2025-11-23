@@ -270,6 +270,7 @@ export class CredentialManager {
     try {
       // Get fresh token
       const client = await this.getClient();
+      const tokenResponse = await (client as any).getAccessToken();
 
       // Type guard for getAccessToken method
       if (!('getAccessToken' in client) || typeof client.getAccessToken !== 'function') {
@@ -281,7 +282,6 @@ export class CredentialManager {
         await client.getAccessToken() as { token?: string | null } | string | null | undefined;
 
       // Properly type the token response
-      const tokenResponse = tokenResponseRaw;
       const token = typeof tokenResponse === 'string'
         ? tokenResponse
         : (tokenResponse && typeof tokenResponse === 'object' && 'token' in tokenResponse ? tokenResponse.token : null);
@@ -339,17 +339,23 @@ export class CredentialManager {
    */
   async getClient(): Promise<JWT | OAuth2Client | Compute | ExternalAccountClient> {
     if (this.currentClient) {
-      // Return current client as it's already authenticated
-      return this.currentClient;
+      // Check if token is still valid
+      try {
+        await (this.currentClient as any).getAccessToken();
+        return this.currentClient;
+      } catch (error) {
+        // Token expired or invalid, refresh
+        logger.debug('Current client invalid, refreshing');
+      }
     }
 
     try {
       const client = await this.auth.getClient();
       this.currentClient = client as JWT | OAuth2Client | Compute | ExternalAccountClient;
       logger.debug('Auth client initialized', {
-        type: this.currentClient.constructor.name,
+        type: this.currentClient?.constructor.name,
       });
-      return this.currentClient;
+      return this.currentClient!;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Failed to get auth client', { error: err.message });

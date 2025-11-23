@@ -18,6 +18,7 @@ export interface ToolResponse {
   }>;
   isError?: boolean;
   _meta?: Record<string, unknown>;
+  structuredContent?: unknown; // added
 }
 
 /**
@@ -27,14 +28,14 @@ export interface ToolHandlerContext {
   bigQueryClient: BigQueryClient;
   userId?: string;
   requestId?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any>;
 }
 
 /**
  * Base Tool Handler
  */
 export abstract class BaseToolHandler {
-  constructor(protected context: ToolHandlerContext) {}
+  constructor(protected context: ToolHandlerContext) { }
 
   /**
    * Execute the tool
@@ -52,6 +53,7 @@ export abstract class BaseToolHandler {
           text: JSON.stringify(data, null, 2),
         },
       ],
+      structuredContent: data,
       _meta: {
         ...meta,
         timestamp: new Date().toISOString(),
@@ -83,6 +85,7 @@ export abstract class BaseToolHandler {
           text: JSON.stringify(errorData, null, 2),
         },
       ],
+      structuredContent: errorData,
       isError: true,
     };
   }
@@ -91,7 +94,7 @@ export abstract class BaseToolHandler {
    * Format streaming response (for large result sets)
    */
   protected formatStreamingResponse(
-    items: unknown[],
+    items: QueryRow[],
     meta?: Record<string, unknown>
   ): ToolResponse {
     const chunks: string[] = [];
@@ -101,18 +104,19 @@ export abstract class BaseToolHandler {
       const chunk = items.slice(i, i + chunkSize);
       chunks.push(JSON.stringify(chunk));
     }
-
+    const streamingSummary = {
+      totalItems: items.length,
+      chunks: chunks.length,
+      items,
+    };
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({
-            totalItems: items.length,
-            chunks: chunks.length,
-            items: items,
-          }, null, 2),
+          text: JSON.stringify(streamingSummary, null, 2),
         },
       ],
+      structuredContent: streamingSummary,
       _meta: {
         ...meta,
         streaming: true,
@@ -163,7 +167,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
 
       // Use streaming response for large result sets
       if (result.rows.length > 1000) {
-        return this.formatStreamingResponse(result.rows, {
+        return this.formatStreamingResponse(result.rows as QueryRow[], {
           totalRows: result.totalRows,
           jobId: result.jobId,
           cacheHit: result.cacheHit,
@@ -182,8 +186,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         totalBytesProcessed: result.totalBytesProcessed,
       });
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      return this.formatError(err, 'QUERY_ERROR');
+      return this.formatError(error as Error, 'QUERY_ERROR');
     }
   }
 }
@@ -216,16 +219,15 @@ export class ListDatasetsHandler extends BaseToolHandler {
           id: ds.id,
           projectId: ds.projectId,
           location: ds.location,
-          createdAt: ds.createdAt,
-          modifiedAt: ds.modifiedAt,
+          creationTime: ds.createdAt.toISOString(),
+          lastModifiedTime: ds.modifiedAt.toISOString(),
           description: ds.description,
         })),
       }, {
         projectId: projectId || 'default',
       });
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      return this.formatError(err, 'LIST_DATASETS_ERROR');
+      return this.formatError(error as Error, 'LIST_DATASETS_ERROR');
     }
   }
 }
@@ -258,19 +260,19 @@ export class ListTablesHandler extends BaseToolHandler {
         count: tables.length,
         tables: tables.map(table => ({
           id: table.id,
-          datasetId: table.datasetId,
+          tableId: table.id, // tableId is same as id in metadata
           type: table.type,
-          createdAt: table.createdAt,
+          creationTime: table.createdAt.toISOString(),
           numRows: table.numRows,
           numBytes: table.numBytes,
+          description: table.description,
         })),
       }, {
         datasetId,
         projectId: projectId || 'default',
       });
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      return this.formatError(err, 'LIST_TABLES_ERROR');
+      return this.formatError(error as Error, 'LIST_TABLES_ERROR');
     }
   }
 }
@@ -297,7 +299,7 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         projectId
       );
 
-      const response: Record<string, unknown> = {
+      const response: any = {
         datasetId,
         tableId,
         schema: table.schema,
@@ -306,10 +308,12 @@ export class GetTableSchemaHandler extends BaseToolHandler {
       if (includeMetadata) {
         response.metadata = {
           type: table.type,
-          createdAt: table.createdAt,
-          modifiedAt: table.modifiedAt,
+          creationTime: table.createdAt.toISOString(),
+          lastModifiedTime: table.modifiedAt.toISOString(),
           numRows: table.numRows,
           numBytes: table.numBytes,
+          // location is not on TableMetadata, use dataset location if needed or omit
+          description: table.description,
         };
       }
 
@@ -319,8 +323,7 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         projectId: projectId || 'default',
       });
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      return this.formatError(err, 'GET_SCHEMA_ERROR');
+      return this.formatError(error as Error, 'GET_SCHEMA_ERROR');
     }
   }
 }
@@ -338,6 +341,7 @@ export class ToolHandlerFactory {
 
   private registerDefaultHandlers(): void {
     this.handlers.set('query_bigquery', QueryBigQueryHandler);
+    this.handlers.set('execute_query', QueryBigQueryHandler); // alias
     this.handlers.set('list_datasets', ListDatasetsHandler);
     this.handlers.set('list_tables', ListTablesHandler);
     this.handlers.set('get_table_schema', GetTableSchemaHandler);
@@ -385,13 +389,12 @@ export class ToolHandlerFactory {
         context: context.metadata,
       });
 
-      const err = error instanceof Error ? error : new Error(String(error));
       return {
         content: [
           {
             type: 'text',
             text: JSON.stringify({
-              error: err.message,
+              error: (error as Error).message,
               code: 'HANDLER_ERROR',
               toolName,
             }, null, 2),
@@ -402,3 +405,5 @@ export class ToolHandlerFactory {
     }
   }
 }
+
+export type QueryRow = Record<string, unknown>;

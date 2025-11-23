@@ -1,5 +1,5 @@
-import { QueryOptimizer } from '../../src/bigquery/query-optimizer';
-import { BigQueryClient } from '../../src/bigquery/client';
+import { QueryOptimizer } from '../../src/bigquery/query-optimizer.js';
+import { BigQueryClient } from '../../src/bigquery/client.js';
 
 // Mock BigQueryClient
 jest.mock('../../src/bigquery/client');
@@ -96,7 +96,7 @@ describe.skip('QueryOptimizer', () => {
     it('should not mark cheap queries as expensive', async () => {
       mockClient.dryRun.mockResolvedValue({
         totalBytesProcessed: '1000000',
-        estimatedCost: 0.00000625,
+        estimatedCostUSD: 0.00000625,
       });
 
       const cost = await optimizer.estimateCost('SELECT * FROM small_table LIMIT 10');
@@ -150,7 +150,7 @@ describe.skip('QueryOptimizer', () => {
     beforeEach(() => {
       mockClient.dryRun.mockResolvedValue({
         totalBytesProcessed: '1000000',
-        estimatedCost: 0.00000625,
+        estimatedCostUSD: 0.00000625,
       });
     });
 
@@ -166,7 +166,7 @@ describe.skip('QueryOptimizer', () => {
     it('should provide optimization suggestions', async () => {
       mockClient.dryRun.mockResolvedValue({
         totalBytesProcessed: '10000000000',
-        estimatedCost: 0.0625,
+        estimatedCostUSD: 0.0625,
       });
 
       const query = 'SELECT * FROM large_table';
@@ -184,7 +184,7 @@ describe.skip('QueryOptimizer', () => {
     it('should add LIMIT for expensive queries', async () => {
       mockClient.dryRun.mockResolvedValue({
         totalBytesProcessed: '2000000000',
-        estimatedCost: 0.0125,
+        estimatedCostUSD: 0.0125,
       });
 
       const query = 'SELECT * FROM users';
@@ -232,7 +232,7 @@ describe.skip('QueryOptimizer', () => {
     beforeEach(() => {
       mockClient.dryRun.mockResolvedValue({
         totalBytesProcessed: '1000000',
-        estimatedCost: 0.00000625,
+        estimatedCostUSD: 0.00000625,
       });
     });
 

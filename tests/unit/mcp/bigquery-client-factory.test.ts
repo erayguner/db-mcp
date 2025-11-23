@@ -7,8 +7,8 @@ import {
 import { BigQueryClient } from '../../../src/bigquery/client.js';
 
 // Mock dependencies
-jest.mock('../../../src/bigquery/client.js');
-jest.mock('../../../src/utils/logger.js', () => ({
+jest.mock('../../../src/bigquery/client');
+jest.mock('../../../src/utils/logger', () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),

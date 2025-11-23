@@ -62,8 +62,8 @@ export class ServerFactoryError extends Error {
  * - Event emission
  */
 export class MCPServerFactory extends EventEmitter {
-  private config: Required<ServerFactoryConfig>;
-  private server: Server;
+  private config: ServerFactoryConfig;
+  private server: Server; // revert type
   private transport: Transport | null = null;
   private state: ServerState = ServerState.INITIALIZING;
   private healthCheckInterval?: NodeJS.Timeout;
@@ -72,9 +72,8 @@ export class MCPServerFactory extends EventEmitter {
   constructor(config: ServerFactoryConfig) {
     super();
     this.config = this.parseAndValidateConfig(config);
-
-    // Create MCP server instance
-    this.server = new Server({
+    const ServerClass = Server as any;
+    this.server = new ServerClass({
       name: this.config.name,
       version: this.config.version,
       capabilities: {
@@ -84,7 +83,6 @@ export class MCPServerFactory extends EventEmitter {
         logging: this.config.capabilities.logging ? {} : undefined,
       }
     });
-
     this.setState(ServerState.READY);
     logger.info('MCP Server Factory initialized', {
       name: this.config.name,
@@ -93,7 +91,7 @@ export class MCPServerFactory extends EventEmitter {
     });
   }
 
-  private parseAndValidateConfig(config: ServerFactoryConfig): Required<ServerFactoryConfig> {
+  private parseAndValidateConfig(config: ServerFactoryConfig): ServerFactoryConfig {
     const parsed = ServerFactoryConfigSchema.parse(config);
 
     return {

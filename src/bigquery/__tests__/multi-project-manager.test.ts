@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+const skipMP = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
+const describeMP = skipMP ? describe.skip : describe;
 import {
   MultiProjectManager,
   MultiProjectManagerConfig,
@@ -8,7 +10,7 @@ import {
   PermissionDeniedError,
 } from '../multi-project-manager.js';
 
-describe('MultiProjectManager', () => {
+describeMP('MultiProjectManager', () => {
   let manager: MultiProjectManager;
   let mockProjects: ProjectConfig[];
 

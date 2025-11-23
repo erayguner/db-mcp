@@ -209,6 +209,7 @@ export type ExportQueryResultsArgs = z.infer<typeof ExportQueryResultsArgsSchema
  */
 export const TOOL_SCHEMAS = {
   query_bigquery: QueryBigQueryArgsSchema,
+  execute_query: QueryBigQueryArgsSchema, // alias for backward compatibility
   list_datasets: ListDatasetsArgsSchema,
   list_tables: ListTablesArgsSchema,
   get_table_schema: GetTableSchemaArgsSchema,
@@ -255,7 +256,7 @@ export function validateToolArgs<T extends ToolName>(
 /**
  * Get tool schema as JSON Schema for MCP tool definition
  */
-export function getToolInputSchema(toolName: ToolName): Record<string, unknown> {
+export function getToolInputSchema(toolName: ToolName): Record<string, any> {
   const schema = TOOL_SCHEMAS[toolName];
 
   if (!schema) {
@@ -264,18 +265,16 @@ export function getToolInputSchema(toolName: ToolName): Record<string, unknown> 
 
   // Convert Zod schema to JSON Schema
   // This is a simplified conversion - you may want to use zod-to-json-schema for production
-  const shape = schema.shape as Record<string, { isOptional: () => boolean }>;
-
   return {
     type: 'object',
     properties: Object.fromEntries(
-      Object.entries(shape).map(([key]) => [
+      Object.entries(schema.shape).map(([key]) => [
         key,
         { type: 'string' } // Simplified - should properly convert each field type
       ])
     ),
-    required: Object.keys(shape).filter(
-      key => !shape[key].isOptional()
+    required: Object.keys(schema.shape).filter(
+      key => !(schema.shape as any)[key].isOptional()
     ),
   };
 }
