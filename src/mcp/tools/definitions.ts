@@ -18,14 +18,11 @@ export function generateToolDefinitions(getDescription: (name: string) => string
   const entries = Object.entries(TOOL_SCHEMAS) as [string, z.ZodTypeAny][];
 
   return entries.map(([name, schema]) => {
-    // Cast to ZodTypeAny to avoid excessive instantiation depth from complex schemas
-    // TypeScript can flag these conversions as overly deep; ignore to allow runtime conversion
-    // @ts-ignore: allow complex Zod schema conversion
-    const inputSchema = zodToJsonSchema(schema as z.ZodTypeAny, { target: 'jsonSchema7' });
+    // @ts-expect-error: Type instantiation is excessively deep
+    const inputSchema = zodToJsonSchema(schema, { target: 'jsonSchema7' });
     const outputZod = OUTPUT_SCHEMAS[name as keyof typeof OUTPUT_SCHEMAS] as z.ZodTypeAny | undefined;
-    // @ts-ignore: allow complex Zod schema conversion
     const outputSchema = outputZod
-      ? zodToJsonSchema(outputZod as z.ZodTypeAny, { target: 'jsonSchema7' })
+      ? zodToJsonSchema(outputZod, { target: 'jsonSchema7' })
       : undefined;
     const description = getDescription(name);
     return {

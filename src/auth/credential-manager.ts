@@ -20,6 +20,15 @@ import { recordException, setSpanAttributes } from '../telemetry/tracing.js';
 // Configuration & Types
 // ==========================================
 
+/**
+ * Response from getAccessToken() method
+ * (Not exported from google-auth-library, so we define it here)
+ */
+interface GetAccessTokenResponse {
+  token?: string | null;
+  res?: unknown;
+}
+
 export const CredentialConfigSchema = z.object({
   // Authentication method
   authMethod: z.enum(['wif', 'service_account', 'oauth2', 'compute']).default('wif'),
@@ -78,6 +87,24 @@ export interface CredentialHealth {
   expiresIn?: number;
   lastRefresh?: Date;
   errors: string[];
+}
+
+// ==========================================
+// Type Guards
+// ==========================================
+
+/**
+ * Type guard to check if client has getAccessToken method
+ */
+function hasGetAccessToken(
+  client: unknown
+): client is { getAccessToken(): Promise<GetAccessTokenResponse> } {
+  return (
+    typeof client === 'object' &&
+    client !== null &&
+    'getAccessToken' in client &&
+    typeof (client as Record<string, unknown>).getAccessToken === 'function'
+  );
 }
 
 // ==========================================
@@ -270,21 +297,17 @@ export class CredentialManager {
     try {
       // Get fresh token
       const client = await this.getClient();
-      const tokenResponse = await (client as any).getAccessToken();
 
       // Type guard for getAccessToken method
-      if (!('getAccessToken' in client) || typeof client.getAccessToken !== 'function') {
+      if (!hasGetAccessToken(client)) {
         throw new Error('Auth client does not support getAccessToken');
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      const tokenResponseRaw: { token?: string | null } | string | null | undefined =
-        await client.getAccessToken() as { token?: string | null } | string | null | undefined;
+      // Get access token with proper typing
+      const tokenResponse: GetAccessTokenResponse = await client.getAccessToken();
 
-      // Properly type the token response
-      const token = typeof tokenResponse === 'string'
-        ? tokenResponse
-        : (tokenResponse && typeof tokenResponse === 'object' && 'token' in tokenResponse ? tokenResponse.token : null);
+      // Extract token from response
+      const token = tokenResponse.token;
 
       if (!token) {
         throw new Error('Failed to obtain access token');
@@ -341,8 +364,12 @@ export class CredentialManager {
     if (this.currentClient) {
       // Check if token is still valid
       try {
-        await (this.currentClient as any).getAccessToken();
-        return this.currentClient;
+        if (hasGetAccessToken(this.currentClient)) {
+          await this.currentClient.getAccessToken();
+          return this.currentClient;
+        }
+        // Client doesn't support getAccessToken, refresh
+        logger.debug('Current client does not support getAccessToken, refreshing');
       } catch (error) {
         // Token expired or invalid, refresh
         logger.debug('Current client invalid, refreshing');
@@ -355,7 +382,7 @@ export class CredentialManager {
       logger.debug('Auth client initialized', {
         type: this.currentClient?.constructor.name,
       });
-      return this.currentClient!;
+      return this.currentClient;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Failed to get auth client', { error: err.message });

@@ -32,6 +32,31 @@ import { validateToolArgs, ToolName } from './mcp/schemas/tool-schemas.js';
 import { generateToolDefinitions } from './mcp/tools/definitions.js';
 
 /**
+ * Event payload interfaces for MCPServerFactory events
+ */
+interface StateChangedEvent {
+  oldState: ServerState;
+  newState: ServerState;
+}
+
+interface ShutdownStartedEvent {
+  reason?: string;
+}
+
+interface HealthCheckEvent {
+  healthy: boolean;
+  state: ServerState;
+}
+
+/**
+ * Generic request structure with optional userId
+ */
+interface RequestWithUserId {
+  userId?: string;
+  [key: string]: unknown;
+}
+
+/**
  * Structured Error Codes
  */
 export enum ErrorCode {
@@ -154,7 +179,8 @@ export class MCPBigQueryServer {
    * Setup event listeners for server lifecycle events
    */
   private setupServerEventListeners(): void {
-    this.serverFactory.on('state:changed', ({ oldState, newState }) => {
+    this.serverFactory.on('state:changed', (event: StateChangedEvent) => {
+      const { oldState, newState } = event;
       logger.info('Server state changed', { oldState, newState });
       setSpanAttributes({
         'server.state': newState,
@@ -166,7 +192,8 @@ export class MCPBigQueryServer {
       logger.info('Server started event received');
     });
 
-    this.serverFactory.on('shutdown:started', ({ reason }) => {
+    this.serverFactory.on('shutdown:started', (event: ShutdownStartedEvent) => {
+      const { reason } = event;
       logger.info('Server shutdown initiated', { reason });
     });
 
@@ -174,12 +201,14 @@ export class MCPBigQueryServer {
       logger.info('Server shutdown completed');
     });
 
-    this.serverFactory.on('error', (error) => {
-      logger.error('Server error event', { error });
-      recordException(error as Error);
+    this.serverFactory.on('error', (error: unknown) => {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Server error event', { error: err });
+      recordException(err);
     });
 
-    this.serverFactory.on('health:check', ({ healthy, state }) => {
+    this.serverFactory.on('health:check', (event: HealthCheckEvent) => {
+      const { healthy, state } = event;
       if (!healthy) {
         logger.warn('Health check failed', { state });
       }
@@ -232,9 +261,9 @@ export class MCPBigQueryServer {
   /**
    * Initialize telemetry system
    */
-  private async initializeTelemetrySystem(): Promise<void> {
+  private initializeTelemetrySystem(): void {
     try {
-      await initializeTelemetry(
+      initializeTelemetry(
         'mcp-bigquery-server',
         '1.0.0',
         this.env.GCP_PROJECT_ID
@@ -262,7 +291,7 @@ export class MCPBigQueryServer {
     // ==========================================
     // List Tools Handler
     // ==========================================
-    server.setRequestHandler(ListToolsRequestSchema, async () => {
+    server.setRequestHandler(ListToolsRequestSchema, () => {
       logger.debug('Handling list_tools request');
       const tools = generateToolDefinitions(this.getToolDescription.bind(this));
       logger.info('Listed tools', { count: tools.length });
@@ -273,8 +302,16 @@ export class MCPBigQueryServer {
     // Call Tool Handler (Factory Pattern)
     // ==========================================
     interface MCPGenericRequest<Params> { params: Params; userId?: string }
+
+    /**
+     * Safely extract userId from request object
+     */
     function extractUserId(req: unknown): string | undefined {
-      return typeof req === 'object' && req !== null && 'userId' in (req as any) ? (req as any).userId : undefined;
+      if (typeof req === 'object' && req !== null && 'userId' in req) {
+        const reqWithUserId = req as RequestWithUserId;
+        return typeof reqWithUserId.userId === 'string' ? reqWithUserId.userId : undefined;
+      }
+      return undefined;
     }
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -295,7 +332,7 @@ export class MCPBigQueryServer {
         // ==========================================
         // 1. Security Validation
         // ==========================================
-        const validation = await this.security.validateRequest({
+        const validation = this.security.validateRequest({
           toolName: name,
           userId: extractUserId(request),
           arguments: args,
@@ -395,16 +432,28 @@ export class MCPBigQueryServer {
         // ==========================================
         // 5. Validate Response for Sensitive Data
         // ==========================================
-        if (result.content) {
+        if (result.content && Array.isArray(result.content)) {
           const responseValidation = this.security.validateResponse(result.content);
 
-          if (responseValidation.redacted) {
-            logger.info('Response data redacted', {
-              tool: name,
-              warnings: responseValidation.warnings,
-              requestId,
+          if (responseValidation.redacted && Array.isArray(responseValidation.redacted)) {
+            // Type guard: ensure redacted content matches ToolResponse.content structure
+            const isValidContent = responseValidation.redacted.every((item: unknown) => {
+              return (
+                typeof item === 'object' &&
+                item !== null &&
+                'type' in item &&
+                typeof (item as { type: unknown }).type === 'string'
+              );
             });
-            result.content = responseValidation.redacted;
+
+            if (isValidContent) {
+              logger.info('Response data redacted', {
+                tool: name,
+                warnings: responseValidation.warnings,
+                requestId,
+              });
+              result.content = responseValidation.redacted as typeof result.content;
+            }
           }
         }
 
@@ -450,7 +499,7 @@ export class MCPBigQueryServer {
     // ==========================================
     // List Resources Handler
     // ==========================================
-    server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    server.setRequestHandler(ListResourcesRequestSchema, () => {
       logger.debug('Handling list_resources request');
 
       return {
@@ -523,7 +572,7 @@ export class MCPBigQueryServer {
       logger.info('Starting MCP BigQuery Server');
 
       // 1. Initialize telemetry first (for observability during startup)
-      await this.initializeTelemetrySystem();
+      this.initializeTelemetrySystem();
 
       // 2. Setup MCP request handlers
       this.setupHandlers();
@@ -641,8 +690,9 @@ async function main() {
 
     // Attempt cleanup if server was created
     if (server) {
-      await server.shutdown('fatal_error').catch((shutdownError) => {
-        logger.error('Error during emergency shutdown', { shutdownError });
+      await server.shutdown('fatal_error').catch((shutdownError: unknown) => {
+        const err = shutdownError instanceof Error ? shutdownError : new Error(String(shutdownError));
+        logger.error('Error during emergency shutdown', { error: err });
       });
     }
 
@@ -651,4 +701,8 @@ async function main() {
 }
 
 // Run the server
-main();
+main().catch((error: unknown) => {
+  const err = error instanceof Error ? error : new Error(String(error));
+  logger.error('Unhandled error in main', { error: err });
+  process.exit(1);
+});

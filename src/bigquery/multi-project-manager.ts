@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { EventEmitter } from 'events';
-import { BigQueryClient, BigQueryClientInputConfig } from './client.js';
+import { BigQueryClient, BigQueryClientInputConfig, QueryResult } from './client.js';
 import { ConnectionPool } from './connection-pool.js';
 import { DatasetManager, DatasetMetadata } from './dataset-manager.js';
 
@@ -11,7 +11,7 @@ export const ProjectConfigSchema = z.object({
   projectId: z.string().min(1),
   displayName: z.string().optional(),
   keyFilename: z.string().optional(),
-  credentials: z.any().optional(),
+  credentials: z.record(z.unknown()).optional(),
   location: z.string().optional(),
   labels: z.record(z.string()).optional(),
   priority: z.enum(['high', 'medium', 'low']).default('medium'),
@@ -51,6 +51,82 @@ export const MultiProjectManagerConfigSchema = z.object({
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 export type MultiProjectManagerConfig = z.infer<typeof MultiProjectManagerConfigSchema>;
+
+/**
+ * Type Definitions for BigQuery Operations
+ */
+
+/**
+ * Credentials for BigQuery authentication
+ */
+export interface ProjectConfigCredentials {
+  client_email?: string;
+  private_key?: string;
+  project_id?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Query execution metrics and metadata
+ */
+export interface QueryMetrics {
+  totalBytesProcessed?: string | number;
+  totalBytesBilled?: string | number;
+  cacheHit?: boolean;
+  queryId?: string;
+  jobId?: string;
+  location?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Cross-project query result
+ */
+export interface CrossProjectQueryResult<T = unknown> {
+  projectId: string;
+  result: QueryResult<T> | null;
+  error: Error | null;
+}
+
+/**
+ * Project metrics data
+ */
+export interface ProjectMetricsData {
+  accessCount: number;
+  lastAccessed: Date;
+  quota?: QuotaUsage;
+  poolMetrics: {
+    totalConnections: number;
+    activeConnections: number;
+    idleConnections: number;
+    waitingRequests: number;
+  };
+  cacheStats: {
+    datasets: {
+      size: number;
+      maxSize: number;
+      hitRate: number;
+    };
+    tables: {
+      size: number;
+      maxSize: number;
+      hitRate: number;
+    };
+    lruQueue: number;
+  };
+}
+
+/**
+ * Aggregated metrics response
+ */
+export interface AggregatedMetrics {
+  totalProjects: number;
+  enabledProjects: number;
+  totalQueries: number;
+  totalBytesProcessed: string;
+  avgQueriesPerProject: number;
+  projectMetrics: Map<string, ProjectMetricsData>;
+}
 
 /**
  * Project Context and Metadata
@@ -180,7 +256,7 @@ export class MultiProjectManager extends EventEmitter {
   constructor(config: MultiProjectManagerConfig) {
     super();
     this.config = this.parseAndValidateConfig(config);
-    this.initialize();
+    void this.initialize();
   }
 
   /**
@@ -244,7 +320,7 @@ export class MultiProjectManager extends EventEmitter {
           const projectId = this.config.projects[index].projectId;
           this.emit('project:initialization:failed', {
             projectId,
-            error: result.reason,
+            error: result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
           });
         }
       });
@@ -281,7 +357,7 @@ export class MultiProjectManager extends EventEmitter {
   /**
    * Initialize a single project
    */
-  private async initializeProject(projectConfig: ProjectConfig): Promise<void> {
+  private initializeProject(projectConfig: ProjectConfig): void {
     const { projectId } = projectConfig;
 
     try {
@@ -379,16 +455,16 @@ export class MultiProjectManager extends EventEmitter {
     const { projectId, client } = context;
 
     // Forward client events with project context
-    client.on('query:started', (data) => {
-      this.emit('project:query:started', { projectId, ...data });
+    client.on('query:started', (data: unknown) => {
+      this.emit('project:query:started', { projectId, ...(data as Record<string, unknown>) });
     });
 
-    client.on('query:completed', (data) => {
-      this.updateQuotaUsage(projectId, data);
-      this.emit('project:query:completed', { projectId, ...data });
+    client.on('query:completed', (data: unknown) => {
+      this.updateQuotaUsage(projectId, data as QueryMetrics);
+      this.emit('project:query:completed', { projectId, ...(data as Record<string, unknown>) });
     });
 
-    client.on('error', (error) => {
+    client.on('error', (error: Error) => {
       this.emit('project:error', { projectId, error });
     });
   }
@@ -416,7 +492,7 @@ export class MultiProjectManager extends EventEmitter {
           accessible: false,
           datasets: [],
           permissions: [],
-          error: result.reason,
+          error: result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
         };
       }
     });
@@ -643,10 +719,10 @@ export class MultiProjectManager extends EventEmitter {
   /**
    * Execute cross-project query
    */
-  public async executeCrossProjectQuery<T = any>(
+  public async executeCrossProjectQuery<T = unknown>(
     query: string,
     options: CrossProjectQueryOptions
-  ): Promise<Map<string, any>> {
+  ): Promise<Map<string, CrossProjectQueryResult<T>>> {
     if (!this.config.crossProjectQueries.enabled) {
       throw new MultiProjectManagerError(
         'Cross-project queries are disabled',
@@ -678,14 +754,18 @@ export class MultiProjectManager extends EventEmitter {
         return { projectId, result, error: null };
       } catch (error) {
         if (options.allowPartialResults) {
-          return { projectId, result: null, error };
+          return {
+            projectId,
+            result: null,
+            error: error instanceof Error ? error : new Error(String(error))
+          };
         }
         throw error;
       }
     });
 
     const results = await Promise.allSettled(queryPromises);
-    const resultMap = new Map<string, any>();
+    const resultMap = new Map<string, CrossProjectQueryResult<T>>();
 
     results.forEach((result, index) => {
       const projectId = options.projectIds[index];
@@ -693,7 +773,11 @@ export class MultiProjectManager extends EventEmitter {
       if (result.status === 'fulfilled') {
         resultMap.set(projectId, result.value);
       } else {
-        resultMap.set(projectId, { error: result.reason });
+        resultMap.set(projectId, {
+          projectId,
+          result: null,
+          error: result.reason instanceof Error ? result.reason : new Error(String(result.reason))
+        });
       }
     });
 
@@ -708,7 +792,7 @@ export class MultiProjectManager extends EventEmitter {
   /**
    * Update quota usage for project
    */
-  private updateQuotaUsage(projectId: string, queryData: any): void {
+  private updateQuotaUsage(projectId: string, queryData: QueryMetrics): void {
     const context = this.projects.get(projectId);
     if (!context || !context.quotaUsage) return;
 
@@ -799,14 +883,14 @@ export class MultiProjectManager extends EventEmitter {
   /**
    * Get aggregated metrics across all projects
    */
-  public getAggregatedMetrics() {
+  public getAggregatedMetrics(): AggregatedMetrics {
     const metrics = {
       totalProjects: this.projects.size,
       enabledProjects: 0,
       totalQueries: 0,
       totalBytesProcessed: BigInt(0),
       avgQueriesPerProject: 0,
-      projectMetrics: new Map<string, any>(),
+      projectMetrics: new Map<string, ProjectMetricsData>(),
     };
 
     this.projects.forEach((context, projectId) => {
@@ -839,7 +923,7 @@ export class MultiProjectManager extends EventEmitter {
   /**
    * Add new project dynamically
    */
-  public async addProject(projectConfig: ProjectConfig): Promise<void> {
+  public addProject(projectConfig: ProjectConfig): void {
     if (this.projects.has(projectConfig.projectId)) {
       throw new MultiProjectManagerError(
         `Project ${projectConfig.projectId} already exists`,
@@ -848,7 +932,7 @@ export class MultiProjectManager extends EventEmitter {
       );
     }
 
-    await this.initializeProject(projectConfig);
+    this.initializeProject(projectConfig);
     this.emit('project:added', { projectId: projectConfig.projectId });
   }
 

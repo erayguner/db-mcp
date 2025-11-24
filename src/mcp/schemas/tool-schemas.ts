@@ -223,6 +223,33 @@ export const TOOL_SCHEMAS = {
 export type ToolName = keyof typeof TOOL_SCHEMAS;
 
 /**
+ * JSON Schema Property Definition
+ */
+export interface JsonSchemaProperty {
+  type: string;
+  description?: string;
+  enum?: string[];
+  default?: unknown;
+}
+
+/**
+ * JSON Schema Definition
+ */
+export interface JsonSchema {
+  type: 'object';
+  properties: Record<string, JsonSchemaProperty>;
+  required: string[];
+  description?: string;
+}
+
+/**
+ * Zod Schema Shape Type Guard
+ */
+interface ZodSchemaField {
+  isOptional?(): boolean;
+}
+
+/**
  * Validate tool arguments with proper error handling
  */
 export function validateToolArgs<T extends ToolName>(
@@ -256,7 +283,7 @@ export function validateToolArgs<T extends ToolName>(
 /**
  * Get tool schema as JSON Schema for MCP tool definition
  */
-export function getToolInputSchema(toolName: ToolName): Record<string, any> {
+export function getToolInputSchema(toolName: ToolName): JsonSchema {
   const schema = TOOL_SCHEMAS[toolName];
 
   if (!schema) {
@@ -265,16 +292,18 @@ export function getToolInputSchema(toolName: ToolName): Record<string, any> {
 
   // Convert Zod schema to JSON Schema
   // This is a simplified conversion - you may want to use zod-to-json-schema for production
+  const schemaShape = schema.shape as Record<string, ZodSchemaField>;
+
   return {
     type: 'object',
     properties: Object.fromEntries(
-      Object.entries(schema.shape).map(([key]) => [
+      Object.entries(schemaShape).map(([key]) => [
         key,
         { type: 'string' } // Simplified - should properly convert each field type
       ])
     ),
-    required: Object.keys(schema.shape).filter(
-      key => !(schema.shape as any)[key].isOptional()
+    required: Object.keys(schemaShape).filter(
+      key => !schemaShape[key].isOptional?.()
     ),
   };
 }

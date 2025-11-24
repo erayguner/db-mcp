@@ -22,13 +22,25 @@ export interface ToolResponse {
 }
 
 /**
+ * Tool Handler Request Metadata
+ */
+export interface ToolRequestMetadata {
+  userId?: string;
+  requestId?: string;
+  timestamp?: string;
+  correlationId?: string;
+  source?: string;
+  [key: string]: string | undefined;
+}
+
+/**
  * Tool Handler Context
  */
 export interface ToolHandlerContext {
   bigQueryClient: BigQueryClient;
   userId?: string;
   requestId?: string;
-  metadata?: Record<string, any>;
+  metadata?: ToolRequestMetadata;
 }
 
 /**
@@ -278,6 +290,28 @@ export class ListTablesHandler extends BaseToolHandler {
 }
 
 /**
+ * Table Metadata Information
+ */
+export interface TableMetadataInfo {
+  type: string;
+  creationTime: string;
+  lastModifiedTime: string;
+  numRows: number | undefined;
+  numBytes: number | undefined;
+  description?: string;
+}
+
+/**
+ * Table Schema Response
+ */
+export interface TableSchemaResponse {
+  datasetId: string;
+  tableId: string;
+  schema: unknown;
+  metadata?: TableMetadataInfo;
+}
+
+/**
  * Get Table Schema Tool Handler
  */
 export class GetTableSchemaHandler extends BaseToolHandler {
@@ -299,7 +333,7 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         projectId
       );
 
-      const response: any = {
+      const response: TableSchemaResponse = {
         datasetId,
         tableId,
         schema: table.schema,

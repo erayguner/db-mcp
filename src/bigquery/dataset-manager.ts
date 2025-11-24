@@ -1,6 +1,57 @@
-import { BigQuery } from '@google-cloud/bigquery';
+import { BigQuery, Dataset, Table, TableField } from '@google-cloud/bigquery';
 import { z } from 'zod';
 import { EventEmitter } from 'events';
+
+// BigQuery API metadata interfaces
+// These extend the types returned by the BigQuery SDK
+export interface BigQueryDatasetReference {
+  projectId: string;
+  datasetId: string;
+}
+
+export interface BigQueryTableReference {
+  projectId: string;
+  datasetId: string;
+  tableId: string;
+}
+
+export interface BigQueryDatasetMetadata {
+  kind: string;
+  id: string;
+  datasetReference: BigQueryDatasetReference;
+  location: string;
+  creationTime: string;
+  lastModifiedTime: string;
+  description?: string;
+  labels?: Record<string, string>;
+  access?: Array<{
+    role: string;
+    specialGroup?: string;
+    userByEmail?: string;
+  }>;
+  defaultTableExpirationMs?: string;
+  defaultPartitionExpirationMs?: string;
+}
+
+export interface BigQueryTableSchema {
+  fields: TableField[];
+}
+
+export interface BigQueryTableMetadata {
+  kind: string;
+  id: string;
+  tableReference: BigQueryTableReference;
+  type: 'TABLE' | 'VIEW' | 'EXTERNAL' | 'MATERIALIZED_VIEW';
+  schema?: BigQueryTableSchema;
+  numRows?: string;
+  numBytes?: string;
+  creationTime: string;
+  lastModifiedTime: string;
+  expirationTime?: string;
+  description?: string;
+  labels?: Record<string, string>;
+  location?: string;
+}
 
 // Zod schemas
 export const DatasetManagerConfigSchema = z.object({
@@ -32,7 +83,7 @@ export interface TableMetadata {
   datasetId: string;
   projectId: string;
   type: 'TABLE' | 'VIEW' | 'EXTERNAL' | 'MATERIALIZED_VIEW';
-  schema: any[];
+  schema: TableField[];
   numRows?: number;
   numBytes?: number;
   createdAt: Date;
@@ -212,21 +263,25 @@ export class DatasetManager extends EventEmitter {
     projectId?: string
   ): Promise<DatasetMetadata> {
     try {
-      const dataset = client.dataset(datasetId, { projectId });
-      const [metadata] = await dataset.getMetadata();
+      const dataset: Dataset = client.dataset(datasetId, { projectId });
+      const metadataResponse = await dataset.getMetadata();
+      const metadata = metadataResponse[0] as unknown as BigQueryDatasetMetadata;
       const [tables] = await dataset.getTables();
 
-      const tableMetadataPromises = tables.map(table =>
+      const tableMetadataPromises = tables.map((table: Table) =>
         this.fetchTableMetadata(client, datasetId, table.id!, projectId)
       );
       const tableMetadata = await Promise.all(tableMetadataPromises);
 
+      const datasetRef = metadata.datasetReference;
+      const resolvedProjectId = projectId || datasetRef?.projectId || '';
+
       return {
         id: datasetId,
-        projectId: projectId || metadata.datasetReference.projectId,
-        location: metadata.location,
-        createdAt: new Date(parseInt(metadata.creationTime)),
-        modifiedAt: new Date(parseInt(metadata.lastModifiedTime)),
+        projectId: resolvedProjectId,
+        location: metadata.location || '',
+        createdAt: new Date(parseInt(metadata.creationTime, 10)),
+        modifiedAt: new Date(parseInt(metadata.lastModifiedTime, 10)),
         description: metadata.description,
         labels: metadata.labels,
         tableCount: tables.length,
@@ -253,21 +308,25 @@ export class DatasetManager extends EventEmitter {
     projectId?: string
   ): Promise<TableMetadata> {
     try {
-      const table = client.dataset(datasetId, { projectId }).table(tableId);
-      const [metadata] = await table.getMetadata();
+      const table: Table = client.dataset(datasetId, { projectId }).table(tableId);
+      const metadataResponse = await table.getMetadata();
+      const metadata = metadataResponse[0] as unknown as BigQueryTableMetadata;
+
+      const tableRef = metadata.tableReference;
+      const resolvedProjectId = projectId || tableRef?.projectId || '';
 
       return {
         id: tableId,
         datasetId,
-        projectId: projectId || metadata.tableReference.projectId,
-        type: metadata.type as TableMetadata['type'],
+        projectId: resolvedProjectId,
+        type: metadata.type,
         schema: metadata.schema?.fields || [],
-        numRows: metadata.numRows ? parseInt(metadata.numRows) : undefined,
-        numBytes: metadata.numBytes ? parseInt(metadata.numBytes) : undefined,
-        createdAt: new Date(parseInt(metadata.creationTime)),
-        modifiedAt: new Date(parseInt(metadata.lastModifiedTime)),
+        numRows: metadata.numRows ? parseInt(metadata.numRows, 10) : undefined,
+        numBytes: metadata.numBytes ? parseInt(metadata.numBytes, 10) : undefined,
+        createdAt: new Date(parseInt(metadata.creationTime, 10)),
+        modifiedAt: new Date(parseInt(metadata.lastModifiedTime, 10)),
         expirationTime: metadata.expirationTime
-          ? new Date(parseInt(metadata.expirationTime))
+          ? new Date(parseInt(metadata.expirationTime, 10))
           : undefined,
         description: metadata.description,
       };
@@ -448,14 +507,16 @@ export class DatasetManager extends EventEmitter {
     // Clear matching entries
     const regex = new RegExp(pattern);
 
-    for (const key of this.datasetCache.keys()) {
+    const datasetKeys = Array.from(this.datasetCache.keys());
+    for (const key of datasetKeys) {
       if (regex.test(key)) {
         this.datasetCache.delete(key);
         this.emit('cache:invalidated', { type: 'dataset', key });
       }
     }
 
-    for (const key of this.tableCache.keys()) {
+    const tableKeys = Array.from(this.tableCache.keys());
+    for (const key of tableKeys) {
       if (regex.test(key)) {
         this.tableCache.delete(key);
         this.emit('cache:invalidated', { type: 'table', key });
@@ -490,15 +551,21 @@ export class DatasetManager extends EventEmitter {
   private calculateHitRate(type: 'dataset' | 'table'): number {
     // This is a simplified calculation
     // In production, you'd track hits/misses over time
-    const cache = type === 'dataset' ? this.datasetCache : this.tableCache;
-    if (cache.size === 0) return 0;
-
-    const totalAccess = Array.from(cache.values() as Iterable<CacheEntry<any>>).reduce(
-      (sum, entry) => sum + entry.accessCount,
-      0
-    );
-
-    return cache.size > 0 ? totalAccess / cache.size : 0;
+    if (type === 'dataset') {
+      if (this.datasetCache.size === 0) return 0;
+      const totalAccess = Array.from(this.datasetCache.values()).reduce(
+        (sum, entry) => sum + entry.accessCount,
+        0
+      );
+      return totalAccess / this.datasetCache.size;
+    } else {
+      if (this.tableCache.size === 0) return 0;
+      const totalAccess = Array.from(this.tableCache.values()).reduce(
+        (sum, entry) => sum + entry.accessCount,
+        0
+      );
+      return totalAccess / this.tableCache.size;
+    }
   }
 
   /**
