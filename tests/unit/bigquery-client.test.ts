@@ -10,8 +10,8 @@ const describeClient = skipClient ? describe.skip : describe;
 
 // Mock the BigQuery SDK
 jest.mock('@google-cloud/bigquery');
-jest.mock('../../src/bigquery/connection-pool.js');
-jest.mock('../../src/bigquery/dataset-manager.js');
+jest.mock('../../src/bigquery/connection-pool');
+jest.mock('../../src/bigquery/dataset-manager');
 
 describeClient('BigQueryClient', () => {
   let client: BigQueryClient;

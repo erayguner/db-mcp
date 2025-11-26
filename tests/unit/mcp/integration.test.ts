@@ -2,8 +2,6 @@ import { MCPServerFactory, ServerState } from '../../../src/mcp/server-factory.j
 import { ToolHandlerFactory } from '../../../src/mcp/handlers/tool-handlers.js';
 import { validateToolArgs } from '../../../src/mcp/schemas/tool-schemas.js';
 import { SecurityMiddleware } from '../../../src/security/middleware.js';
-import { BigQueryClient } from '../../../src/bigquery/client.js';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 
 // Mock dependencies
 jest.mock('@modelcontextprotocol/sdk/server/index.js');
@@ -17,6 +15,12 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn(),
   },
 }));
+
+import { BigQueryClient } from '../../../src/bigquery/client.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+
+const MockBigQueryClient = BigQueryClient as unknown as jest.Mock;
+const MockServer = Server as unknown as jest.Mock;
 
 describe('MCP Integration Tests', () => {
   let mockBigQueryClient: jest.Mocked<BigQueryClient>;
@@ -43,7 +47,8 @@ describe('MCP Integration Tests', () => {
       setRequestHandler: jest.fn(),
     } as any;
 
-    (Server as jest.MockedClass<typeof Server>).mockImplementation(() => mockServer);
+    MockServer.mockImplementation(() => mockServer);
+    MockBigQueryClient.mockImplementation(() => mockBigQueryClient);
 
     // Initialize components
     securityMiddleware = new SecurityMiddleware();

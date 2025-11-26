@@ -4,7 +4,6 @@ import {
   BigQueryClientFactoryConfig,
   ClientFactoryError,
 } from '../../../src/mcp/bigquery-client-factory.js';
-import { BigQueryClient } from '../../../src/bigquery/client.js';
 
 // Mock dependencies
 jest.mock('../../../src/bigquery/client');
@@ -16,6 +15,9 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn(),
   },
 }));
+
+import { BigQueryClient } from '../../../src/bigquery/client.js';
+const MockBigQueryClient = BigQueryClient as unknown as jest.Mock;
 
 describe('BigQueryClientFactory', () => {
   let mockBigQueryClient: jest.Mocked<BigQueryClient>;
@@ -44,7 +46,7 @@ describe('BigQueryClientFactory', () => {
     } as any);
 
     // Mock implementation returns a new instance each time
-    (BigQueryClient as jest.MockedClass<typeof BigQueryClient>).mockImplementation(createMockClient);
+    MockBigQueryClient.mockImplementation(createMockClient);
 
     // Keep a reference for tests that need it
     mockBigQueryClient = createMockClient();
