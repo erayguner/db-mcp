@@ -9,7 +9,7 @@ export interface BigQueryClientFactoryConfig {
   defaultProjectId?: string;
   defaultLocation?: string;
   defaultKeyFilename?: string;
-  defaultCredentials?: unknown;
+  defaultCredentials?: Record<string, unknown>;
   pooling: {
     enabled: boolean;
     minConnections?: number;
