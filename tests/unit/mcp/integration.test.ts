@@ -2,14 +2,12 @@ import { MCPServerFactory, ServerState } from '../../../src/mcp/server-factory.j
 import { ToolHandlerFactory } from '../../../src/mcp/handlers/tool-handlers.js';
 import { validateToolArgs } from '../../../src/mcp/schemas/tool-schemas.js';
 import { SecurityMiddleware } from '../../../src/security/middleware.js';
-import { BigQueryClient } from '../../../src/bigquery/client.js';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 
 // Mock dependencies
 jest.mock('@modelcontextprotocol/sdk/server/index.js');
 jest.mock('@modelcontextprotocol/sdk/server/stdio.js');
-jest.mock('../../../src/bigquery/client.js');
-jest.mock('../../../src/utils/logger.js', () => ({
+jest.mock('../../../src/bigquery/client');
+jest.mock('../../../src/utils/logger', () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
@@ -18,6 +16,14 @@ jest.mock('../../../src/utils/logger.js', () => ({
   },
 }));
 
+import { BigQueryClient } from '../../../src/bigquery/client.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+
+const MockBigQueryClient = BigQueryClient as unknown as jest.Mock;
+const MockServer = Server as unknown as jest.Mock;
+
+// TODO: These tests need refactoring for ES module compatibility
+// The current mocking pattern doesn't work well with TypeScript ES modules
 describe.skip('MCP Integration Tests', () => {
   let mockBigQueryClient: jest.Mocked<BigQueryClient>;
   let mockServer: jest.Mocked<Server>;
@@ -43,7 +49,8 @@ describe.skip('MCP Integration Tests', () => {
       setRequestHandler: jest.fn(),
     } as any;
 
-    (Server as jest.MockedClass<typeof Server>).mockImplementation(() => mockServer);
+    MockServer.mockImplementation(() => mockServer);
+    MockBigQueryClient.mockImplementation(() => mockBigQueryClient);
 
     // Initialize components
     securityMiddleware = new SecurityMiddleware();
@@ -148,7 +155,7 @@ describe.skip('MCP Integration Tests', () => {
       const validatedArgs = validateToolArgs('query_bigquery', args);
 
       // Make multiple requests rapidly
-      const requests = Array.from({ length: 105 }, () =>
+      const requests = Array.from({ length: 105 }, (_, i) =>
         securityMiddleware.validateRequest({
           toolName: 'query_bigquery',
           userId: 'rate-limit-test',
@@ -172,14 +179,7 @@ describe.skip('MCP Integration Tests', () => {
       const factory = new MCPServerFactory({
         name: 'test-server',
         version: '1.0.0',
-        capabilities: {
-          tools: true,
-          resources: true,
-          prompts: false,
-          logging: true,
-        },
         transport: 'stdio',
-        gracefulShutdownTimeoutMs: 30000,
       });
 
       expect(factory.getState()).toBe(ServerState.READY);
@@ -199,16 +199,7 @@ describe.skip('MCP Integration Tests', () => {
 
     it('should handle server lifecycle with tool execution', async () => {
       const factory = new MCPServerFactory({
-        name: 'test-server',
-        version: '1.0.0',
-        capabilities: {
-          tools: true,
-          resources: true,
-          prompts: false,
-          logging: true,
-        },
         transport: 'stdio',
-        gracefulShutdownTimeoutMs: 30000,
         healthCheckIntervalMs: 5000,
       });
 
@@ -224,17 +215,7 @@ describe.skip('MCP Integration Tests', () => {
 
       // Execute tool while server is running
       mockBigQueryClient.listDatasets.mockResolvedValue([
-        {
-          id: 'dataset1',
-          projectId: 'project',
-          location: 'US',
-          createdAt: new Date(),
-          modifiedAt: new Date(),
-          tableCount: 0,
-          tables: [],
-          lastAccessedAt: new Date(),
-          accessCount: 0,
-        },
+        { id: 'dataset1', projectId: 'project' },
       ]);
 
       const response = await toolHandlerFactory.execute('list_datasets', {}, {
@@ -349,11 +330,11 @@ describe.skip('MCP Integration Tests', () => {
       const data = JSON.parse(response.content[0].text!);
       const validation = securityMiddleware.validateResponse(data);
 
-      expect(validation.allowed).toBe(true);
-      expect(validation.redacted).toBeDefined();
-      expect(validation.warnings).toBeDefined();
+      expect(validation.detected).toBe(true);
+      expect(validation.fields).toContain('rows.password');
+      expect(validation.fields).toContain('rows.api_key');
 
-      const redacted = validation.redacted as typeof data;
+      const redacted = validation.redacted;
       expect(redacted.rows[0].password).toBe('[REDACTED]');
       expect(redacted.rows[0].api_key).toBe('[REDACTED]');
       expect(redacted.rows[0].email).not.toBe('[REDACTED]'); // email not in sensitive patterns
@@ -450,28 +431,8 @@ describe.skip('MCP Integration Tests', () => {
     it('should execute list datasets, tables, and schema workflow', async () => {
       // Step 1: List datasets
       mockBigQueryClient.listDatasets.mockResolvedValue([
-        {
-          id: 'analytics',
-          projectId: 'my-project',
-          location: 'US',
-          createdAt: new Date(),
-          modifiedAt: new Date(),
-          tableCount: 0,
-          tables: [],
-          lastAccessedAt: new Date(),
-          accessCount: 0,
-        },
-        {
-          id: 'staging',
-          projectId: 'my-project',
-          location: 'US',
-          createdAt: new Date(),
-          modifiedAt: new Date(),
-          tableCount: 0,
-          tables: [],
-          lastAccessedAt: new Date(),
-          accessCount: 0,
-        },
+        { id: 'analytics', projectId: 'my-project' },
+        { id: 'staging', projectId: 'my-project' },
       ]);
 
       const datasetsResponse = await toolHandlerFactory.execute(
@@ -484,24 +445,8 @@ describe.skip('MCP Integration Tests', () => {
 
       // Step 2: List tables in dataset
       mockBigQueryClient.listTables.mockResolvedValue([
-        {
-          id: 'users',
-          datasetId: 'analytics',
-          projectId: 'my-project',
-          type: 'TABLE',
-          schema: [],
-          createdAt: new Date(),
-          modifiedAt: new Date(),
-        },
-        {
-          id: 'events',
-          datasetId: 'analytics',
-          projectId: 'my-project',
-          type: 'TABLE',
-          schema: [],
-          createdAt: new Date(),
-          modifiedAt: new Date(),
-        },
+        { id: 'users', type: 'TABLE' },
+        { id: 'events', type: 'TABLE' },
       ]);
 
       const tablesResponse = await toolHandlerFactory.execute(
@@ -514,16 +459,11 @@ describe.skip('MCP Integration Tests', () => {
 
       // Step 3: Get table schema
       mockBigQueryClient.getTable.mockResolvedValue({
-        id: 'users',
-        datasetId: 'analytics',
-        projectId: 'my-project',
         schema: [
           { name: 'id', type: 'INTEGER', mode: 'REQUIRED' },
           { name: 'email', type: 'STRING', mode: 'REQUIRED' },
         ],
         type: 'TABLE',
-        createdAt: new Date(),
-        modifiedAt: new Date(),
         numRows: 10000,
       });
 

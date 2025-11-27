@@ -1,4 +1,4 @@
-import { BigQueryClient, BigQueryClientConfig } from '../bigquery/client.js';
+import { BigQueryClient, BigQueryClientInputConfig } from '../bigquery/client.js';
 import { logger } from '../utils/logger.js';
 import { EventEmitter } from 'events';
 
@@ -9,7 +9,7 @@ export interface BigQueryClientFactoryConfig {
   defaultProjectId?: string;
   defaultLocation?: string;
   defaultKeyFilename?: string;
-  defaultCredentials?: unknown;
+  defaultCredentials?: Record<string, unknown>;
   pooling: {
     enabled: boolean;
     minConnections?: number;
@@ -156,7 +156,7 @@ export class BigQueryClientFactory extends EventEmitter {
     try {
       logger.info('Creating new BigQuery client', { projectId });
 
-      const clientConfig: BigQueryClientConfig = {
+      const clientConfig: BigQueryClientInputConfig = {
         projectId,
         keyFilename: this.config.defaultKeyFilename,
         credentials: this.config.defaultCredentials,

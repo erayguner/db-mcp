@@ -1,48 +1,36 @@
-import { Query } from '@google-cloud/bigquery';
+import { Query, JobMetadata, TableField } from '@google-cloud/bigquery';
 import { z } from 'zod';
 import { EventEmitter } from 'events';
 import { ConnectionPool } from './connection-pool.js';
 import { DatasetManager, DatasetMetadata, TableMetadata } from './dataset-manager.js';
 
-// Helper functions for safely accessing BigQuery metadata
-interface JobMetadata {
-  configuration?: {
-    query?: {
-      destinationTable?: {
-        schema?: {
-          fields?: unknown[];
-        };
-      };
-    };
-  };
-  statistics?: {
-    query?: {
-      cacheHit?: boolean;
-      totalBytesProcessed?: string;
-      totalSlotMs?: string;
-    };
-  };
+// Google Cloud credentials interface
+export interface BigQueryCredentials {
+  client_email?: string;
+  private_key?: string;
+  project_id?: string;
+  [key: string]: unknown;
 }
 
-function safeGetSchema(metadata: unknown): unknown[] {
-  const meta = metadata as JobMetadata | undefined;
-  return meta?.configuration?.query?.destinationTable?.schema?.fields ?? [];
+// BigQuery error interface
+export interface BigQueryError extends Error {
+  code?: string | number;
+  errors?: Array<{
+    message: string;
+    domain?: string;
+    reason?: string;
+  }>;
 }
 
-function safeGetStatistics(metadata: unknown): {
-  cacheHit?: boolean;
-  totalBytesProcessed?: string;
-  totalSlotMs?: string;
-} {
-  const meta = metadata as JobMetadata | undefined;
-  return meta?.statistics?.query ?? {};
-}
+// Schema field type (from BigQuery)
+export type SchemaField = TableField;
 
 // Zod schemas for validation
 export const BigQueryClientConfigSchema = z.object({
   projectId: z.string().optional(),
+  location: z.string().optional(),
   keyFilename: z.string().optional(),
-  credentials: z.unknown().optional(),
+  credentials: z.record(z.unknown()).optional(),
   connectionPool: z.object({
     minConnections: z.number().min(1).default(2),
     maxConnections: z.number().min(1).default(10),
@@ -51,13 +39,13 @@ export const BigQueryClientConfigSchema = z.object({
     healthCheckIntervalMs: z.number().min(1000).default(60000),
     maxRetries: z.number().min(0).default(3),
     retryDelayMs: z.number().min(100).default(1000),
-  }).optional(),
+  }).default({}),
   datasetManager: z.object({
     cacheSize: z.number().min(10).default(100),
     cacheTTLMs: z.number().min(1000).default(3600000),
     autoDiscovery: z.boolean().default(true),
     discoveryIntervalMs: z.number().min(60000).default(300000),
-  }).optional(),
+  }).default({}),
   retry: z.object({
     maxRetries: z.number().min(0).default(3),
     initialDelayMs: z.number().min(100).default(1000),
@@ -70,26 +58,27 @@ export const BigQueryClientConfigSchema = z.object({
       'RATE_LIMIT_EXCEEDED',
       'BACKEND_ERROR',
     ]),
-  }).optional(),
+  }).default({}),
   queryDefaults: z.object({
     useLegacySql: z.boolean().default(false),
     location: z.string().optional(),
     maximumBytesBilled: z.string().optional(),
     timeoutMs: z.number().optional(),
-  }).optional(),
+  }).default({}),
 });
 
 export type BigQueryClientConfig = z.infer<typeof BigQueryClientConfigSchema>;
+export type BigQueryClientInputConfig = z.input<typeof BigQueryClientConfigSchema>;
 
 export interface QueryOptions extends Query {
   retry?: boolean;
   maxRetries?: number;
 }
 
-export interface QueryResult<T = unknown> {
+export interface QueryResult<T = Record<string, unknown>> {
   rows: T[];
   totalRows: number;
-  schema: unknown[];
+  schema: SchemaField[];
   jobId: string;
   cacheHit?: boolean;
   totalBytesProcessed?: string;
@@ -110,12 +99,12 @@ export class BigQueryClientError extends Error {
 }
 
 export class BigQueryClient extends EventEmitter {
-  private config: Required<BigQueryClientConfig>;
+  private config: BigQueryClientConfig;
   private connectionPool: ConnectionPool;
   private datasetManager: DatasetManager;
   private isShuttingDown = false;
 
-  constructor(config: BigQueryClientConfig) {
+  constructor(config: BigQueryClientInputConfig) {
     super();
     this.config = this.parseAndValidateConfig(config);
 
@@ -136,12 +125,13 @@ export class BigQueryClient extends EventEmitter {
     this.setupEventHandlers();
   }
 
-  private parseAndValidateConfig(config: BigQueryClientConfig): Required<BigQueryClientConfig> {
+  private parseAndValidateConfig(config: BigQueryClientInputConfig): BigQueryClientConfig {
     const parsed = BigQueryClientConfigSchema.parse(config);
 
-    return {
-      projectId: parsed.projectId ?? '',
-      keyFilename: parsed.keyFilename ?? '',
+    const result = {
+      projectId: parsed.projectId,
+      location: parsed.location,
+      keyFilename: parsed.keyFilename,
       credentials: parsed.credentials,
       connectionPool: parsed.connectionPool || {
         minConnections: 2,
@@ -178,6 +168,13 @@ export class BigQueryClient extends EventEmitter {
         timeoutMs: undefined,
       },
     };
+
+    // Merge top-level location into queryDefaults if not present
+    if (parsed.location && !result.queryDefaults.location) {
+      result.queryDefaults.location = parsed.location;
+    }
+
+    return result;
   }
 
   private setupEventHandlers(): void {
@@ -207,7 +204,7 @@ export class BigQueryClient extends EventEmitter {
   /**
    * Execute a query with retry logic and connection pooling
    */
-  public async query<T = unknown>(options: QueryOptions): Promise<QueryResult<T>> {
+  public async query<T = Record<string, unknown>>(options: QueryOptions): Promise<QueryResult<T>> {
     if (this.isShuttingDown) {
       throw new BigQueryClientError(
         'Cannot execute query: client is shutting down',
@@ -236,15 +233,14 @@ export class BigQueryClient extends EventEmitter {
 
         return result;
       } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        lastError = err;
+        lastError = error as Error;
 
         const isRetryable = shouldRetry &&
-                           attempt < maxRetries &&
-                           this.isRetryableError(err);
+          attempt < maxRetries &&
+          this.isRetryableError(error as Error);
 
         if (!isRetryable) {
-          throw this.wrapError(err, false);
+          throw this.wrapError(error as Error, false);
         }
 
         attempt++;
@@ -254,7 +250,7 @@ export class BigQueryClient extends EventEmitter {
           attempt,
           maxRetries,
           delayMs,
-          error: err.message,
+          error: (error as Error).message,
         });
 
         await this.sleep(delayMs);
@@ -263,7 +259,7 @@ export class BigQueryClient extends EventEmitter {
 
     // All retries exhausted
     throw new BigQueryClientError(
-      `Query failed after ${maxRetries + 1} attempts: ${lastError?.message}`,
+      `Query failed after ${maxRetries + 1} attempts: ${lastError?.message} `,
       'MAX_RETRIES_EXCEEDED',
       lastError,
       false
@@ -286,28 +282,27 @@ export class BigQueryClient extends EventEmitter {
       };
 
       // Execute query
-      const jobResult = await client.createQueryJob(queryOptions);
-      const job = jobResult[0];
+      const [job] = await client.createQueryJob(queryOptions);
       this.emit('query:started', { jobId: job.id });
 
-      // Get results
-      const rowsResult = await job.getQueryResults();
-      const rows = rowsResult[0];
-      const metadataResult = await job.getMetadata();
-      const metadata = metadataResult[0] as JobMetadata;
+      // Get results with metadata
+      const [rows, , response] = await job.getQueryResults();
+      const jobMetadataResponse = await job.getMetadata();
+      const jobMetadata = jobMetadataResponse[0] as JobMetadata;
 
       const executionTimeMs = Date.now() - startTime;
-      const schema = safeGetSchema(metadata);
-      const stats = safeGetStatistics(metadata);
+
+      // Extract schema fields from query results response
+      const schemaFields = (response?.schema?.fields as SchemaField[]) || [];
 
       const result: QueryResult<T> = {
         rows: rows as T[],
         totalRows: rows.length,
-        schema,
+        schema: schemaFields,
         jobId: job.id!,
-        cacheHit: stats.cacheHit,
-        totalBytesProcessed: stats.totalBytesProcessed,
-        totalSlotMs: stats.totalSlotMs,
+        cacheHit: jobMetadata.statistics?.query?.cacheHit,
+        totalBytesProcessed: jobMetadata.statistics?.query?.totalBytesProcessed,
+        totalSlotMs: jobMetadata.statistics?.query?.totalSlotMs,
         executionTimeMs,
       };
 
@@ -334,21 +329,19 @@ export class BigQueryClient extends EventEmitter {
     const client = await this.connectionPool.acquire();
 
     try {
-      const jobResult = await client.createQueryJob({
+      const [job] = await client.createQueryJob({
         ...this.config.queryDefaults,
         ...options,
         query,
         dryRun: true,
       });
-      const job = jobResult[0];
 
-      const metadataResult = await job.getMetadata();
-      const metadata = metadataResult[0] as JobMetadata;
-      const stats = safeGetStatistics(metadata);
-      const totalBytesProcessed = stats.totalBytesProcessed ?? '0';
+      const metadataResponse = await job.getMetadata();
+      const metadata = metadataResponse[0] as JobMetadata;
+      const totalBytesProcessed = metadata.statistics?.query?.totalBytesProcessed || '0';
 
       // BigQuery pricing: $5 per TB processed (as of 2024)
-      const bytesProcessed = parseInt(totalBytesProcessed, 10);
+      const bytesProcessed = parseInt(totalBytesProcessed);
       const terabytesProcessed = bytesProcessed / (1024 ** 4);
       const estimatedCostUSD = terabytesProcessed * 5;
 
@@ -443,24 +436,47 @@ export class BigQueryClient extends EventEmitter {
   }
 
   /**
+   * Test connection to BigQuery
+   */
+  public async testConnection(): Promise<boolean> {
+    try {
+      const client = await this.connectionPool.acquire();
+      try {
+        await client.getDatasets({ maxResults: 1 });
+        return true;
+      } finally {
+        this.connectionPool.release(client);
+      }
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Get table schema
+   */
+  public async getTableSchema(datasetId: string, tableId: string, projectId?: string): Promise<SchemaField[]> {
+    const table = await this.getTable(datasetId, tableId, projectId);
+    return table.schema;
+  }
+
+  /**
    * Determine if error is retryable
    */
   private isRetryableError(error: Error): boolean {
     const errorMessage = error.message.toLowerCase();
-    const errorCode = error && typeof error === 'object' && 'code' in error
-      ? (error as { code?: string | number }).code
-      : undefined;
+    const errorCode = (error as BigQueryError).code;
 
     // Check against configured retryable errors
     for (const retryableError of this.config.retry.retryableErrors) {
       if (errorMessage.includes(retryableError.toLowerCase()) ||
-          errorCode === retryableError) {
+        errorCode === retryableError) {
         return true;
       }
     }
 
     // Check for specific BigQuery error codes
-    const retryableCodes: Array<string | number> = [
+    const retryableCodes: (string | number)[] = [
       'RATE_LIMIT_EXCEEDED',
       'QUOTA_EXCEEDED',
       'BACKEND_ERROR',
@@ -494,9 +510,7 @@ export class BigQueryClient extends EventEmitter {
    * Wrap error with additional context
    */
   private wrapError(error: Error, retryable: boolean): BigQueryClientError {
-    const code = error && typeof error === 'object' && 'code' in error && typeof (error as { code?: string }).code === 'string'
-      ? (error as { code: string }).code
-      : 'UNKNOWN_ERROR';
+    const code = (error as BigQueryError).code?.toString() || 'UNKNOWN_ERROR';
 
     return new BigQueryClientError(
       error.message,
@@ -533,9 +547,8 @@ export class BigQueryClient extends EventEmitter {
 
       this.emit('shutdown:completed');
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
       this.emit('error', new BigQueryClientError(
-        `Error during shutdown: ${errorMsg}`,
+        'Error during shutdown',
         'SHUTDOWN_ERROR',
         error
       ));
@@ -548,27 +561,6 @@ export class BigQueryClient extends EventEmitter {
    */
   public createQueryBuilder(): QueryBuilder {
     return new QueryBuilder(this);
-  }
-
-  /**
-   * Test connection to BigQuery
-   */
-  public async testConnection(): Promise<boolean> {
-    try {
-      const client = await this.connectionPool.acquire();
-      try {
-        // Simple query to test connection
-        await client.createQueryJob({
-          query: 'SELECT 1',
-          dryRun: true,
-        });
-        return true;
-      } finally {
-        this.connectionPool.release(client);
-      }
-    } catch {
-      return false;
-    }
   }
 }
 
@@ -587,9 +579,9 @@ export class QueryBuilder {
     offset?: number;
   } = {};
 
-  private parameters: Record<string, unknown> = {};
+  private parameters: Record<string, string | number | boolean | Date> = {};
 
-  constructor(private client: BigQueryClient) {}
+  constructor(private client: BigQueryClient) { }
 
   select(...columns: string[]): this {
     this.queryParts.select = columns;
@@ -637,7 +629,7 @@ export class QueryBuilder {
     return this;
   }
 
-  param(name: string, value: unknown): this {
+  param(name: string, value: string | number | boolean | Date): this {
     this.parameters[name] = value;
     return this;
   }
@@ -647,50 +639,50 @@ export class QueryBuilder {
 
     // SELECT
     if (this.queryParts.select && this.queryParts.select.length > 0) {
-      parts.push(`SELECT ${this.queryParts.select.join(', ')}`);
+      parts.push(`SELECT ${this.queryParts.select.join(', ')} `);
     } else {
       parts.push('SELECT *');
     }
 
     // FROM
     if (this.queryParts.from) {
-      parts.push(`FROM ${this.queryParts.from}`);
+      parts.push(`FROM ${this.queryParts.from} `);
     }
 
     // WHERE
     if (this.queryParts.where && this.queryParts.where.length > 0) {
-      parts.push(`WHERE ${this.queryParts.where.join(' AND ')}`);
+      parts.push(`WHERE ${this.queryParts.where.join(' AND ')} `);
     }
 
     // GROUP BY
     if (this.queryParts.groupBy && this.queryParts.groupBy.length > 0) {
-      parts.push(`GROUP BY ${this.queryParts.groupBy.join(', ')}`);
+      parts.push(`GROUP BY ${this.queryParts.groupBy.join(', ')} `);
     }
 
     // HAVING
     if (this.queryParts.having && this.queryParts.having.length > 0) {
-      parts.push(`HAVING ${this.queryParts.having.join(' AND ')}`);
+      parts.push(`HAVING ${this.queryParts.having.join(' AND ')} `);
     }
 
     // ORDER BY
     if (this.queryParts.orderBy && this.queryParts.orderBy.length > 0) {
-      parts.push(`ORDER BY ${this.queryParts.orderBy.join(', ')}`);
+      parts.push(`ORDER BY ${this.queryParts.orderBy.join(', ')} `);
     }
 
     // LIMIT
     if (this.queryParts.limit !== undefined) {
-      parts.push(`LIMIT ${this.queryParts.limit}`);
+      parts.push(`LIMIT ${this.queryParts.limit} `);
     }
 
     // OFFSET
     if (this.queryParts.offset !== undefined) {
-      parts.push(`OFFSET ${this.queryParts.offset}`);
+      parts.push(`OFFSET ${this.queryParts.offset} `);
     }
 
     return parts.join('\n');
   }
 
-  async execute<T = unknown>(options?: Partial<QueryOptions>): Promise<QueryResult<T>> {
+  async execute<T = Record<string, unknown>>(options?: Partial<QueryOptions>): Promise<QueryResult<T>> {
     const query = this.build();
     const params = Object.entries(this.parameters).map(([name, value]) => ({
       name,
@@ -713,7 +705,7 @@ export class QueryBuilder {
     return this.client.dryRun(query, options);
   }
 
-  private inferType(value: unknown): string {
+  private inferType(value: string | number | boolean | Date): string {
     if (typeof value === 'number') {
       return Number.isInteger(value) ? 'INT64' : 'FLOAT64';
     }

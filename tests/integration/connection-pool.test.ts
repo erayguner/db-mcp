@@ -8,7 +8,10 @@
 import { ConnectionPool } from '../../src/bigquery/connection-pool.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
-describe.skip('Connection Pool Integration Tests', () => {
+const skipPool = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
+const describePool = skipPool ? describe.skip : describe;
+
+describePool('Connection Pool Integration Tests', () => {
   let pool: ConnectionPool;
 
   beforeEach(() => {
@@ -44,10 +47,10 @@ describe.skip('Connection Pool Integration Tests', () => {
         minConnections: 1,
         maxConnections: 3,
         acquireTimeoutMs: 5000,
-        idleTimeoutMs: 10000,
-        healthCheckIntervalMs: 2000,
+        idleTimeoutMs: 60000,
+        healthCheckIntervalMs: 30000,
         maxRetries: 3,
-        retryDelayMs: 500,
+        retryDelayMs: 1000,
       });
 
       newPool.once('initialized', (data) => {
@@ -62,9 +65,9 @@ describe.skip('Connection Pool Integration Tests', () => {
         projectId: 'error-test',
         minConnections: 1,
         maxConnections: 2,
-        acquireTimeoutMs: 30000,
-        idleTimeoutMs: 300000,
-        healthCheckIntervalMs: 60000,
+        acquireTimeoutMs: 5000,
+        idleTimeoutMs: 60000,
+        healthCheckIntervalMs: 30000,
         maxRetries: 3,
         retryDelayMs: 1000,
         credentials: {
@@ -73,9 +76,9 @@ describe.skip('Connection Pool Integration Tests', () => {
         },
       });
 
-      let errorEmitted = false;
+
       errorPool.once('error', () => {
-        errorEmitted = true;
+        // errorEmitted = true;
       });
 
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -162,6 +165,10 @@ describe.skip('Connection Pool Integration Tests', () => {
         minConnections: 1,
         maxConnections: 1,
         acquireTimeoutMs: 500,
+        idleTimeoutMs: 60000,
+        healthCheckIntervalMs: 30000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
       });
 
       // Acquire the only connection
@@ -212,6 +219,9 @@ describe.skip('Connection Pool Integration Tests', () => {
         maxConnections: 4,
         healthCheckIntervalMs: 1000,
         maxRetries: 1,
+        acquireTimeoutMs: 5000,
+        idleTimeoutMs: 60000,
+        retryDelayMs: 1000,
       });
 
       let connectionRemoved = false;
@@ -231,8 +241,8 @@ describe.skip('Connection Pool Integration Tests', () => {
     });
 
     it('should create replacement connections', async () => {
-      const initialMetrics = pool.getMetrics();
-      const initialCount = initialMetrics.totalConnections;
+
+
 
       // Simulate connection failure scenario
       // In production, this would be triggered by health check failures
@@ -253,6 +263,10 @@ describe.skip('Connection Pool Integration Tests', () => {
         minConnections: 2,
         maxConnections: 10,
         idleTimeoutMs: 1000,
+        acquireTimeoutMs: 5000,
+        healthCheckIntervalMs: 30000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
       });
 
       // Create extra connections
@@ -333,6 +347,11 @@ describe.skip('Connection Pool Integration Tests', () => {
         projectId: 'shutdown-test',
         minConnections: 1,
         maxConnections: 2,
+        acquireTimeoutMs: 5000,
+        idleTimeoutMs: 60000,
+        healthCheckIntervalMs: 30000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
       });
 
       await shutdownPool.shutdown();
@@ -345,6 +364,11 @@ describe.skip('Connection Pool Integration Tests', () => {
         projectId: 'fail-test',
         minConnections: 1,
         maxConnections: 3,
+        acquireTimeoutMs: 5000,
+        idleTimeoutMs: 60000,
+        healthCheckIntervalMs: 30000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
         credentials: {
           client_email: 'invalid@test.com',
           private_key: 'invalid-key',
@@ -372,6 +396,11 @@ describe.skip('Connection Pool Integration Tests', () => {
         projectId: 'graceful-shutdown',
         minConnections: 2,
         maxConnections: 4,
+        acquireTimeoutMs: 5000,
+        idleTimeoutMs: 60000,
+        healthCheckIntervalMs: 30000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
       });
 
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -462,6 +491,10 @@ describe.skip('Connection Pool Integration Tests', () => {
         minConnections: 1,
         maxConnections: 1,
         acquireTimeoutMs: 100,
+        idleTimeoutMs: 60000,
+        healthCheckIntervalMs: 30000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
       });
 
       const client = await timeoutPool.acquire();

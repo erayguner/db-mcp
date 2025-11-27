@@ -6,6 +6,25 @@ import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 
 /**
+ * Server Capabilities Definition
+ */
+interface ServerCapabilities {
+  tools?: Record<string, unknown>;
+  resources?: Record<string, unknown>;
+  prompts?: Record<string, unknown>;
+  logging?: Record<string, unknown>;
+}
+
+/**
+ * Server Constructor Options
+ */
+interface ServerConstructorOptions extends Record<string, unknown> {
+  name: string;
+  version: string;
+  capabilities?: ServerCapabilities;
+}
+
+/**
  * MCP Server Factory Configuration Schema
  */
 export const ServerFactoryConfigSchema = z.object({
@@ -62,8 +81,8 @@ export class ServerFactoryError extends Error {
  * - Event emission
  */
 export class MCPServerFactory extends EventEmitter {
-  private config: Required<ServerFactoryConfig>;
-  private server: Server;
+  private config: ServerFactoryConfig;
+  private server: Server; // revert type
   private transport: Transport | null = null;
   private state: ServerState = ServerState.INITIALIZING;
   private healthCheckInterval?: NodeJS.Timeout;
@@ -73,8 +92,7 @@ export class MCPServerFactory extends EventEmitter {
     super();
     this.config = this.parseAndValidateConfig(config);
 
-    // Create MCP server instance
-    this.server = new Server({
+    const serverOptions: ServerConstructorOptions = {
       name: this.config.name,
       version: this.config.version,
       capabilities: {
@@ -82,9 +100,10 @@ export class MCPServerFactory extends EventEmitter {
         resources: this.config.capabilities.resources ? {} : undefined,
         prompts: this.config.capabilities.prompts ? {} : undefined,
         logging: this.config.capabilities.logging ? {} : undefined,
-      }
-    });
+      },
+    };
 
+    this.server = new Server(serverOptions);
     this.setState(ServerState.READY);
     logger.info('MCP Server Factory initialized', {
       name: this.config.name,
@@ -93,7 +112,7 @@ export class MCPServerFactory extends EventEmitter {
     });
   }
 
-  private parseAndValidateConfig(config: ServerFactoryConfig): Required<ServerFactoryConfig> {
+  private parseAndValidateConfig(config: ServerFactoryConfig): ServerFactoryConfig {
     const parsed = ServerFactoryConfigSchema.parse(config);
 
     return {

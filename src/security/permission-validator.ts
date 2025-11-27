@@ -21,6 +21,21 @@ import { recordException, setSpanAttributes } from '../telemetry/tracing.js';
 // Configuration & Types
 // ==========================================
 
+/**
+ * Service Account Client Interface
+ */
+interface ServiceAccountClient {
+  email?: string;
+  universe_domain?: string;
+}
+
+/**
+ * WIF Client Interface
+ */
+interface WIFClient {
+  universe_domain?: string;
+}
+
 export const PermissionValidatorConfigSchema = z.object({
   // Cache configuration
   cacheTTLMs: z.number().default(300000), // 5 minutes
@@ -72,6 +87,16 @@ export interface PermissionCheckResult {
   cacheHit: boolean;
 }
 
+/**
+ * Audit Request Metadata
+ */
+export interface AuditRequestMetadata {
+  projectId?: string;
+  datasetId?: string;
+  tableId?: string;
+  [key: string]: string | undefined;
+}
+
 export interface AuditEntry {
   timestamp: Date;
   principal: string;
@@ -79,7 +104,7 @@ export interface AuditEntry {
   resource: string;
   allowed: boolean;
   deniedReason?: string;
-  requestMetadata?: Record<string, unknown>;
+  requestMetadata?: AuditRequestMetadata;
 }
 
 interface CachedPermission {
@@ -304,7 +329,8 @@ class PermissionAuditLogger {
     }
 
     if (options?.resource) {
-      filtered = filtered.filter(e => e.resource.includes(options.resource!));
+      const resource = options.resource;
+      filtered = filtered.filter(e => e.resource.includes(resource));
     }
 
     if (options?.allowedOnly) {
@@ -734,14 +760,19 @@ export class PermissionValidator {
       const client = await this.auth.getClient();
       const projectId = await this.auth.getProjectId();
 
-      // For service accounts
-      const clientWithEmail = client as { email?: string };
-      if ('email' in client && typeof clientWithEmail.email === 'string') {
-        return clientWithEmail.email;
+      // Check if client is a service account
+      const serviceAccountClient = client as ServiceAccountClient;
+      if (
+        'email' in client &&
+        typeof serviceAccountClient.email === 'string' &&
+        serviceAccountClient.email
+      ) {
+        return serviceAccountClient.email;
       }
 
-      // For WIF
-      if ('universe_domain' in client) {
+      // Check if client is WIF (Workload Identity Federation)
+      const wifClient = client as WIFClient;
+      if ('universe_domain' in wifClient) {
         return `wif:${projectId}`;
       }
 

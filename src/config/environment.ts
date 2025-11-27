@@ -10,7 +10,7 @@ dotenv.config();
 
 export const EnvironmentSchema = z.object({
   // Server
-  NODE_ENV: z.enum(['development', 'staging', 'production']).default('development'),
+  NODE_ENV: z.enum(['development', 'staging', 'production', 'test']).default(process.env.JEST_WORKER_ID ? 'test' : 'development'),
   PORT: z.string().transform(Number).default('8080'),
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
 
