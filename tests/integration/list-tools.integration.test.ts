@@ -9,7 +9,13 @@ const __dirname = dirname(__filename);
 function spawnServer(): Promise<{ proc: any; stop: () => Promise<void> }> {
   return new Promise((resolve, reject) => {
     const proc = spawn('node', [path.join(__dirname, '../../dist/index.js')], {
-      env: { ...process.env, NODE_ENV: 'test', LOG_LEVEL: 'error' },
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        LOG_LEVEL: 'error',
+        GCP_PROJECT_ID: 'test-project-id', // Required by environment validation
+        USE_MOCK_BIGQUERY: 'true', // Use mock to avoid real GCP calls
+      },
       stdio: ['pipe', 'pipe', 'pipe']
     });
     let started = false;
