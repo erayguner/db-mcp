@@ -507,15 +507,6 @@ MCP_SERVICE_ACCOUNT_EMAIL=mcp@my-project.iam.gserviceaccount.com
 GOOGLE_WORKSPACE_CLIENT_ID=123456.apps.googleusercontent.com
 GOOGLE_WORKSPACE_DOMAIN=example.com
 GOOGLE_WORKSPACE_ALLOWED_GROUPS=bigquery-users,data-analysts
-
-# Security
-ENABLE_CORS=true
-ALLOWED_ORIGINS=https://app.example.com
-MAX_QUERY_SIZE_BYTES=10485760
-
-# Monitoring
-ENABLE_METRICS=true
-ENABLE_TRACING=true
 ```
 
 ## Summary

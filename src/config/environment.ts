@@ -34,17 +34,6 @@ export const EnvironmentSchema = z.object({
   BIGQUERY_LOCATION: z.string().default('US'),
   BIGQUERY_MAX_RETRIES: z.string().transform(Number).default('3'),
   BIGQUERY_TIMEOUT: z.string().transform(Number).default('60000'),
-
-  // Security
-  ENABLE_CORS: z.string().transform(val => val === 'true').default('true'),
-  ALLOWED_ORIGINS: z.string().optional().transform(val =>
-    val ? val.split(',').map(o => o.trim()) : ['*']
-  ),
-  MAX_QUERY_SIZE_BYTES: z.string().transform(Number).default('10485760'), // 10MB
-
-  // Monitoring
-  ENABLE_METRICS: z.string().transform(val => val === 'true').default('true'),
-  ENABLE_TRACING: z.string().transform(val => val === 'true').default('false'),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

@@ -76,10 +76,8 @@ export interface AuthenticationOptions {
  * Create enterprise authenticator
  */
 export function createAuthenticator(options: AuthenticationOptions) {
-  // Initialize audit logger
-  const auditLogger = options.enableAuditLogging !== false
-    ? getAuditLogger()
-    : getAuditLogger();
+  // Initialize audit logger (always enabled for security compliance)
+  const auditLogger = getAuditLogger();
 
   // Create credential manager
   const credentialManager = new CredentialManager({

@@ -185,10 +185,6 @@ SECURITY_RATE_LIMIT_WINDOW_MS=60000
 SECURITY_PROMPT_INJECTION_DETECTION=true
 SECURITY_TOOL_VALIDATION_ENABLED=true
 SECURITY_LOGGING_ENABLED=true
-
-# Monitoring (optional)
-ENABLE_METRICS=true
-ENABLE_TRACING=false
 EOF
 ```
 
@@ -354,8 +350,6 @@ gcloud run deploy mcp-bigquery-server \
   --set-env-vars "SECURITY_PROMPT_INJECTION_DETECTION=true" \
   --set-env-vars "SECURITY_TOOL_VALIDATION_ENABLED=true" \
   --set-env-vars "SECURITY_LOGGING_ENABLED=true" \
-  --set-env-vars "ENABLE_METRICS=true" \
-  --set-env-vars "ENABLE_TRACING=true" \
   --vpc-connector mcp-bigquery-connector-prod \
   --vpc-egress all-traffic
 ```
@@ -379,9 +373,7 @@ SECURITY_TOOL_VALIDATION_ENABLED=true
 SECURITY_LOGGING_ENABLED=true
 SECURITY_LOG_SUSPICIOUS_ACTIVITY=true
 
-# Monitoring
-ENABLE_METRICS=true
-ENABLE_TRACING=true
+# Logging
 LOG_LEVEL=info
 
 # Authentication (Workload Identity - automatic)
@@ -642,13 +634,6 @@ autocannon -c 150 -d 10 \
 | `WORKLOAD_IDENTITY_POOL_ID` | Prod only | - | WIF pool ID |
 | `WORKLOAD_IDENTITY_PROVIDER_ID` | Prod only | - | WIF provider ID |
 
-#### Monitoring
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ENABLE_METRICS` | No | `false` | Export metrics |
-| `ENABLE_TRACING` | No | `false` | Distributed tracing |
-
 ### Security Presets by Environment
 
 #### Development
@@ -842,7 +827,7 @@ docker build --target builder -t test .
 
 ## Additional Resources
 
-- [Architecture Documentation](./architecture.md)
+- [Architecture Documentation](./architecture/)
 - [Security Implementation](./SECURITY.md)
 - [Deployment Guide](./wif-deployment-guide.md)
 - [Monitoring Setup](./MONITORING-GUIDE.md)
@@ -871,5 +856,5 @@ gcloud logging read "resource.type=cloud_run_revision"
 
 ---
 
-**Last Updated**: October 30, 2025
-**Version**: 2.0.0
+**Last Updated**: December 2025
+**Version**: 1.0.0

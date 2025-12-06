@@ -105,106 +105,6 @@ export const GetTableSchemaArgsSchema = z.object({
 export type GetTableSchemaArgs = z.infer<typeof GetTableSchemaArgsSchema>;
 
 /**
- * Create Dataset Tool Schema
- */
-export const CreateDatasetArgsSchema = z.object({
-  datasetId: z.string()
-    .min(1, 'Dataset ID cannot be empty')
-    .regex(/^[a-zA-Z0-9_]+$/, 'Dataset ID must contain only alphanumeric characters and underscores'),
-  projectId: z.string()
-    .optional()
-    .describe('Project ID (uses default if not specified)'),
-  location: z.string()
-    .optional()
-    .default('US')
-    .describe('Geographic location for the dataset'),
-  description: z.string()
-    .optional()
-    .describe('Dataset description'),
-  defaultTableExpirationMs: z.number()
-    .int()
-    .positive()
-    .optional()
-    .describe('Default expiration time for tables in milliseconds'),
-});
-
-export type CreateDatasetArgs = z.infer<typeof CreateDatasetArgsSchema>;
-
-/**
- * Delete Dataset Tool Schema
- */
-export const DeleteDatasetArgsSchema = z.object({
-  datasetId: z.string()
-    .min(1, 'Dataset ID cannot be empty'),
-  projectId: z.string()
-    .optional()
-    .describe('Project ID (uses default if not specified)'),
-  deleteContents: z.boolean()
-    .optional()
-    .default(false)
-    .describe('Delete all tables in the dataset before deleting the dataset'),
-});
-
-export type DeleteDatasetArgs = z.infer<typeof DeleteDatasetArgsSchema>;
-
-/**
- * Get Query Job Status Schema
- */
-export const GetJobStatusArgsSchema = z.object({
-  jobId: z.string()
-    .min(1, 'Job ID cannot be empty'),
-  projectId: z.string()
-    .optional()
-    .describe('Project ID (uses default if not specified)'),
-  location: z.string()
-    .optional()
-    .describe('Job location'),
-});
-
-export type GetJobStatusArgs = z.infer<typeof GetJobStatusArgsSchema>;
-
-/**
- * Cancel Query Job Schema
- */
-export const CancelJobArgsSchema = z.object({
-  jobId: z.string()
-    .min(1, 'Job ID cannot be empty'),
-  projectId: z.string()
-    .optional()
-    .describe('Project ID (uses default if not specified)'),
-  location: z.string()
-    .optional()
-    .describe('Job location'),
-});
-
-export type CancelJobArgs = z.infer<typeof CancelJobArgsSchema>;
-
-/**
- * Export Query Results Schema
- */
-export const ExportQueryResultsArgsSchema = z.object({
-  query: z.string()
-    .min(1, 'Query cannot be empty'),
-  destinationUri: z.string()
-    .url('Must be a valid GCS URI (gs://bucket/path)')
-    .regex(/^gs:\/\//, 'URI must start with gs://'),
-  format: z.enum(['CSV', 'JSON', 'AVRO', 'PARQUET'])
-    .optional()
-    .default('CSV')
-    .describe('Export format'),
-  compression: z.enum(['GZIP', 'NONE'])
-    .optional()
-    .default('NONE')
-    .describe('Compression type'),
-  printHeader: z.boolean()
-    .optional()
-    .default(true)
-    .describe('Include header row in CSV export'),
-});
-
-export type ExportQueryResultsArgs = z.infer<typeof ExportQueryResultsArgsSchema>;
-
-/**
  * Unified schema map for all tools
  */
 export const TOOL_SCHEMAS = {
@@ -213,11 +113,6 @@ export const TOOL_SCHEMAS = {
   list_datasets: ListDatasetsArgsSchema,
   list_tables: ListTablesArgsSchema,
   get_table_schema: GetTableSchemaArgsSchema,
-  create_dataset: CreateDatasetArgsSchema,
-  delete_dataset: DeleteDatasetArgsSchema,
-  get_job_status: GetJobStatusArgsSchema,
-  cancel_job: CancelJobArgsSchema,
-  export_query_results: ExportQueryResultsArgsSchema,
 } as const;
 
 export type ToolName = keyof typeof TOOL_SCHEMAS;
