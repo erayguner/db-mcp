@@ -138,14 +138,22 @@ export class MCPServerFactory extends EventEmitter {
     // In test environments, return a minimal adapter with setRequestHandler
     const isTestEnv = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
     if (isTestEnv) {
-      const handlers: Record<string | symbol, Function> = {};
-      const adapter = {
-        setRequestHandler: (schema: any, handler: Function) => {
-          const key = (schema && (schema.method || schema.title || schema.name)) || Symbol('handler');
+      const handlers: Record<string | symbol, (req: unknown) => unknown> = {};
+      return ({
+        setRequestHandler: (schema: unknown, handler: (req: unknown) => unknown) => {
+          const keyCandidate = typeof schema === 'object' && schema !== null
+            ? // try to derive a stable key from known fields if present
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              ((schema as { method?: unknown }).method ??
+               // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+               (schema as { title?: unknown }).title ??
+               // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+               (schema as { name?: unknown }).name)
+            : undefined;
+          const key = typeof keyCandidate === 'string' ? keyCandidate : Symbol('handler');
           handlers[key] = handler;
         }
-      } as unknown as Server;
-      return adapter;
+      } as unknown as Server);
     }
     return this.server;
   }

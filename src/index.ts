@@ -286,11 +286,7 @@ export class MCPBigQueryServer {
   private setupHandlers(): void {
     const server = this.serverFactory.getServer();
 
-    // Ensure capabilities include required flags for handler registration
-    const caps = (server as unknown as { capabilities?: any }).capabilities || {};
-    caps.tools = caps.tools || { list: true, call: true };
-    caps.resources = caps.resources || { list: true, read: true };
-    (server as unknown as { capabilities?: any }).capabilities = caps;
+    // Removed direct capability mutation to avoid unsafe any assignments
 
     // Existing low-level handlers remain for backward compatibility
     // ==========================================
@@ -298,16 +294,16 @@ export class MCPBigQueryServer {
     // ==========================================
     const isTestEnv = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
     if (!isTestEnv) {
-     try {
-       server.setRequestHandler(ListToolsRequestSchema, () => {
-         logger.debug('Handling list_tools request');
-         const tools = generateToolDefinitions(this.getToolDescription.bind(this));
-         logger.info('Listed tools', { count: tools.length });
-         return { tools };
-       });
-     } catch (err) {
-       logger.warn('Skipping list_tools handler registration due to capability assertion', { error: (err as Error).message });
-     }
+      try {
+        server.setRequestHandler(ListToolsRequestSchema, () => {
+          logger.debug('Handling list_tools request');
+          const tools = generateToolDefinitions(this.getToolDescription.bind(this));
+          logger.info('Listed tools', { count: tools.length });
+          return { tools };
+        });
+      } catch (err) {
+        logger.warn('Skipping list_tools handler registration due to capability assertion', { error: (err as Error).message });
+      }
     }
 
     // ==========================================
