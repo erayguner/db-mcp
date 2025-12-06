@@ -2,7 +2,7 @@
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
-[![MCP](https://img.shields.io/badge/MCP-0.4.0-purple)](https://modelcontextprotocol.io)
+[![MCP SDK](https://img.shields.io/badge/MCP_SDK-1.24.0-purple)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Enterprise-grade MCP (Model Context Protocol) server for Google Cloud Platform BigQuery with **Workload Identity Federation** authentication. Provides secure, keyless access to BigQuery through the Model Context Protocol.

@@ -4,11 +4,6 @@ import {
   ListDatasetsArgsSchema,
   ListTablesArgsSchema,
   GetTableSchemaArgsSchema,
-  CreateDatasetArgsSchema,
-  DeleteDatasetArgsSchema,
-  GetJobStatusArgsSchema,
-  CancelJobArgsSchema,
-  ExportQueryResultsArgsSchema,
   TOOL_SCHEMAS,
   validateToolArgs,
   getToolInputSchema,
@@ -218,215 +213,6 @@ describe('Tool Validation Schemas', () => {
     });
   });
 
-  describe('CreateDatasetArgsSchema', () => {
-    it('should validate valid arguments', () => {
-      const valid = {
-        datasetId: 'new_dataset',
-        projectId: 'my-project',
-        location: 'EU',
-        description: 'Test dataset',
-        defaultTableExpirationMs: 86400000,
-      };
-
-      const result = CreateDatasetArgsSchema.parse(valid);
-      expect(result).toEqual(valid);
-    });
-
-    it('should apply default location', () => {
-      const result = CreateDatasetArgsSchema.parse({
-        datasetId: 'dataset',
-      });
-
-      expect(result.location).toBe('US');
-    });
-
-    it('should reject invalid datasetId', () => {
-      expect(() => {
-        CreateDatasetArgsSchema.parse({ datasetId: 'invalid-name' });
-      }).toThrow();
-    });
-
-    it('should reject negative expiration', () => {
-      expect(() => {
-        CreateDatasetArgsSchema.parse({
-          datasetId: 'dataset',
-          defaultTableExpirationMs: -1000,
-        });
-      }).toThrow();
-    });
-  });
-
-  describe('DeleteDatasetArgsSchema', () => {
-    it('should validate valid arguments', () => {
-      const valid = {
-        datasetId: 'old_dataset',
-        projectId: 'my-project',
-        deleteContents: true,
-      };
-
-      const result = DeleteDatasetArgsSchema.parse(valid);
-      expect(result).toEqual(valid);
-    });
-
-    it('should apply default for deleteContents', () => {
-      const result = DeleteDatasetArgsSchema.parse({
-        datasetId: 'dataset',
-      });
-
-      expect(result.deleteContents).toBe(false);
-    });
-
-    it('should require datasetId', () => {
-      expect(() => {
-        DeleteDatasetArgsSchema.parse({});
-      }).toThrow();
-    });
-  });
-
-  describe('GetJobStatusArgsSchema', () => {
-    it('should validate valid arguments', () => {
-      const valid = {
-        jobId: 'job-12345',
-        projectId: 'my-project',
-        location: 'US',
-      };
-
-      const result = GetJobStatusArgsSchema.parse(valid);
-      expect(result).toEqual(valid);
-    });
-
-    it('should require jobId', () => {
-      expect(() => {
-        GetJobStatusArgsSchema.parse({});
-      }).toThrow();
-    });
-
-    it('should reject empty jobId', () => {
-      expect(() => {
-        GetJobStatusArgsSchema.parse({ jobId: '' });
-      }).toThrow();
-    });
-  });
-
-  describe('CancelJobArgsSchema', () => {
-    it('should validate valid arguments', () => {
-      const valid = {
-        jobId: 'job-67890',
-        projectId: 'my-project',
-        location: 'EU',
-      };
-
-      const result = CancelJobArgsSchema.parse(valid);
-      expect(result).toEqual(valid);
-    });
-
-    it('should require jobId', () => {
-      expect(() => {
-        CancelJobArgsSchema.parse({});
-      }).toThrow();
-    });
-  });
-
-  describe('ExportQueryResultsArgsSchema', () => {
-    it('should validate valid arguments', () => {
-      const valid = {
-        query: 'SELECT * FROM table',
-        destinationUri: 'gs://my-bucket/export.csv',
-        format: 'CSV' as const,
-        compression: 'GZIP' as const,
-        printHeader: false,
-      };
-
-      const result = ExportQueryResultsArgsSchema.parse(valid);
-      expect(result).toEqual(valid);
-    });
-
-    it('should apply defaults', () => {
-      const result = ExportQueryResultsArgsSchema.parse({
-        query: 'SELECT 1',
-        destinationUri: 'gs://bucket/file.csv',
-      });
-
-      expect(result.format).toBe('CSV');
-      expect(result.compression).toBe('NONE');
-      expect(result.printHeader).toBe(true);
-    });
-
-    it('should reject invalid GCS URI', () => {
-      const invalid = [
-        { query: 'SELECT 1', destinationUri: 'http://bucket/file' },
-        { query: 'SELECT 1', destinationUri: 's3://bucket/file' },
-        { query: 'SELECT 1', destinationUri: '/local/path' },
-        { query: 'SELECT 1', destinationUri: 'bucket/file' },
-      ];
-
-      invalid.forEach((args) => {
-        expect(() => ExportQueryResultsArgsSchema.parse(args)).toThrow();
-      });
-    });
-
-    it('should accept valid GCS URIs', () => {
-      const valid = [
-        'gs://bucket/file.csv',
-        'gs://my-bucket/path/to/export.json',
-        'gs://bucket123/data/*.parquet',
-      ];
-
-      valid.forEach((uri) => {
-        expect(() =>
-          ExportQueryResultsArgsSchema.parse({
-            query: 'SELECT 1',
-            destinationUri: uri,
-          })
-        ).not.toThrow();
-      });
-    });
-
-    it('should validate format enum', () => {
-      const validFormats = ['CSV', 'JSON', 'AVRO', 'PARQUET'];
-
-      validFormats.forEach((format) => {
-        expect(() =>
-          ExportQueryResultsArgsSchema.parse({
-            query: 'SELECT 1',
-            destinationUri: 'gs://bucket/file',
-            format,
-          })
-        ).not.toThrow();
-      });
-
-      expect(() =>
-        ExportQueryResultsArgsSchema.parse({
-          query: 'SELECT 1',
-          destinationUri: 'gs://bucket/file',
-          format: 'XML',
-        })
-      ).toThrow();
-    });
-
-    it('should validate compression enum', () => {
-      const validCompressions = ['GZIP', 'NONE'];
-
-      validCompressions.forEach((compression) => {
-        expect(() =>
-          ExportQueryResultsArgsSchema.parse({
-            query: 'SELECT 1',
-            destinationUri: 'gs://bucket/file',
-            compression,
-          })
-        ).not.toThrow();
-      });
-
-      expect(() =>
-        ExportQueryResultsArgsSchema.parse({
-          query: 'SELECT 1',
-          destinationUri: 'gs://bucket/file',
-          compression: 'ZIP',
-        })
-      ).toThrow();
-    });
-  });
-
   describe('validateToolArgs', () => {
     it('should validate and return typed arguments', () => {
       const args = {
@@ -497,26 +283,6 @@ describe('Tool Validation Schemas', () => {
           tool: 'get_table_schema' as const,
           args: { datasetId: 'dataset', tableId: 'table' },
         },
-        {
-          tool: 'create_dataset' as const,
-          args: { datasetId: 'new_dataset' },
-        },
-        {
-          tool: 'delete_dataset' as const,
-          args: { datasetId: 'old_dataset' },
-        },
-        {
-          tool: 'get_job_status' as const,
-          args: { jobId: 'job-123' },
-        },
-        {
-          tool: 'cancel_job' as const,
-          args: { jobId: 'job-456' },
-        },
-        {
-          tool: 'export_query_results' as const,
-          args: { query: 'SELECT 1', destinationUri: 'gs://bucket/file' },
-        },
       ];
 
       toolTests.forEach(({ tool, args }) => {
@@ -573,14 +339,10 @@ describe('Tool Validation Schemas', () => {
     it('should contain all expected tools', () => {
       const expectedTools = [
         'query_bigquery',
+        'execute_query',
         'list_datasets',
         'list_tables',
         'get_table_schema',
-        'create_dataset',
-        'delete_dataset',
-        'get_job_status',
-        'cancel_job',
-        'export_query_results',
       ];
 
       expectedTools.forEach((tool) => {
