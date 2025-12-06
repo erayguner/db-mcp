@@ -2,9 +2,9 @@ import {
   DatasetDiscovery,
   DatasetDiscoveryConfig,
   SearchQuery,
-} from '../../bigquery/dataset-discovery.js';
-import { ConnectionPool } from '../../bigquery/connection-pool.js';
-import { DatasetManager, DatasetMetadata } from '../../bigquery/dataset-manager.js';
+} from '../../src/bigquery/dataset-discovery.js';
+import { ConnectionPool } from '../../src/bigquery/connection-pool.js';
+import { DatasetManager, DatasetMetadata } from '../../src/bigquery/dataset-manager.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
 const skipDiscovery = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
