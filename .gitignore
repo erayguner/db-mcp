@@ -5,10 +5,6 @@
 # ============================================
 # CRITICAL: Secrets and Credentials (NEVER COMMIT)
 # ============================================
-.claude/
-memory/claude-flow@*-data.json
-docs/.claude-flow/
-terraform/.claude-flow/
 
 .env
 .env.local
@@ -74,14 +70,11 @@ build/
 *.iws
 *.ipr
 
-# Vim
+# Vim/Emacs
 *.swp
 *.swo
 *~
 .vim/
-
-# Emacs
-*~
 \#*\#
 .\#*
 
@@ -130,7 +123,6 @@ $RECYCLE.BIN/
 # Logs and Temporary Files
 # ============================================
 
-# Log files
 *.log
 logs/
 *.log.*
@@ -138,14 +130,10 @@ log/
 deployment.log
 rollback.log
 validation.log
-
-# Temporary files
 *.tmp
 *.temp
 *.bak
 *.backup
-*.swp
-*.swo
 *.cache
 .cache/
 tmp/
@@ -155,7 +143,6 @@ temp/
 # Testing and Coverage
 # ============================================
 
-# Test coverage
 coverage/
 .nyc_output/
 *.lcov
@@ -163,17 +150,12 @@ coverage/
 htmlcov/
 .pytest_cache/
 .tox/
-
-# Test artifacts
 test-results/
-*.test.js
-*.spec.js
 
 # ============================================
 # Docker
 # ============================================
 
-# Docker
 .docker/
 docker-compose.override.yml
 *.dockerignore.local
@@ -182,7 +164,6 @@ docker-compose.override.yml
 # Terraform
 # ============================================
 
-# Terraform local files
 .terraform/
 .terraform.lock.hcl
 *.tfplan
@@ -200,37 +181,28 @@ terraform.rc
 # Cloud and Deployment
 # ============================================
 
-# GCP
 gcloud-config/
 .config/gcloud/
-
-# Cloud Run
 .cloudrun/
 
 # ============================================
-# MCP and AI Tools
+# Claude Flow and MCP Tools
 # ============================================
 
-# Claude Flow
-.claude/settings.local.json
+.claude/
 .mcp.json
 claude-flow.config.json
 .swarm/
 .hive-mind/
 .claude-flow/
-memory/claude-flow-data.json
-memory/sessions/*
-!memory/sessions/README.md
-memory/agents/*
-!memory/agents/README.md
-coordination/memory_bank/*
-coordination/subtasks/*
-coordination/orchestration/*
+docs/.claude-flow/
+terraform/.claude-flow/
+memory/
+coordination/
 hive-mind-prompt-*.txt
-
-# MCP specific
 mcp-config.local.json
 .mcp-cache/
+claude-flow
 
 # ============================================
 # Database Files
@@ -248,33 +220,16 @@ mcp-config.local.json
 # Backup Files
 # ============================================
 
-# Source file backups
-*.backup
-*.bak
 *.old
 *.orig
-*~
 src/index.ts.backup
 src/**/*.backup
-
-# Script backups
 scripts/*.backup
-
-# ============================================
-# Package and Lock Files
-# ============================================
-
-# Keep package-lock.json for reproducible builds
-# package-lock.json can be committed
-# But some teams prefer to ignore it
-# Uncomment the line below if your team ignores it:
-# package-lock.json
 
 # ============================================
 # Documentation Build Artifacts
 # ============================================
 
-# Documentation generators
 .docusaurus/
 .cache-loader/
 .vuepress/dist
@@ -285,42 +240,21 @@ scripts/*.backup
 # Misc
 # ============================================
 
-# Environment info
 .envrc
 .env.production.local
 .env.development.local
 .env.test.local
-
-# Lock files (except npm)
-# yarn.lock  # Uncomment if using npm only
-# pnpm-lock.yaml  # Uncomment if using npm only
-
-# Benchmark results
 benchmark-results/
 *.bench
-
-# Debug files
 debug/
 .debug/
-
-# Local configuration overrides
 config.local.js
 config.local.json
 config.local.yaml
 config.local.yml
-
-# ============================================
-# Project Specific
-# ============================================
-
-# Deployment artifacts
 deployment-artifacts/
-
-# Local testing data
 test-data/local/
 fixtures/local/
-
-# Performance profiling
 *.cpuprofile
 *.heapprofile
 *.heapsnapshot
@@ -329,57 +263,20 @@ fixtures/local/
 # Keep These Files (Whitelist)
 # ============================================
 
-# Documentation should be committed
 !docs/**/*.md
 !README.md
 !CHANGELOG.md
 !LICENSE
-
-# Example/template files should be committed
 !.env.example
 !.env.template
 !terraform.tfvars.example
-
-# Configuration examples
 !config.example.json
 !config.example.yaml
 !docker-compose.example.yml
-
-# Scripts should be committed
 !scripts/*.sh
-
-# GitHub workflows should be committed
 !.github/workflows/*.yml
 !.github/workflows/*.yaml
-
-# Test fixtures (non-sensitive)
 !tests/fixtures/**/*
 !tests/data/**/*
-.terraform/
-
-# Claude Flow generated files
-.claude/settings.local.json
-.mcp.json
-claude-flow.config.json
-.swarm/
-.hive-mind/
-.claude-flow/
-memory/
-coordination/
-memory/claude-flow-data.json
-memory/sessions/*
 !memory/sessions/README.md
-memory/agents/*
 !memory/agents/README.md
-coordination/memory_bank/*
-coordination/subtasks/*
-coordination/orchestration/*
-*.db
-*.db-journal
-*.db-wal
-*.sqlite
-*.sqlite-journal
-*.sqlite-wal
-claude-flow
-# Removed Windows wrapper files per user request
-hive-mind-prompt-*.txt

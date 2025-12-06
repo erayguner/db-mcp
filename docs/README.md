@@ -1,11 +1,11 @@
-# 📚 MCP BigQuery Server Documentation
+# MCP BigQuery Server Documentation
 
 ## Overview
 
 This directory contains comprehensive documentation for the MCP BigQuery Server - an enterprise-grade Model Context Protocol server for Google Cloud BigQuery integration with security-first design.
 
-**Project Status**: ✅ Production Ready
-**Last Updated**: October 30, 2025
+**Project Status**: Production Ready
+**Last Updated**: December 2025
 
 ---
 
@@ -31,22 +31,19 @@ Covers:
 
 ---
 
-### 🏗️ Architecture & Design
+### Architecture & Design
 
-#### [architecture.md](./architecture.md)
-**Complete system architecture and design documentation (1,100+ lines)**
+#### [architecture/](./architecture/)
+**Complete system architecture and design documentation**
 
-Covers:
-- C4 architecture diagrams (System, Container, Component levels)
-- MCP Interface Layer design
-- **Security Middleware Layer** (Rate limiting, prompt injection detection, etc.)
-- Core business logic components
-- BigQuery integration patterns
-- Data flow diagrams
-- Error handling strategies
-- Performance optimization
-- Testing strategy
-- Technology stack and rationale
+The architecture documentation is organized into focused modules:
+- [System Overview](./architecture/01-system-overview.md) - High-level system design
+- [Component Architecture](./architecture/02-component-architecture.md) - Component structure and interactions
+- [Data Flow](./architecture/03-data-flow.md) - Request/response patterns and data processing
+- [Security Architecture](./architecture/04-security-architecture.md) - Security design and implementation
+- [Error Handling](./architecture/05-error-handling.md) - Error handling strategies
+- [Observability](./architecture/06-observability.md) - Monitoring and logging architecture
+- [Scalability](./architecture/07-scalability.md) - Performance and scaling considerations
 
 **When to read**: Understanding the overall system design, component interactions, and architectural decisions.
 
@@ -320,12 +317,12 @@ Covers:
 ### "I want to understand the security implementation"
 1. Read [SECURITY.md](./SECURITY.md) for middleware details
 2. Review [wif-security-guide.md](./wif-security-guide.md) for authentication
-3. Check [architecture.md](./architecture.md) section 1.5 for architectural context
+3. Check [architecture/04-security-architecture.md](./architecture/04-security-architecture.md) for design context
 
 ### "I want to develop locally"
 1. Follow [USAGE-GUIDE.md](./USAGE-GUIDE.md) for environment setup
 2. Follow [LOCAL-TESTING.md](./LOCAL-TESTING.md) for testing
-3. Reference [architecture.md](./architecture.md) for component design
+3. Reference [architecture/](./architecture/) for component design
 
 ### "I want to set up monitoring"
 1. Read [MONITORING-GUIDE.md](./MONITORING-GUIDE.md) for complete setup
@@ -333,7 +330,7 @@ Covers:
 3. Configure notification channels
 
 ### "I want to understand the architecture"
-1. Start with [architecture.md](./architecture.md) for complete overview
+1. Start with [architecture/](./architecture/) for complete overview
 2. Review [wif-architecture.md](./wif-architecture.md) for authentication details
 3. Check component code in `/src` directory
 
@@ -344,7 +341,7 @@ Covers:
 
 ---
 
-## 📝 Documentation Structure
+## Documentation Structure
 
 ```
 docs/
@@ -354,7 +351,14 @@ docs/
 │   └── USAGE-GUIDE.md                (Complete usage guide - START HERE)
 │
 ├── Architecture & Design
-│   ├── architecture.md               (System architecture)
+│   ├── architecture/                 (Modular architecture docs)
+│   │   ├── 01-system-overview.md
+│   │   ├── 02-component-architecture.md
+│   │   ├── 03-data-flow.md
+│   │   ├── 04-security-architecture.md
+│   │   ├── 05-error-handling.md
+│   │   ├── 06-observability.md
+│   │   └── 07-scalability.md
 │   └── wif-architecture.md           (WIF authentication)
 │
 ├── Security
@@ -365,21 +369,12 @@ docs/
 │   ├── wif-deployment-guide.md       (Full deployment)
 │   ├── DOCKER-DEPLOYMENT.md          (Container deployment)
 │   ├── LOCAL-TESTING.md              (Local development)
-│   ├── HIVE_MIND_ANALYSIS.md         (Multi-agent coordination)
-│   └── scripts/
-│       ├── deploy-refactored-mcp.sh  (Deployment automation)
-│       ├── rollback-mcp.sh           (Rollback automation)
-│       └── validate-mcp.sh           (Validation automation)
-│
-├── Monitoring
 │   └── MONITORING-GUIDE.md           (Observability setup)
 │
-└── MCP Layer Refactoring
+└── Reference
     ├── MCP_REFACTORING_SUMMARY.md    (Refactoring overview)
     ├── MCP_MIGRATION_GUIDE.md        (Migration instructions)
-    ├── TEST-COVERAGE-REPORT.md       (Test coverage analysis)
-    ├── CLEANUP_REPORT.md             (Code cleanup report)
-    └── refactoring-improvements.md   (Improvement details)
+    └── TEST-COVERAGE-REPORT.md       (Test coverage analysis)
 ```
 
 ---
@@ -430,22 +425,21 @@ docs/
 
 ---
 
-## 🔍 Finding What You Need
+## Finding What You Need
 
-**Search Tips**:
-- **Getting started / usage** → [USAGE-GUIDE.md](./USAGE-GUIDE.md) ⭐ **START HERE**
-- Architecture questions → [architecture.md](./architecture.md)
-- Security questions → [SECURITY.md](./SECURITY.md)
-- Deployment help → [wif-deployment-guide.md](./wif-deployment-guide.md)
-- Container issues → [DOCKER-DEPLOYMENT.md](./DOCKER-DEPLOYMENT.md)
-- Local development → [LOCAL-TESTING.md](./LOCAL-TESTING.md)
-- Monitoring setup → [MONITORING-GUIDE.md](./MONITORING-GUIDE.md)
-- Authentication → [wif-architecture.md](./wif-architecture.md) + [wif-security-guide.md](./wif-security-guide.md)
-- MCP refactoring → [MCP_REFACTORING_SUMMARY.md](./MCP_REFACTORING_SUMMARY.md)
-- Migration guide → [MCP_MIGRATION_GUIDE.md](./MCP_MIGRATION_GUIDE.md)
-- Multi-agent coordination → [HIVE_MIND_ANALYSIS.md](./HIVE_MIND_ANALYSIS.md)
-- Test coverage → [TEST-COVERAGE-REPORT.md](./TEST-COVERAGE-REPORT.md)
-- Code cleanup → [CLEANUP_REPORT.md](./CLEANUP_REPORT.md)
+| Topic | Document |
+|-------|----------|
+| Getting started | [USAGE-GUIDE.md](./USAGE-GUIDE.md) - **START HERE** |
+| Architecture | [architecture/](./architecture/) |
+| Security | [SECURITY.md](./SECURITY.md) |
+| Deployment | [wif-deployment-guide.md](./wif-deployment-guide.md) |
+| Docker/Containers | [DOCKER-DEPLOYMENT.md](./DOCKER-DEPLOYMENT.md) |
+| Local development | [LOCAL-TESTING.md](./LOCAL-TESTING.md) |
+| Monitoring | [MONITORING-GUIDE.md](./MONITORING-GUIDE.md) |
+| Authentication (WIF) | [wif-architecture.md](./wif-architecture.md) |
+| MCP refactoring | [MCP_REFACTORING_SUMMARY.md](./MCP_REFACTORING_SUMMARY.md) |
+| Migration | [MCP_MIGRATION_GUIDE.md](./MCP_MIGRATION_GUIDE.md) |
+| Test coverage | [TEST-COVERAGE-REPORT.md](./TEST-COVERAGE-REPORT.md) |
 
 ---
 
@@ -495,16 +489,6 @@ When adding or updating documentation:
 
 ---
 
-**Last Updated**: November 3, 2025
-**Documentation Version**: 2.1.0 (MCP Layer Refactoring)
-**Status**: ✅ Current and Production Ready
-
-**Recent Updates (v2.1.0)**:
-- ✅ Added MCP Layer Refactoring documentation section
-- ✅ Created comprehensive migration guide for refactored MCP layer
-- ✅ Added test coverage and cleanup reports
-- ✅ Documented deployment automation scripts
-- ✅ Added multi-agent coordination guide (HIVE_MIND_ANALYSIS.md)
-- ✅ Enhanced deployment and operations documentation
-- ✅ Updated documentation statistics and structure
-- ✅ Improved quick start use cases with refactoring paths
+**Last Updated**: December 2025
+**Documentation Version**: 2.2.0
+**Status**: Current and Production Ready
