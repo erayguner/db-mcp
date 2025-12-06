@@ -95,7 +95,8 @@ export class RateLimiter {
     this.config = config;
 
     // Cleanup expired entries every minute
-    setInterval(() => this.cleanup(), 60000);
+    const t = setInterval(() => this.cleanup(), 60000);
+    if (typeof t.unref === 'function') t.unref();
   }
 
   /**
