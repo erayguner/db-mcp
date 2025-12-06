@@ -15,10 +15,6 @@ describe('Environment Configuration', () => {
     BIGQUERY_LOCATION: 'US',
     BIGQUERY_MAX_RETRIES: '3',
     BIGQUERY_TIMEOUT: '60000',
-    ENABLE_CORS: 'true',
-    MAX_QUERY_SIZE_BYTES: '10485760',
-    ENABLE_METRICS: 'true',
-    ENABLE_TRACING: 'false',
   };
 
   it('should validate correct environment configuration', () => {
@@ -41,11 +37,52 @@ describe('Environment Configuration', () => {
     expect(result.success).toBe(false);
   });
 
-  it('should parse boolean strings correctly', () => {
+  it('should transform numeric string values correctly', () => {
     const result = EnvironmentSchema.safeParse(validEnv);
+    expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.ENABLE_CORS).toBe(true);
-      expect(result.data.ENABLE_TRACING).toBe(false);
+      expect(result.data.PORT).toBe(8080);
+      expect(result.data.BIGQUERY_MAX_RETRIES).toBe(3);
+      expect(result.data.BIGQUERY_TIMEOUT).toBe(60000);
     }
+  });
+
+  it('should apply default values when optional fields are missing', () => {
+    const minimalEnv = {
+      GCP_PROJECT_ID: 'test-project',
+      WORKLOAD_IDENTITY_POOL_ID: 'test-pool',
+      WORKLOAD_IDENTITY_PROVIDER_ID: 'test-provider',
+      MCP_SERVICE_ACCOUNT_EMAIL: 'test@test-project.iam.gserviceaccount.com',
+      GOOGLE_WORKSPACE_CLIENT_ID: 'test-client-id',
+      GOOGLE_WORKSPACE_DOMAIN: 'example.com',
+    };
+    const result = EnvironmentSchema.safeParse(minimalEnv);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.PORT).toBe(8080);
+      expect(result.data.LOG_LEVEL).toBe('info');
+      expect(result.data.GCP_REGION).toBe('us-central1');
+      expect(result.data.BIGQUERY_LOCATION).toBe('US');
+      expect(result.data.BIGQUERY_MAX_RETRIES).toBe(3);
+      expect(result.data.BIGQUERY_TIMEOUT).toBe(60000);
+    }
+  });
+
+  it('should validate NODE_ENV enum values', () => {
+    const invalidNodeEnv = {
+      ...validEnv,
+      NODE_ENV: 'invalid',
+    };
+    const result = EnvironmentSchema.safeParse(invalidNodeEnv);
+    expect(result.success).toBe(false);
+  });
+
+  it('should validate LOG_LEVEL enum values', () => {
+    const invalidLogLevel = {
+      ...validEnv,
+      LOG_LEVEL: 'invalid',
+    };
+    const result = EnvironmentSchema.safeParse(invalidLogLevel);
+    expect(result.success).toBe(false);
   });
 });

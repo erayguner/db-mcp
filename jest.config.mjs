@@ -37,10 +37,4 @@ export default {
   ],
   coverageDirectory: '<rootDir>/coverage',
   verbose: true,
-  globals: {
-    'ts-jest': {
-      useESM: true,
-      diagnostics: false,
-    }
-  }
 };
