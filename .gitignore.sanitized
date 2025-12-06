@@ -1,8 +1,0 @@
-# Consolidated sanitized .gitignore (merge into .gitignore)
-# Additions for Claude artifacts and dynamic memory files appended at end.
-
-memory/claude-flow@*-data.json
-.claude/
-docs/.claude-flow/
-terraform/.claude-flow/
-

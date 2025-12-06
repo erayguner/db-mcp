@@ -1,36 +1,41 @@
-# Query Optimization Architecture
+# Architecture Documentation
 
-## Component Overview
+This document redirects to the modular architecture documentation.
 
-The query optimization layer consists of three main components working together to improve BigQuery query performance, reduce costs, and provide visibility into query execution.
+## Full Documentation
 
-## System Architecture
+For comprehensive architecture documentation, see the [architecture/](./architecture/) subdirectory:
+
+| Document | Description |
+|----------|-------------|
+| [System Overview](./architecture/01-system-overview.md) | High-level system design and context |
+| [Component Architecture](./architecture/02-component-architecture.md) | Component structure and interactions |
+| [Data Flow](./architecture/03-data-flow.md) | Request/response patterns |
+| [Security Architecture](./architecture/04-security-architecture.md) | Security design |
+| [Error Handling](./architecture/05-error-handling.md) | Error handling strategies |
+| [Observability](./architecture/06-observability.md) | Monitoring and logging |
+| [Scalability](./architecture/07-scalability.md) | Performance and scaling |
+
+## Quick Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     MCP Request Handler                      │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│              OptimizedQueryExecutor                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ QueryCache   │  │QueryOptimizer│  │QueryMetrics  │      │
-│  │              │  │              │  │   Tracker    │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-└─────────┼──────────────────┼──────────────────┼─────────────┘
-          │                  │                  │
-          ▼                  ▼                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    BigQueryClient                            │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Google BigQuery API                          │
-└─────────────────────────────────────────────────────────────┘
+Client Request
+  ↓
+MCP Protocol Layer (JSON-RPC over stdio)
+  ↓
+Security Middleware (rate limiting, injection detection)
+  ↓
+Tool Handlers (query, list, schema operations)
+  ↓
+BigQuery Client (connection pooling, optimization)
+  ↓
+Workload Identity Federation (keyless auth)
+  ↓
+Google BigQuery API
 ```
 
-## Component Details
+## Related Documentation
 
-See the full architecture documentation for detailed information about data structures, performance optimizations, and integration points.
+- [WIF Architecture](./wif-architecture.md) - Workload Identity Federation details
+- [Security](./SECURITY.md) - Security middleware implementation
+- [Query Optimization](./QUERY_OPTIMIZATION.md) - Query performance optimization
