@@ -8,7 +8,7 @@ import {
   MultiProjectManagerError,
   ProjectNotFoundError,
   PermissionDeniedError,
-} from '../multi-project-manager.js';
+} from '../../src/bigquery/multi-project-manager.js';
 
 describeMP('MultiProjectManager', () => {
   let manager: MultiProjectManager;
