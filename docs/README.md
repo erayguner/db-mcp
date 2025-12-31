@@ -47,9 +47,6 @@ Security design patterns and implementation details.
 ### [authentication-guide.md](./authentication-guide.md)
 Authentication methods and configuration.
 
-### [SECURITY-REVIEW-2025-SUMMARY.md](./SECURITY-REVIEW-2025-SUMMARY.md)
-Security audit findings and recommendations.
-
 ---
 
 ## Deployment
