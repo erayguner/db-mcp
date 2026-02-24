@@ -280,3 +280,12 @@ fixtures/local/
 !tests/data/**/*
 !memory/sessions/README.md
 !memory/agents/README.md
+
+# Test/build artifacts in project root
+jest_config_dump.json
+jest_output.txt
+npm_install.log
+
+# RuVector intelligence data
+.ruvector/
+.claude/statusline.sh

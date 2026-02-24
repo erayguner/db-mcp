@@ -259,7 +259,7 @@ export class BigQueryClient extends EventEmitter {
 
     // All retries exhausted
     throw new BigQueryClientError(
-      `Query failed after ${maxRetries + 1} attempts: ${lastError?.message} `,
+      `Query failed after ${maxRetries + 1} attempts: ${lastError?.message}`,
       'MAX_RETRIES_EXCEEDED',
       lastError,
       false
@@ -639,44 +639,44 @@ export class QueryBuilder {
 
     // SELECT
     if (this.queryParts.select && this.queryParts.select.length > 0) {
-      parts.push(`SELECT ${this.queryParts.select.join(', ')} `);
+      parts.push(`SELECT ${this.queryParts.select.join(', ')}`);
     } else {
       parts.push('SELECT *');
     }
 
     // FROM
     if (this.queryParts.from) {
-      parts.push(`FROM ${this.queryParts.from} `);
+      parts.push(`FROM ${this.queryParts.from}`);
     }
 
     // WHERE
     if (this.queryParts.where && this.queryParts.where.length > 0) {
-      parts.push(`WHERE ${this.queryParts.where.join(' AND ')} `);
+      parts.push(`WHERE ${this.queryParts.where.join(' AND ')}`);
     }
 
     // GROUP BY
     if (this.queryParts.groupBy && this.queryParts.groupBy.length > 0) {
-      parts.push(`GROUP BY ${this.queryParts.groupBy.join(', ')} `);
+      parts.push(`GROUP BY ${this.queryParts.groupBy.join(', ')}`);
     }
 
     // HAVING
     if (this.queryParts.having && this.queryParts.having.length > 0) {
-      parts.push(`HAVING ${this.queryParts.having.join(' AND ')} `);
+      parts.push(`HAVING ${this.queryParts.having.join(' AND ')}`);
     }
 
     // ORDER BY
     if (this.queryParts.orderBy && this.queryParts.orderBy.length > 0) {
-      parts.push(`ORDER BY ${this.queryParts.orderBy.join(', ')} `);
+      parts.push(`ORDER BY ${this.queryParts.orderBy.join(', ')}`);
     }
 
     // LIMIT
     if (this.queryParts.limit !== undefined) {
-      parts.push(`LIMIT ${this.queryParts.limit} `);
+      parts.push(`LIMIT ${this.queryParts.limit}`);
     }
 
     // OFFSET
     if (this.queryParts.offset !== undefined) {
-      parts.push(`OFFSET ${this.queryParts.offset} `);
+      parts.push(`OFFSET ${this.queryParts.offset}`);
     }
 
     return parts.join('\n');

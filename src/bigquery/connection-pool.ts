@@ -322,6 +322,10 @@ export class ConnectionPool extends EventEmitter {
         this.emit('health:check:error', { error: error.message });
       });
     }, this.config.healthCheckIntervalMs);
+    // Prevent keeping the event loop alive in tests
+    if (typeof this.healthCheckInterval.unref === 'function') {
+      this.healthCheckInterval.unref();
+    }
   }
 
   private async performHealthCheck(): Promise<void> {

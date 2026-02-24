@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 
 /**
  * Validation schemas for all MCP tools
@@ -118,30 +119,14 @@ export const TOOL_SCHEMAS = {
 export type ToolName = keyof typeof TOOL_SCHEMAS;
 
 /**
- * JSON Schema Property Definition
- */
-export interface JsonSchemaProperty {
-  type: string;
-  description?: string;
-  enum?: string[];
-  default?: unknown;
-}
-
-/**
- * JSON Schema Definition
+ * JSON Schema Definition (compatible with JSON Schema 7)
  */
 export interface JsonSchema {
-  type: 'object';
-  properties: Record<string, JsonSchemaProperty>;
-  required: string[];
+  type: string;
+  properties?: Record<string, unknown>;
+  required?: string[];
   description?: string;
-}
-
-/**
- * Zod Schema Shape Type Guard
- */
-interface ZodSchemaField {
-  isOptional?(): boolean;
+  [key: string]: unknown;
 }
 
 /**
@@ -176,7 +161,8 @@ export function validateToolArgs<T extends ToolName>(
 }
 
 /**
- * Get tool schema as JSON Schema for MCP tool definition
+ * Get tool schema as JSON Schema for MCP tool definition.
+ * Uses zod-to-json-schema for accurate conversion.
  */
 export function getToolInputSchema(toolName: ToolName): JsonSchema {
   const schema = TOOL_SCHEMAS[toolName];
@@ -185,20 +171,6 @@ export function getToolInputSchema(toolName: ToolName): JsonSchema {
     throw new Error(`Unknown tool: ${toolName}`);
   }
 
-  // Convert Zod schema to JSON Schema
-  // This is a simplified conversion - you may want to use zod-to-json-schema for production
-  const schemaShape = schema.shape as Record<string, ZodSchemaField>;
-
-  return {
-    type: 'object',
-    properties: Object.fromEntries(
-      Object.entries(schemaShape).map(([key]) => [
-        key,
-        { type: 'string' } // Simplified - should properly convert each field type
-      ])
-    ),
-    required: Object.keys(schemaShape).filter(
-      key => !schemaShape[key].isOptional?.()
-    ),
-  };
+  // @ts-expect-error: Type instantiation is excessively deep
+  return zodToJsonSchema(schema, { target: 'jsonSchema7' }) as JsonSchema;
 }

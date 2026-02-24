@@ -489,6 +489,10 @@ export class DatasetManager extends EventEmitter {
       this.emit('discovery:started');
       // Discovery will be triggered by client usage
     }, this.config.discoveryIntervalMs);
+    // Prevent keeping the event loop alive in tests
+    if (typeof this.discoveryInterval.unref === 'function') {
+      this.discoveryInterval.unref();
+    }
   }
 
   /**

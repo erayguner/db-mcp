@@ -26,7 +26,7 @@ import { SecurityMiddleware } from './security/middleware.js';
 import { initializeTelemetry, shutdownTelemetry } from './telemetry/index.js';
 import { recordRequest, trackConnection } from './telemetry/metrics.js';
 import { recordException, setSpanAttributes } from './telemetry/tracing.js';
-import { MCPServerFactory, ServerState } from './mcp/server-factory';
+import { MCPServerFactory, ServerState } from './mcp/server-factory.js';
 import { ToolHandlerFactory, ToolHandlerContext } from './mcp/handlers/tool-handlers.js';
 import { validateToolArgs, ToolName } from './mcp/schemas/tool-schemas.js';
 import { generateToolDefinitions } from './mcp/tools/definitions.js';
