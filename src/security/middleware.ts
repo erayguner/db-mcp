@@ -214,7 +214,9 @@ export class PromptInjectionDetector {
     let sanitized = input;
 
     for (const pattern of this.config.suspiciousPatterns) {
-      const regex = new RegExp(pattern, 'gi');
+      // Escape regex special characters to prevent ReDoS
+      const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'gi');
       sanitized = sanitized.replace(regex, '[REDACTED]');
     }
 
@@ -263,7 +265,7 @@ export class InputValidator {
       /^\s*GRANT\s+/i,
       /UNION\s+SELECT/i,
       /--\s*$/,
-      /\/\*.*\*\//,
+      /\/\*[\s\S]*?\*\//,
     ];
 
     for (const pattern of dangerousPatterns) {
@@ -339,6 +341,14 @@ export class SensitiveDataDetector {
     this.config = config;
   }
 
+  // Patterns for detecting sensitive values regardless of field name
+  private static readonly VALUE_PATTERNS: Array<{ name: string; regex: RegExp }> = [
+    { name: 'credit_card', regex: /\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b/ },
+    { name: 'ssn', regex: /\b\d{3}-\d{2}-\d{4}\b/ },
+    { name: 'bearer_token', regex: /\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b/ },
+    { name: 'api_key_value', regex: /\b(?:AIza|sk-|pk_live_|pk_test_|rk_live_|rk_test_)[A-Za-z0-9_-]{10,}\b/ },
+  ];
+
   /**
    * Check if data contains sensitive information
    */
@@ -354,11 +364,21 @@ export class SensitiveDataDetector {
         const fullPath = path ? `${path}.${key}` : key;
         const keyLower = key.toLowerCase();
 
-        // Check field names
+        // Check field names against configured patterns
         for (const pattern of this.config.sensitiveDataPatterns) {
           if (keyLower.includes(pattern.toLowerCase())) {
             sensitiveFields.push(fullPath);
             break;
+          }
+        }
+
+        // Check string values for sensitive data patterns
+        if (typeof value === 'string') {
+          for (const { name, regex } of SensitiveDataDetector.VALUE_PATTERNS) {
+            if (regex.test(value)) {
+              sensitiveFields.push(`${fullPath}[value:${name}]`);
+              break;
+            }
           }
         }
 
@@ -413,6 +433,19 @@ export class SensitiveDataDetector {
 
       if (isSensitive) {
         redacted[key] = '[REDACTED]';
+      } else if (typeof value === 'string') {
+        // Check string values for sensitive patterns (credit cards, SSNs, etc.)
+        let valueRedacted = false;
+        for (const { regex } of SensitiveDataDetector.VALUE_PATTERNS) {
+          if (regex.test(value)) {
+            redacted[key] = '[REDACTED]';
+            valueRedacted = true;
+            break;
+          }
+        }
+        if (!valueRedacted && typeof value === 'object' && value !== null) {
+          redacted[key] = this.redactSensitiveData(value);
+        }
       } else if (typeof value === 'object' && value !== null) {
         redacted[key] = this.redactSensitiveData(value);
       }
@@ -637,8 +670,10 @@ export class SecurityMiddleware {
     const warnings: string[] = [];
 
     try {
-      // Rate limiting
-      const identifier = params.userId || 'anonymous';
+      // Rate limiting - use userId if available, otherwise use tool name as a
+      // per-tool fallback to prevent one anonymous caller from exhausting limits
+      // for all anonymous users on different tools
+      const identifier = params.userId || `anon:${params.toolName}`;
       const rateLimit = this.rateLimiter.checkRateLimit(identifier);
       if (!rateLimit.allowed) {
         this.auditLogger.logEvent({
@@ -673,7 +708,7 @@ export class SecurityMiddleware {
       // Input validation based on tool type
       const args = params.arguments as { query?: string; datasetId?: string; tableId?: string } | undefined;
 
-      if (params.toolName === 'query_bigquery' && args?.query) {
+      if ((params.toolName === 'query_bigquery' || params.toolName === 'execute_query') && args?.query) {
         const queryValidation = this.inputValidator.validateQuery(args.query);
         if (!queryValidation.valid) {
           this.auditLogger.logEvent({

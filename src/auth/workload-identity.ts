@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { GoogleAuth } from 'google-auth-library';
 import { z } from 'zod';
 import { logger } from '../utils/logger.js';
@@ -136,9 +137,9 @@ export class WorkloadIdentityFederation {
   }
 
   /**
-   * Hash token for cache key (simple hash for demo)
+   * Hash token for cache key using cryptographic hash
    */
   private hashToken(token: string): string {
-    return Buffer.from(token.substring(0, 50)).toString('base64');
+    return createHash('sha256').update(token).digest('hex');
   }
 }

@@ -128,7 +128,8 @@ class PermissionCache {
     this.ttlMs = ttlMs;
 
     // Cleanup expired entries every minute
-    setInterval(() => this.cleanup(), 60000);
+    const t = setInterval(() => this.cleanup(), 60000);
+    if (typeof t.unref === 'function') t.unref();
   }
 
   /**
@@ -269,7 +270,8 @@ class PermissionAuditLogger {
     this.retentionMs = retentionDays * 24 * 60 * 60 * 1000;
 
     // Cleanup old entries every hour
-    setInterval(() => this.cleanup(), 3600000);
+    const t = setInterval(() => this.cleanup(), 3600000);
+    if (typeof t.unref === 'function') t.unref();
   }
 
   /**

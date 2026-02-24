@@ -156,7 +156,15 @@ class OIDCTokenValidator {
   }
 
   /**
-   * Decode JWT without verification
+   * Decode JWT without cryptographic signature verification.
+   *
+   * SECURITY NOTE: This relies on GCP's STS endpoint to verify the token
+   * signature during the token exchange step. The local validation here only
+   * performs structural and claims checks (expiry, issuer, audience).
+   * A forged token will pass local validation but will be rejected by GCP.
+   *
+   * TODO: Add local signature verification using the issuer's JWKS endpoint
+   * for defense-in-depth (e.g., using jose or google-auth-library).
    */
   private decodeJWT(token: string): OIDCTokenClaims {
     try {
@@ -166,7 +174,8 @@ class OIDCTokenValidator {
       }
 
       const payload = parts[1];
-      const decoded = Buffer.from(payload, 'base64').toString('utf-8');
+      // Use base64url decoding (JWTs use URL-safe base64 without padding)
+      const decoded = Buffer.from(payload, 'base64url').toString('utf-8');
       return JSON.parse(decoded) as OIDCTokenClaims;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
