@@ -1,6 +1,6 @@
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { Resource } from '@opentelemetry/resources';
-import { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { TraceExporter } from '@google-cloud/opentelemetry-cloud-trace-exporter';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
@@ -24,14 +24,9 @@ let tracer: ReturnType<typeof trace.getTracer> | null = null;
 export function initializeTracing(serviceName: string, serviceVersion: string, projectId: string): void {
   try {
     // Create resource with service information
-    const resource = new Resource({
-      [SEMRESATTRS_SERVICE_NAME]: serviceName,
-      [SEMRESATTRS_SERVICE_VERSION]: serviceVersion,
-    });
-
-    // Initialize tracer provider
-    tracerProvider = new NodeTracerProvider({
-      resource,
+    const resource = resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: serviceName,
+      [ATTR_SERVICE_VERSION]: serviceVersion,
     });
 
     // Configure Cloud Trace exporter
@@ -39,17 +34,17 @@ export function initializeTracing(serviceName: string, serviceVersion: string, p
       projectId,
     });
 
-    // Add batch span processor for efficient exporting
-    tracerProvider.addSpanProcessor(
-      new BatchSpanProcessor(exporter, {
-        maxQueueSize: 100,
-        maxExportBatchSize: 50,
-        scheduledDelayMillis: 5000,
-      })
-    );
-
-    // Register the provider
-    tracerProvider.register();
+    // Initialize tracer provider with span processor
+    tracerProvider = new NodeTracerProvider({
+      resource,
+      spanProcessors: [
+        new BatchSpanProcessor(exporter, {
+          maxQueueSize: 100,
+          maxExportBatchSize: 50,
+          scheduledDelayMillis: 5000,
+        }),
+      ],
+    });
 
     // Register auto-instrumentations for common libraries
     registerInstrumentations({
@@ -60,7 +55,10 @@ export function initializeTracing(serviceName: string, serviceVersion: string, p
           },
           '@opentelemetry/instrumentation-http': {
             enabled: true,
-            ignoreIncomingPaths: ['/health', '/metrics'],
+            ignoreIncomingRequestHook: (request) => {
+              const ignoredPaths = ['/health', '/metrics'];
+              return ignoredPaths.some((p) => request.url?.startsWith(p));
+            },
           },
         }),
       ],

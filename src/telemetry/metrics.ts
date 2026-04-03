@@ -1,6 +1,6 @@
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { MetricExporter } from '@google-cloud/opentelemetry-cloud-monitoring-exporter';
 import { metrics, Counter, Histogram, UpDownCounter } from '@opentelemetry/api';
 import { logger } from '../utils/logger.js';
@@ -35,9 +35,9 @@ let instruments: MetricInstruments | null = null;
 export function initializeMetrics(serviceName: string, serviceVersion: string, projectId: string) {
   try {
     // Create resource
-    const resource = new Resource({
-      [SEMRESATTRS_SERVICE_NAME]: serviceName,
-      [SEMRESATTRS_SERVICE_VERSION]: serviceVersion,
+    const resource = resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: serviceName,
+      [ATTR_SERVICE_VERSION]: serviceVersion,
     });
 
     // Configure Cloud Monitoring exporter

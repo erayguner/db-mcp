@@ -1,9 +1,13 @@
 # GCP BigQuery MCP Server
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
-[![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
-[![MCP SDK](https://img.shields.io/badge/MCP_SDK-1.24.0-purple)](https://modelcontextprotocol.io)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/erayguner/db-mcp/actions/workflows/deploy.yml/badge.svg)](https://github.com/erayguner/db-mcp/actions/workflows/deploy.yml)
+[![MegaLinter](https://github.com/erayguner/db-mcp/actions/workflows/megalinter.yml/badge.svg)](https://github.com/erayguner/db-mcp/actions/workflows/megalinter.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)](https://www.typescriptlang.org/)
+[![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org/)
+[![MCP SDK](https://img.shields.io/badge/MCP_SDK-1.29-purple)](https://modelcontextprotocol.io)
+[![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-v2-blueviolet)](https://opentelemetry.io/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 Enterprise-grade MCP (Model Context Protocol) server for Google Cloud Platform BigQuery with **Workload Identity Federation** authentication. Provides secure, keyless access to BigQuery through the Model Context Protocol.
 
@@ -63,7 +67,7 @@ db-mcp/
 
 - GCP Project with billing enabled
 - Terraform >= 1.5.0
-- Node.js >= 18.0.0
+- Node.js >= 22.0.0
 - Docker (for containerization)
 
 ### Installation
@@ -219,13 +223,7 @@ GitHub Actions workflow automatically:
 
 ## Contributing
 
-Contributions welcome!
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
@@ -241,4 +239,4 @@ MIT License - see [LICENSE](LICENSE) for details
 
 **Status**: Production Ready
 **Version**: 1.0.0
-**Last Updated**: February 2026
+**Last Updated**: April 2026
