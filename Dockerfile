@@ -1,5 +1,6 @@
 # Build stage
 FROM node:22-alpine AS builder
+RUN apk upgrade --no-cache
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --production=false
@@ -9,6 +10,7 @@ RUN npm run build
 
 # Production stage
 FROM node:22-alpine
+RUN apk upgrade --no-cache
 WORKDIR /app
 
 # Security: run as non-root

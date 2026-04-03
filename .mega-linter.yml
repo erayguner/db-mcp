@@ -72,7 +72,7 @@ JAVASCRIPT_ES_LINTER: eslint
 JAVASCRIPT_ES_FILE_EXTENSIONS: [".js", ".jsx", ".cjs", ".mjs"]
 JAVASCRIPT_ES_FILTER_REGEX_INCLUDE: "(src|tests)/.*\\.js$"
 JAVASCRIPT_ES_FILTER_REGEX_EXCLUDE: "(node_modules|dist|build|coverage)/.*"
-JAVASCRIPT_ES_CONFIG_FILE: .eslintrc.cjs
+JAVASCRIPT_ES_CONFIG_FILE: eslint.config.mjs
 JAVASCRIPT_ES_DISABLE_ERRORS: false
 
 # Prettier - JavaScript/TypeScript formatting
@@ -87,7 +87,7 @@ TYPESCRIPT_ES_LINTER: eslint
 TYPESCRIPT_ES_FILE_EXTENSIONS: [".ts", ".tsx"]
 TYPESCRIPT_ES_FILTER_REGEX_INCLUDE: "(src|tests)/.*\\.ts$"
 TYPESCRIPT_ES_FILTER_REGEX_EXCLUDE: "(node_modules|dist|build|coverage)/.*"
-TYPESCRIPT_ES_CONFIG_FILE: .eslintrc.cjs
+TYPESCRIPT_ES_CONFIG_FILE: eslint.config.mjs
 TYPESCRIPT_ES_DISABLE_ERRORS: false
 
 # ============================================================================
@@ -264,9 +264,7 @@ REPORT_OUTPUT_FOLDER: megalinter-reports
 # PERFORMANCE OPTIMIZATION
 # ============================================================================
 
-# Increase performance with caching
-PLUGINS:
-  - https://raw.githubusercontent.com/oxsecurity/megalinter/main/TEMPLATES/mega-linter-plugin-cache/mega-linter-plugin-cache.sh
+# Caching handled natively in MegaLinter v8
 
 # Validate only changed files in PRs
 VALIDATE_ALL_CODEBASE: false  # Override in CI for main branch pushes
