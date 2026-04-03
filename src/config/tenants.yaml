@@ -1,0 +1,11 @@
+# src/config/tenants.yaml
+tenants:
+  - id: default
+    name: Default Tenant
+    projectId: ${GCP_PROJECT_ID}
+    allowedDatasets:
+      - "*"
+    writeMode: blocked
+    rateLimits:
+      requestsPerMinute: 100
+      queriesPerHour: 1000
