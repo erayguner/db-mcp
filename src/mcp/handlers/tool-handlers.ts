@@ -4,6 +4,7 @@ import {
   validateToolArgs,
   ToolName,
 } from '../schemas/tool-schemas.js';
+import { TenantContext } from '../../tenancy/tenant-context.js';
 
 /**
  * MCP Tool Response Format
@@ -41,6 +42,7 @@ export interface ToolHandlerContext {
   userId?: string;
   requestId?: string;
   metadata?: ToolRequestMetadata;
+  tenantContext?: TenantContext;
 }
 
 /**
@@ -148,11 +150,31 @@ export class QueryBigQueryHandler extends BaseToolHandler {
       const validated = validateToolArgs('query_bigquery', args);
       const { query, dryRun, maxResults, timeoutMs, useLegacySql, location } = validated;
 
+      // Enforce tenant dataset policy
+      if (this.context.tenantContext) {
+        const policyResult = this.context.tenantContext.policy.validateQuery(query);
+        if (!policyResult.allowed) {
+          logger.warn('Query blocked by tenant policy', {
+            tenant: this.context.tenantContext.tenantId,
+            reason: policyResult.reason,
+            requestId: this.context.requestId,
+          });
+          return this.formatError(
+            policyResult.reason || 'Query not allowed by tenant policy',
+            'TENANT_POLICY_VIOLATION'
+          );
+        }
+      }
+
       logger.info('Executing BigQuery query', {
         queryLength: query.length,
         dryRun,
         requestId: this.context.requestId,
+        tenant: this.context.tenantContext?.tenantId,
       });
+
+      // Apply per-tenant maxBytesBilled
+      const maxBytesBilled = this.context.tenantContext?.policy.getMaxBytesBilled();
 
       // Execute dry run if requested
       if (dryRun) {
@@ -175,6 +197,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         jobTimeoutMs: timeoutMs,
         useLegacySql,
         location,
+        maximumBytesBilled: maxBytesBilled,
       });
 
       // Use streaming response for large result sets
