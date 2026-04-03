@@ -30,6 +30,14 @@ import { MCPServerFactory, ServerState } from './mcp/server-factory.js';
 import { ToolHandlerFactory, ToolHandlerContext } from './mcp/handlers/tool-handlers.js';
 import { validateToolArgs, ToolName } from './mcp/schemas/tool-schemas.js';
 import { generateToolDefinitions } from './mcp/tools/definitions.js';
+import {
+  initializeMcpMetrics,
+  startToolTimer,
+  recordProtocolMethod,
+  recordPayloadSize,
+  recordSecurityEvent,
+  recordErrorByCode,
+} from './mcp/mcp-metrics.js';
 
 /** Server version — single source of truth */
 const SERVER_VERSION = '1.0.0';
@@ -298,6 +306,7 @@ export class MCPBigQueryServer {
     try {
       server.setRequestHandler(ListToolsRequestSchema, () => {
         logger.debug('Handling list_tools request');
+        recordProtocolMethod('list_tools');
         const tools = generateToolDefinitions(this.getToolDescription.bind(this));
         logger.info('Listed tools', { count: tools.length });
         return { tools };
@@ -327,14 +336,19 @@ export class MCPBigQueryServer {
       const { name, arguments: args } = typedReq.params;
       const requestId = crypto.randomUUID();
 
+      const requestBytes = args ? JSON.stringify(args).length : 0;
+
       logger.info('Handling tool call', {
         tool: name,
         requestId,
-        hasArgs: !!args
+        hasArgs: !!args,
+        requestBytes,
       });
 
-      // Track connection
+      // Track connection and start latency timer
+      recordProtocolMethod('call_tool');
       trackConnection(1);
+      const stopTimer = startToolTimer(name);
 
       try {
         // ==========================================
@@ -353,6 +367,14 @@ export class MCPBigQueryServer {
             requestId,
           });
           recordRequest(name, false);
+          stopTimer(false);
+          recordSecurityEvent(
+            validation.error?.includes('rate') ? 'rate_limited' :
+            validation.error?.includes('injection') ? 'injection_blocked' :
+            'unauthorized',
+            name
+          );
+          recordErrorByCode(ErrorCode.SECURITY_VALIDATION_FAILED, name);
 
           return {
             content: [{
@@ -397,6 +419,8 @@ export class MCPBigQueryServer {
             requestId,
           });
           recordRequest(name, false);
+          stopTimer(false);
+          recordErrorByCode(ErrorCode.VALIDATION_ERROR, name);
 
           return {
             content: [{
@@ -468,12 +492,18 @@ export class MCPBigQueryServer {
         // ==========================================
         // 6. Record Success Metrics
         // ==========================================
-        recordRequest(name, !result.isError);
+        const success = !result.isError;
+        recordRequest(name, success);
+        stopTimer(success);
+
+        const responseBytes = result.content ? JSON.stringify(result.content).length : 0;
+        recordPayloadSize('call_tool', requestBytes, responseBytes);
 
         logger.info('Tool execution completed', {
           tool: name,
-          success: !result.isError,
+          success,
           requestId,
+          responseBytes,
         });
 
         return result;
@@ -486,6 +516,8 @@ export class MCPBigQueryServer {
         });
         recordRequest(name, false);
         recordException(error as Error);
+        stopTimer(false);
+        recordErrorByCode(ErrorCode.TOOL_EXECUTION_FAILED, name);
 
         return {
           content: [{
@@ -510,6 +542,7 @@ export class MCPBigQueryServer {
     try {
       server.setRequestHandler(ListResourcesRequestSchema, () => {
         logger.debug('Handling list_resources request');
+        recordProtocolMethod('list_resources');
 
         return {
           resources: [
@@ -535,6 +568,7 @@ export class MCPBigQueryServer {
        const { uri } = typedReq.params;
 
        logger.info('Handling read_resource request', { uri });
+       recordProtocolMethod('read_resource');
 
        // Ensure BigQuery is initialized
        if (!this.bigQueryClient) {
@@ -583,6 +617,9 @@ export class MCPBigQueryServer {
 
       // 1. Initialize telemetry first (for observability during startup)
       this.initializeTelemetrySystem();
+
+      // 1b. Initialize MCP-layer metrics (requires meter provider from step 1)
+      initializeMcpMetrics('mcp-bigquery-server');
 
       // 2. Setup MCP request handlers
       this.setupHandlers();

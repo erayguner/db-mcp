@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import express, { Request, Response, NextFunction } from 'express';
 import { logger } from '../../utils/logger.js';
+import { recordHttpRequest, trackHttpConnection } from '../mcp-metrics.js';
+import { getPrometheusExporter } from '../../telemetry/metrics.js';
 
 export const HttpTransportConfigSchema = z.object({
   port: z.number().min(1).max(65535).default(8080),
@@ -29,7 +31,7 @@ export function createHttpApp(config: HttpTransportConfig): express.Application 
     const origin = _req.headers.origin;
     if (origin && (config.corsOrigins.includes('*') || config.corsOrigins.includes(origin))) {
       res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       res.setHeader('Access-Control-Max-Age', '86400');
     }
@@ -37,6 +39,28 @@ export function createHttpApp(config: HttpTransportConfig): express.Application 
       res.status(204).end();
       return;
     }
+    next();
+  });
+
+  // Request instrumentation middleware — tracks HTTP latency, status, connections
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const start = performance.now();
+    trackHttpConnection(1);
+
+    res.on('finish', () => {
+      const durationMs = performance.now() - start;
+      trackHttpConnection(-1);
+      recordHttpRequest(req.method, res.statusCode, durationMs);
+
+      logger.debug('HTTP request completed', {
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        durationMs: Math.round(durationMs),
+        contentLength: res.getHeader('content-length'),
+      });
+    });
+
     next();
   });
 
@@ -52,9 +76,26 @@ export function createHttpApp(config: HttpTransportConfig): express.Application 
     res.json({ ready: true, timestamp: new Date().toISOString() });
   });
 
+  // Prometheus metrics endpoint
+  app.get('/metrics', (_req: Request, res: Response) => {
+    const exporter = getPrometheusExporter();
+    if (!exporter) {
+      res.status(503).json({ error: 'Metrics not initialized' });
+      return;
+    }
+
+    try {
+      exporter.getMetricsRequestHandler(_req, res);
+    } catch (error) {
+      logger.error('Failed to serve metrics', { error });
+      res.status(500).json({ error: 'Failed to collect metrics' });
+    }
+  });
+
   logger.info('HTTP transport app created', {
     basePath: config.basePath,
     port: config.port,
+    endpoints: ['/health', '/readiness', '/metrics'],
   });
 
   return app;

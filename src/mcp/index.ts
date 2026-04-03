@@ -23,6 +23,17 @@ export {
 } from './handlers/tool-handlers.js';
 
 export {
+  initializeMcpMetrics,
+  startToolTimer,
+  recordProtocolMethod,
+  recordPayloadSize,
+  recordSecurityEvent,
+  recordErrorByCode,
+  recordHttpRequest,
+  trackHttpConnection,
+} from './mcp-metrics.js';
+
+export {
   TOOL_SCHEMAS,
   ToolName,
   validateToolArgs,

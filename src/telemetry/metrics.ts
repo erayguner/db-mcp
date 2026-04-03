@@ -1,4 +1,5 @@
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { MetricExporter } from '@google-cloud/opentelemetry-cloud-monitoring-exporter';
@@ -18,6 +19,7 @@ import { logger } from '../utils/logger.js';
 
 let meterProvider: MeterProvider | null = null;
 let meter: ReturnType<typeof metrics.getMeter> | null = null;
+let prometheusExporter: PrometheusExporter | null = null;
 
 // Metric instruments
 interface MetricInstruments {
@@ -45,16 +47,21 @@ export function initializeMetrics(serviceName: string, serviceVersion: string, p
       projectId,
     });
 
-    // Create metric reader with periodic export
+    // Create metric reader with periodic export (push to Cloud Monitoring)
     const metricReader = new PeriodicExportingMetricReader({
       exporter,
       exportIntervalMillis: 60000, // Export every 60 seconds
     });
 
-    // Initialize meter provider
+    // Create Prometheus exporter (pull via /metrics endpoint)
+    prometheusExporter = new PrometheusExporter(
+      { preventServerStart: true }, // We mount the endpoint on our own Express app
+    );
+
+    // Initialize meter provider with both readers
     meterProvider = new MeterProvider({
       resource,
-      readers: [metricReader],
+      readers: [metricReader, prometheusExporter],
     });
 
     // Set global meter provider
@@ -194,6 +201,13 @@ export function trackConnection(delta: 1 | -1) {
   if (instruments) {
     instruments.activeConnections.add(delta);
   }
+}
+
+/**
+ * Get the Prometheus exporter for mounting on an Express app.
+ */
+export function getPrometheusExporter(): PrometheusExporter | null {
+  return prometheusExporter;
 }
 
 /**

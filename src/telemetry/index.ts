@@ -28,6 +28,7 @@ export {
   recordAuthAttempt,
   trackConnection,
   shutdownMetrics,
+  getPrometheusExporter,
 } from './metrics.js';
 
 import { initializeTracing, shutdownTracing } from './tracing.js';
