@@ -163,8 +163,8 @@ class OIDCTokenValidator {
    * performs structural and claims checks (expiry, issuer, audience).
    * A forged token will pass local validation but will be rejected by GCP.
    *
-   * TODO: Add local signature verification using the issuer's JWKS endpoint
-   * for defense-in-depth (e.g., using jose or google-auth-library).
+   * Local signature verification via JWKS is handled by OIDCAuthenticator.
+   * See src/auth/oidc-authenticator.ts for full JWKS-based verification.
    */
   private decodeJWT(token: string): OIDCTokenClaims {
     try {

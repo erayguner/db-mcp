@@ -82,7 +82,7 @@ jobs:
       # Run MegaLinter with comprehensive security and quality checks
       - name: MegaLinter Analysis
         id: ml
-        uses: oxsecurity/megalinter@v7
+        uses: oxsecurity/megalinter@v8
         env:
           # Validate all source code
           VALIDATE_ALL_CODEBASE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -218,7 +218,7 @@ jobs:
 
       # Optional: Upload SARIF results for GitHub Security tab
       - name: Upload SARIF Results
-        if: always() && fileExists('megalinter-reports/megalinter.sarif')
+        if: always() && hashFiles('megalinter-reports/megalinter.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: megalinter-reports/megalinter.sarif

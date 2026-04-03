@@ -21,18 +21,21 @@ export const TenantConfigSchema = z
       .min(1, 'At least one dataset must be allowed (use "*" for all)'),
     deniedDatasets: z.array(z.string()).default([]),
     writeMode: z.nativeEnum(WriteMode).default(WriteMode.BLOCKED),
-    maxBytesPerQuery: z.string().optional(),
+    maxBytesPerQuery: z.string().regex(/^\d+$/, 'maxBytesPerQuery must be a numeric string').optional(),
     rateLimits: z
       .object({
         requestsPerMinute: z.number().min(1).default(100),
         queriesPerHour: z.number().min(1).default(1000),
       })
       .default({}),
-    oidcSubjectPattern: z.string().optional(),
+    oidcSubjectPattern: z
+      .string()
+      .refine(
+        (s) => { try { new RegExp(s); return true; } catch { return false; } },
+        { message: 'oidcSubjectPattern must be a valid regular expression' }
+      )
+      .optional(),
     allowedTools: z.array(z.string()).optional(),
-  })
-  .refine((data) => data.allowedDatasets.length > 0 || data.deniedDatasets.length > 0, {
-    message: 'Must specify allowedDatasets or deniedDatasets',
   });
 
 export type TenantConfig = z.infer<typeof TenantConfigSchema>;

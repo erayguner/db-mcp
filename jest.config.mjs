@@ -21,7 +21,14 @@ export default {
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',
-      { useESM: true, diagnostics: false },
+      {
+          useESM: true,
+          diagnostics: false,
+          tsconfig: {
+            module: 'ES2022',
+            moduleResolution: 'bundler',
+          },
+        },
     ],
   },
   transformIgnorePatterns: ['/node_modules/(?!(@modelcontextprotocol)/)'],

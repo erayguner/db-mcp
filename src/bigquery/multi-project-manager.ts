@@ -295,32 +295,26 @@ export class MultiProjectManager extends EventEmitter {
   /**
    * Initialize all configured projects
    */
-  private async initialize(): Promise<void> {
+  private initialize(): void {
     try {
       this.emit('initialization:started', {
         projectCount: this.config.projects.length,
       });
 
-      // Initialize projects in parallel
-      const initPromises = this.config.projects.map(projectConfig =>
-        this.initializeProject(projectConfig)
-      );
-
-      const results = await Promise.allSettled(initPromises);
-
-      // Track initialization results
+      // Initialize projects
       let successCount = 0;
       let failureCount = 0;
 
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled') {
+      this.config.projects.forEach((projectConfig, index) => {
+        try {
+          this.initializeProject(projectConfig);
           successCount++;
-        } else {
+        } catch (err) {
           failureCount++;
           const projectId = this.config.projects[index].projectId;
           this.emit('project:initialization:failed', {
             projectId,
-            error: result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
+            error: err instanceof Error ? err : new Error(String(err)),
           });
         }
       });

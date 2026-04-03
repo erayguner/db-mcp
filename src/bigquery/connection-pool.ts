@@ -1,4 +1,4 @@
-import { BigQuery } from '@google-cloud/bigquery';
+import { BigQuery, type BigQueryOptions } from '@google-cloud/bigquery';
 import { z } from 'zod';
 import { EventEmitter } from 'events';
 
@@ -120,21 +120,18 @@ export class ConnectionPool extends EventEmitter {
   }
 
   private createConnection(): PooledConnection {
-    const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      const clientConfig: any = {
+      const clientConfig: BigQueryOptions = {
         projectId: this.config.projectId,
         keyFilename: this.config.keyFilename,
       };
 
       if (this.config.credentials !== undefined) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        clientConfig.credentials = this.config.credentials;
+        clientConfig.credentials = this.config.credentials as BigQueryOptions['credentials'];
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       const client = new BigQuery(clientConfig);
 
       const connection: PooledConnection = {

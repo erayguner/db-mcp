@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
+import { logger } from '../utils/logger.js';
 
 // Load environment variables
 dotenv.config();
@@ -53,7 +54,7 @@ export function loadEnvironment(): Environment {
   try {
     return EnvironmentSchema.parse(process.env);
   } catch (error) {
-    console.error('Environment validation failed:', error);
+    logger.error('Environment validation failed', { error });
     throw new Error('Invalid environment configuration');
   }
 }

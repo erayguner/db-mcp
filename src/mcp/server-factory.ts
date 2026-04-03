@@ -142,12 +142,8 @@ export class MCPServerFactory extends EventEmitter {
       return ({
         setRequestHandler: (schema: unknown, handler: (req: unknown) => unknown) => {
           const keyCandidate = typeof schema === 'object' && schema !== null
-            ? // try to derive a stable key from known fields if present
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              ((schema as { method?: unknown }).method ??
-               // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            ? ((schema as { method?: unknown }).method ??
                (schema as { title?: unknown }).title ??
-               // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
                (schema as { name?: unknown }).name)
             : undefined;
           const key = typeof keyCandidate === 'string' ? keyCandidate : Symbol('handler');

@@ -370,7 +370,7 @@ export class CredentialManager {
         }
         // Client doesn't support getAccessToken, refresh
         logger.debug('Current client does not support getAccessToken, refreshing');
-      } catch (error) {
+      } catch (_error) {
         // Token expired or invalid, refresh
         logger.debug('Current client invalid, refreshing');
       }

@@ -1,0 +1,11 @@
+# Default owner for everything
+* @erayguner
+
+# Infrastructure
+/terraform/ @erayguner
+/Dockerfile @erayguner
+/.github/ @erayguner
+
+# Security-sensitive paths
+/src/auth/ @erayguner
+/src/security/ @erayguner

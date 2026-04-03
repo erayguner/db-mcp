@@ -240,6 +240,8 @@ scripts/*.backup
 # Misc
 # ============================================
 
+*.tgz
+.eslintcache
 .envrc
 .env.production.local
 .env.development.local

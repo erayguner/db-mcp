@@ -31,6 +31,17 @@ import { ToolHandlerFactory, ToolHandlerContext } from './mcp/handlers/tool-hand
 import { validateToolArgs, ToolName } from './mcp/schemas/tool-schemas.js';
 import { generateToolDefinitions } from './mcp/tools/definitions.js';
 
+/** Server version — single source of truth */
+const SERVER_VERSION = '1.0.0';
+
+/** Tool descriptions — single source of truth */
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  query_bigquery: 'Execute a SQL query on BigQuery datasets',
+  list_datasets: 'List all available BigQuery datasets',
+  list_tables: 'List tables in a dataset',
+  get_table_schema: 'Get schema for a specific table',
+};
+
 /**
  * Event payload interfaces for MCPServerFactory events
  */
@@ -130,7 +141,7 @@ export class MCPBigQueryServer {
     // Initialize MCP Server Factory with comprehensive config
     this.serverFactory = new MCPServerFactory({
       name: 'gcp-bigquery-mcp-server',
-      version: '1.0.0',
+      version: SERVER_VERSION,
       description: 'MCP server for BigQuery with Workload Identity Federation',
       capabilities: {
         tools: true,
@@ -150,7 +161,7 @@ export class MCPBigQueryServer {
     this.setupServerEventListeners();
 
     logger.info('MCP BigQuery Server constructed', {
-      version: '1.0.0',
+      version: SERVER_VERSION,
       environment: this.env.NODE_ENV,
       securityEnabled: true,
     });
@@ -160,19 +171,12 @@ export class MCPBigQueryServer {
    * Register security tools for validation and change detection
    */
   private registerSecurityTools(): void {
-    const toolDefinitions = [
-      { name: 'query_bigquery', description: 'Execute a SQL query on BigQuery datasets' },
-      { name: 'list_datasets', description: 'List all available BigQuery datasets' },
-      { name: 'list_tables', description: 'List tables in a dataset' },
-      { name: 'get_table_schema', description: 'Get schema for a specific table' },
-    ];
-
     const validator = this.security.getToolValidator();
-    toolDefinitions.forEach(({ name, description }) => {
+    for (const [name, description] of Object.entries(TOOL_DESCRIPTIONS)) {
       validator.registerTool(name, description);
-    });
+    }
 
-    logger.info('Registered security tools', { count: toolDefinitions.length });
+    logger.info('Registered security tools', { count: Object.keys(TOOL_DESCRIPTIONS).length });
   }
 
   /**
@@ -265,7 +269,7 @@ export class MCPBigQueryServer {
     try {
       initializeTelemetry(
         'mcp-bigquery-server',
-        '1.0.0',
+        SERVER_VERSION,
         this.env.GCP_PROJECT_ID
       );
 
@@ -288,22 +292,18 @@ export class MCPBigQueryServer {
 
     // Removed direct capability mutation to avoid unsafe any assignments
 
-    // Existing low-level handlers remain for backward compatibility
     // ==========================================
     // List Tools Handler
     // ==========================================
-    const isTestEnv = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
-    if (!isTestEnv) {
-      try {
-        server.setRequestHandler(ListToolsRequestSchema, () => {
-          logger.debug('Handling list_tools request');
-          const tools = generateToolDefinitions(this.getToolDescription.bind(this));
-          logger.info('Listed tools', { count: tools.length });
-          return { tools };
-        });
-      } catch (err) {
-        logger.warn('Skipping list_tools handler registration due to capability assertion', { error: (err as Error).message });
-      }
+    try {
+      server.setRequestHandler(ListToolsRequestSchema, () => {
+        logger.debug('Handling list_tools request');
+        const tools = generateToolDefinitions(this.getToolDescription.bind(this));
+        logger.info('Listed tools', { count: tools.length });
+        return { tools };
+      });
+    } catch (err) {
+      logger.warn('Skipping list_tools handler registration', { error: (err as Error).message });
     }
 
     // ==========================================
@@ -507,60 +507,56 @@ export class MCPBigQueryServer {
     // ==========================================
     // List Resources Handler
     // ==========================================
-    if (!isTestEnv) {
-      try {
-        server.setRequestHandler(ListResourcesRequestSchema, () => {
-          logger.debug('Handling list_resources request');
+    try {
+      server.setRequestHandler(ListResourcesRequestSchema, () => {
+        logger.debug('Handling list_resources request');
 
-          return {
-            resources: [
-              {
-                uri: 'bigquery://datasets',
-                name: 'BigQuery Datasets',
-                description: 'List of available BigQuery datasets',
-                mimeType: 'application/json',
-              },
-            ],
-          };
-        });
-      } catch (err) {
-        logger.warn('Skipping list_resources handler registration due to capability assertion', { error: (err as Error).message });
-      }
+        return {
+          resources: [
+            {
+              uri: 'bigquery://datasets',
+              name: 'BigQuery Datasets',
+              description: 'List of available BigQuery datasets',
+              mimeType: 'application/json',
+            },
+          ],
+        };
+      });
+    } catch (err) {
+      logger.warn('Skipping list_resources handler registration', { error: (err as Error).message });
     }
 
     // ==========================================
     // Read Resource Handler
     // ==========================================
-    if (!isTestEnv) {
-      try {
-        server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-         const typedReq = request as MCPGenericRequest<{ uri: string }>;
-         const { uri } = typedReq.params;
+    try {
+      server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+       const typedReq = request as MCPGenericRequest<{ uri: string }>;
+       const { uri } = typedReq.params;
 
-         logger.info('Handling read_resource request', { uri });
+       logger.info('Handling read_resource request', { uri });
 
-         // Ensure BigQuery is initialized
-         if (!this.bigQueryClient) {
-           await this.initializeBigQuery();
-         }
+       // Ensure BigQuery is initialized
+       if (!this.bigQueryClient) {
+         await this.initializeBigQuery();
+       }
 
-         if (uri === 'bigquery://datasets') {
-           const datasets = await this.bigQueryClient!.listDatasets();
+       if (uri === 'bigquery://datasets') {
+         const datasets = await this.bigQueryClient!.listDatasets();
 
-           return {
-             contents: [{
-               uri,
-               mimeType: 'application/json',
-               text: JSON.stringify({ datasets }, null, 2),
-             }],
-           };
-         }
+         return {
+           contents: [{
+             uri,
+             mimeType: 'application/json',
+             text: JSON.stringify({ datasets }, null, 2),
+           }],
+         };
+       }
 
-         throw new Error(`Unknown resource: ${uri}`);
-        });
-      } catch (err) {
-        logger.warn('Skipping read_resource handler registration due to capability assertion', { error: (err as Error).message });
-      }
+       throw new Error(`Unknown resource: ${uri}`);
+      });
+    } catch (err) {
+      logger.warn('Skipping read_resource handler registration', { error: (err as Error).message });
     }
 
     logger.info('Request handlers configured');
@@ -570,13 +566,7 @@ export class MCPBigQueryServer {
    * Get tool description by name
    */
   private getToolDescription(name: string): string {
-    const descriptions: Record<string, string> = {
-      query_bigquery: 'Execute a SQL query on BigQuery datasets',
-      list_datasets: 'List all available BigQuery datasets',
-      list_tables: 'List tables in a dataset',
-      get_table_schema: 'Get schema for a specific table',
-    };
-    return descriptions[name] || 'BigQuery tool';
+    return TOOL_DESCRIPTIONS[name] || 'BigQuery tool';
   }
 
   /**
@@ -603,7 +593,7 @@ export class MCPBigQueryServer {
       this.initialized = true;
 
       logger.info('MCP BigQuery Server started successfully', {
-        version: '1.0.0',
+        version: SERVER_VERSION,
         state: this.serverFactory.getState(),
         metadata: this.serverFactory.getMetadata(),
       });

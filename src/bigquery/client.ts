@@ -447,7 +447,7 @@ export class BigQueryClient extends EventEmitter {
       } finally {
         this.connectionPool.release(client);
       }
-    } catch (error) {
+    } catch (_error) {
       return false;
     }
   }

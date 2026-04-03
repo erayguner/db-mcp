@@ -171,6 +171,5 @@ export function getToolInputSchema(toolName: ToolName): JsonSchema {
     throw new Error(`Unknown tool: ${toolName}`);
   }
 
-  // @ts-expect-error: Type instantiation is excessively deep
   return zodToJsonSchema(schema, { target: 'jsonSchema7' }) as JsonSchema;
 }

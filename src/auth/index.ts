@@ -30,6 +30,13 @@ export type {
   WorkspaceUser,
 } from './google-workspace.js';
 
+// OIDC Authentication
+export { OIDCAuthenticator, OIDCAuthenticationError } from './oidc-authenticator.js';
+export type {
+  OIDCConfig,
+  AuthenticatedPrincipal,
+} from './oidc-authenticator.js';
+
 // Audit Logging
 export {
   SecurityAuditLogger,

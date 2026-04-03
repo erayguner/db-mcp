@@ -17,12 +17,11 @@ export interface ToolDefinition {
  * Generate tool definitions combining input and output schemas.
  */
 export function generateToolDefinitions(getDescription: (name: string) => string): ToolDefinition[] {
-  const entries = Object.entries(TOOL_SCHEMAS) as [string, z.ZodTypeAny][];
+  const entries = Object.entries(TOOL_SCHEMAS);
 
   return entries.map(([name, schema]) => {
-    // @ts-expect-error: Type instantiation is excessively deep
-    const inputSchema = zodToJsonSchema(schema, { target: 'jsonSchema7' });
-    const outputZod = OUTPUT_SCHEMAS[name as keyof typeof OUTPUT_SCHEMAS] as z.ZodTypeAny | undefined;
+    const inputSchema = zodToJsonSchema(schema as z.ZodType, { target: 'jsonSchema7' });
+    const outputZod = OUTPUT_SCHEMAS[name as keyof typeof OUTPUT_SCHEMAS] as z.ZodType | undefined;
     const outputSchema = outputZod
       ? zodToJsonSchema(outputZod, { target: 'jsonSchema7' })
       : undefined;
