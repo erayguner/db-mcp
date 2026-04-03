@@ -34,6 +34,14 @@ export const EnvironmentSchema = z.object({
   BIGQUERY_LOCATION: z.string().default('US'),
   BIGQUERY_MAX_RETRIES: z.string().transform(Number).default('3'),
   BIGQUERY_TIMEOUT: z.string().transform(Number).default('60000'),
+
+  // Transport
+  MCP_TRANSPORT: z.enum(['stdio', 'http']).default('stdio'),
+  MCP_HTTP_PORT: z.string().transform(Number).default('8080'),
+
+  // Tenancy
+  TENANT_CONFIG_PATH: z.string().default('./src/config/tenants.yaml'),
+  TENANT_HOT_RELOAD: z.string().transform(v => v === 'true').default('true'),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
