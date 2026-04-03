@@ -201,3 +201,9 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "mcp_transport" {
+  description = "MCP transport type (stdio or http)"
+  type        = string
+  default     = "http"
+}

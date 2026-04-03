@@ -29,6 +29,22 @@ resource "google_cloud_run_service" "mcp_server" {
           }
         }
 
+        # Transport configuration
+        env {
+          name  = "MCP_TRANSPORT"
+          value = "http"
+        }
+
+        env {
+          name  = "MCP_HTTP_PORT"
+          value = "8080"
+        }
+
+        env {
+          name  = "TENANT_CONFIG_PATH"
+          value = "/config/tenants.yaml"
+        }
+
         # Environment variables for security configuration
         env {
           name  = "NODE_ENV"
@@ -313,4 +329,14 @@ resource "google_bigquery_dataset_iam_member" "log_sink_writer" {
   role       = "roles/bigquery.dataEditor"
   member     = google_logging_project_sink.mcp_security_logs.writer_identity
   project    = var.project_id
+}
+
+# Secret Manager resource for tenant config
+resource "google_secret_manager_secret" "tenant_config" {
+  project   = var.project_id
+  secret_id = "mcp-tenant-config-${var.environment}"
+
+  replication {
+    auto {}
+  }
 }
