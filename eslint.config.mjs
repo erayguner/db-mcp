@@ -24,6 +24,9 @@ export default tseslint.config(
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+      // New in ESLint 10 — disable for pre-existing code patterns
+      'no-useless-assignment': 'off',
+      'preserve-caught-error': 'off',
     },
   },
   {
