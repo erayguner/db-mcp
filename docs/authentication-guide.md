@@ -24,6 +24,11 @@ The BigQuery MCP Server implements comprehensive enterprise-grade authentication
 │  │ Authenticator│  │ Auth         │  │ Manager      │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 │         │                  │                 │               │
+│  ┌──────────────┐          │                 │               │
+│  │ OIDC         │          │                 │               │
+│  │ Authenticator│          │                 │               │
+│  └──────────────┘          │                 │               │
+│         │                  │                 │               │
 │         └──────────────────┴─────────────────┘               │
 │                            │                                  │
 │                  ┌─────────▼─────────┐                       │
@@ -32,6 +37,57 @@ The BigQuery MCP Server implements comprehensive enterprise-grade authentication
 │                  └───────────────────┘                       │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## OIDC Authentication (New)
+
+The server now supports generic OIDC JWT authentication with any compliant identity provider (Google, Okta, Auth0, Azure AD).
+
+### Configuration
+
+```typescript
+import { OIDCAuthenticator } from './src/auth/oidc-authenticator.js';
+
+const authenticator = new OIDCAuthenticator({
+  issuer: 'https://accounts.google.com',
+  audience: 'my-mcp-server',
+  jwksUri: 'https://www.googleapis.com/oauth2/v3/certs', // optional, auto-discovered
+  requiredScopes: ['bigquery.readonly'],
+  clockToleranceSec: 30, // default
+});
+
+const principal = await authenticator.authenticate('Bearer <jwt-token>');
+// Returns: { subject, email, issuer, audience, scopes, claims, authenticatedAt }
+```
+
+### Auth Middleware
+
+The `AuthMiddleware` wraps the OIDC authenticator for use in the MCP request pipeline:
+
+```typescript
+import { AuthMiddleware } from './src/auth/auth-middleware.js';
+
+const authMiddleware = new AuthMiddleware({
+  oidc: {
+    issuer: 'https://accounts.google.com',
+    audience: 'my-mcp-server',
+  },
+  requireAuth: true,
+  bypassTools: ['list_tools'], // tools that don't need auth
+});
+
+const result = await authMiddleware.authenticate(requestHeaders);
+if (!result.authenticated) {
+  // Handle auth failure
+}
+// result.principal contains the authenticated user info
+```
+
+### Tenant Resolution
+
+Authenticated principals are automatically resolved to tenants via the `TenantContextFactory`:
+- Email patterns in `tenants.yaml` (`oidcSubjectPattern`) match against JWT claims
+- Falls back to a default tenant if no pattern matches
+- Each tenant gets isolated dataset access policies
 
 ## 1. Workload Identity Federation (WIF)
 

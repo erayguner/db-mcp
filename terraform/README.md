@@ -11,6 +11,8 @@ Complete Terraform infrastructure for deploying a GCP BigQuery MCP Server with *
 - **Comprehensive Audit Logging**: 7-year retention for compliance
 - **VPC Service Controls**: Data exfiltration prevention
 - **Multi-Environment Support**: Dev, Staging, Production
+- **Secret Manager Integration**: Tenant configuration stored securely
+- **HTTP Transport**: Cloud Run configured for port 8080 HTTP ingress
 
 ## 📁 Project Structure
 
@@ -25,7 +27,7 @@ terraform/
 │   ├── workload-identity-federation/  # WIF configuration
 │   ├── iam/                           # Service accounts and permissions
 │   ├── bigquery/                      # Datasets and encryption
-│   ├── cloud-run/                     # MCP server deployment
+│   ├── cloud-run/                     # MCP server deployment (incl. Secret Manager resources for tenant config)
 │   ├── networking/                    # VPC and security
 │   └── monitoring/                    # Logging and alerting
 └── environments/
@@ -109,6 +111,8 @@ labels = {
   team        = "data"
   cost_center = "engineering"
 }
+
+mcp_transport = "http"  # MCP transport type (default: "http")
 ```
 
 ### Step 4: Deploy Infrastructure

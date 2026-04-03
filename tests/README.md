@@ -6,12 +6,27 @@ Comprehensive test suite for the BigQuery MCP server with unit tests, integratio
 
 ```
 tests/
-├── unit/                    # Unit tests for individual components
+├── unit/
+│   ├── auth/
+│   │   ├── oidc-authenticator.test.ts     # OIDC JWT validation
+│   │   └── auth-middleware.test.ts         # Auth middleware
+│   ├── tenancy/
+│   │   ├── tenant-config.test.ts          # Tenant config schema
+│   │   ├── tenant-registry.test.ts        # Tenant registry
+│   │   ├── dataset-policy.test.ts         # Dataset access policy
+│   │   └── tenant-context.test.ts         # Tenant context factory
+│   ├── mcp/
+│   │   ├── annotations.test.ts            # MCP tool annotations
+│   │   ├── http-transport.test.ts         # HTTP transport config
+│   │   ├── tool-handlers.test.ts          # Tool handler tests
+│   │   └── ...
 │   ├── bigquery-client.test.ts
-│   └── security-middleware.test.ts
-├── integration/             # Integration tests for full workflows
+│   ├── security-middleware.test.ts         # Includes per-tenant rate limiting
+│   └── ...
+├── integration/
+│   ├── tenant-isolation.test.ts           # Multi-tenant isolation
 │   ├── mcp-server.test.ts
-│   └── security.test.ts
+│   └── ...
 ├── performance/             # Performance benchmarks
 │   └── benchmarks.test.ts
 ├── fixtures/                # Test data and mocks
@@ -65,7 +80,7 @@ npm run test:coverage
 
 ### Unit Tests
 
-#### BigQuery Client (`bigquery-client.test.ts`)
+#### BigQuery Client (`unit/bigquery-client.test.ts`)
 - Constructor and initialization
 - Query execution
 - Dry run cost estimation
@@ -75,7 +90,7 @@ npm run test:coverage
 - Error handling
 - Connection testing
 
-#### Security Middleware (`security-middleware.test.ts`)
+#### Security Middleware (`unit/security-middleware.test.ts`)
 - Rate limiting
 - Prompt injection detection
 - Input validation (SQL, dataset IDs, table IDs)
@@ -83,6 +98,33 @@ npm run test:coverage
 - Tool validation
 - Security audit logging
 - Request/response validation
+
+#### OIDC Authentication (`auth/oidc-authenticator.test.ts`, `auth/auth-middleware.test.ts`)
+- JWT signature validation against JWKS endpoint
+- Issuer and audience claim verification
+- Scope enforcement and missing scope errors
+- Clock tolerance and token expiry handling
+- Auth middleware bypass for unauthenticated tools
+- Principal extraction from validated tokens
+
+#### Multi-Tenant Isolation (`tenancy/`)
+- Tenant config schema validation (`tenant-config.test.ts`)
+- Tenant registry lookup and caching (`tenant-registry.test.ts`)
+- Dataset access policy enforcement (`dataset-policy.test.ts`)
+- Tenant context resolution from JWT claims (`tenant-context.test.ts`)
+- OIDC subject pattern matching against `tenants.yaml`
+- Default tenant fallback behavior
+
+#### Dataset Policy (`tenancy/dataset-policy.test.ts`)
+- Allowed and denied dataset access rules
+- Per-tenant dataset isolation
+- Policy evaluation order and precedence
+- Error handling for unlisted datasets
+
+#### Tool Annotations (`mcp/annotations.test.ts`)
+- MCP tool metadata correctness
+- Annotation schema compliance
+- Required vs optional annotation fields
 
 ### Integration Tests
 
@@ -93,6 +135,12 @@ npm run test:coverage
 - Resource handlers
 - Error propagation
 - Performance under load
+
+#### Multi-Tenant Isolation (`tenant-isolation.test.ts`)
+- Cross-tenant data access prevention
+- Per-tenant dataset policy enforcement end-to-end
+- Tenant resolution through the full request pipeline
+- Authentication to tenant binding verification
 
 #### Security (`security.test.ts`)
 - End-to-end request validation

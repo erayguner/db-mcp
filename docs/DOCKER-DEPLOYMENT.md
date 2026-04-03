@@ -4,9 +4,9 @@
 
 **Image**: `mcp-bigquery-server:latest`
 **Size**: 142MB (optimized multi-stage build)
-**Base**: Node.js 18.20.8 Alpine Linux
+**Base**: Node.js 20 Alpine Linux
 **Build Time**: ~15 seconds
-**Created**: 2025-10-27
+**Created**: 2026-04-03
 
 ---
 
@@ -24,16 +24,15 @@ docker build -t mcp-bigquery-server .
 
 **Stages**:
 1. **Builder Stage**:
-   - Base: node:18-alpine (39.66MB)
-   - Installed 543 packages
-   - Compiled TypeScript (0 errors)
+   - Base: node:20-alpine
+   - Installed packages via `npm ci --production=false`
+   - Compiled TypeScript via `npm run build` (0 errors)
    - Output: dist/ directory
 
 2. **Production Stage**:
-   - Base: node:18-alpine
-   - Installed dumb-init for proper signal handling
-   - Created non-root user (nodejs:1001)
-   - Installed 162 production packages
+   - Base: node:20-alpine
+   - Non-root user `mcp:mcp` (uid/gid 1001)
+   - Installed production packages only
    - Final size: 142MB
 
 ---
@@ -47,7 +46,7 @@ mcp-bigquery-server   latest    2df99fd7c6c5   11 seconds ago   142MB
 
 **Layers**:
 - Alpine Linux base: ~5MB
-- Node.js 18.20.8: ~35MB
+- Node.js 20: ~35MB
 - Production dependencies: ~95MB
 - Application code: ~7MB
 - Total: 142MB
@@ -61,7 +60,7 @@ mcp-bigquery-server   latest    2df99fd7c6c5   11 seconds ago   142MB
 ### Node.js Version
 ```bash
 $ docker run --rm mcp-bigquery-server:latest node --version
-v18.20.8
+v20.x.x
 ```
 
 ### Application Structure
@@ -85,8 +84,7 @@ drwxr-xr-x    2 root     root          4096 Oct 27 07:29 utils
 
 ## Security Features
 
-✅ **Non-root execution**: Runs as nodejs:1001
-✅ **Signal handling**: dumb-init for proper process management (SIGTERM/SIGINT)
+✅ **Non-root execution**: Runs as mcp:mcp (uid/gid 1001)
 ✅ **Minimal attack surface**: Alpine Linux base
 ✅ **No build tools**: Production image only contains runtime
 ✅ **Health checks**: Built-in container health monitoring
@@ -196,6 +194,16 @@ gcloud run deploy mcp-bigquery-server \
 
 ## Environment Variables
 
+### Server Environment Variables
+
+The following environment variables are set in the container image:
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `NODE_ENV` | `production` | Node.js environment |
+| `MCP_TRANSPORT` | `http` | MCP transport type (HTTP) |
+| `MCP_HTTP_PORT` | `8080` | HTTP port for MCP server |
+
 ### Required (Production)
 | Variable | Description | Example |
 |----------|-------------|---------|
@@ -263,12 +271,13 @@ docker exec <container-id> node -e "console.log('healthy')"
 ### Multi-stage Build
 ```dockerfile
 # Stage 1: Builder
-FROM node:18-alpine AS builder
-# ... build TypeScript ...
+FROM node:20-alpine AS builder
+# npm ci --production=false
+# npm run build
 
 # Stage 2: Production
-FROM node:18-alpine
-# ... only production runtime ...
+FROM node:20-alpine
+# ... only production runtime, mcp:mcp user ...
 ```
 
 ### Benefits
@@ -360,13 +369,13 @@ syft mcp-bigquery-server:latest -o json > sbom.json
 - ✅ Multi-stage optimization
 - ✅ Security hardening (non-root user)
 - ✅ Health checks configured
-- ✅ Signal handling (dumb-init)
+- ✅ HTTP transport on port 8080
 - ✅ Container verified
 - ✅ Ready for Cloud Run deployment
 
 ---
 
-**Generated**: 2025-10-27
+**Generated**: 2026-04-03
 **Image ID**: 2df99fd7c6c5
-**Node Version**: 18.20.8
+**Node Version**: 20
 **Alpine Version**: 3.21
