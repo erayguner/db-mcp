@@ -49,6 +49,23 @@ Authentication methods and configuration.
 
 ---
 
+## Multi-Tenancy
+
+### Tenant Configuration
+Per-tenant dataset access policies with YAML-based configuration. See `src/config/tenants.yaml` for the default config format.
+
+**Key features:**
+- Dataset allowlist/denylist per tenant
+- Write-mode controls (blocked/protected/allowed)
+- Per-tenant rate limiting
+- OIDC subject pattern matching for automatic tenant resolution
+- Hot-reloadable configuration via file watching
+
+### Implementation Plan
+See [Enterprise Database MCP Server Plan](./superpowers/plans/2026-04-03-enterprise-database-mcp-server.md) for the full architecture and implementation details.
+
+---
+
 ## Deployment
 
 ### [wif-deployment-guide.md](./wif-deployment-guide.md)
@@ -97,6 +114,9 @@ Multi-project BigQuery management.
 | Local dev | [LOCAL-TESTING.md](./LOCAL-TESTING.md) |
 | Monitoring | [MONITORING-GUIDE.md](./MONITORING-GUIDE.md) |
 | Query optimization | [QUERY_OPTIMIZATION.md](./QUERY_OPTIMIZATION.md) |
+| Multi-tenancy | `src/config/tenants.yaml` |
+| OIDC Auth | [authentication-guide.md](./authentication-guide.md) |
+| Implementation Plan | [Enterprise Plan](./superpowers/plans/2026-04-03-enterprise-database-mcp-server.md) |
 
 ---
 

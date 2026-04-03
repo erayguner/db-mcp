@@ -28,6 +28,9 @@ npm run typecheck   # TypeScript type checking
 ## File Organization
 
 - `/src` - TypeScript source code
+- `/src/tenancy` - Multi-tenant isolation (config, registry, policies, context)
+- `/src/auth` - Authentication (OIDC, WIF, Google Workspace, audit logging)
+- `/src/mcp/transports` - Transport layer (stdio, HTTP)
 - `/tests` - All test files (unit, integration, performance)
 - `/docs` - Documentation files
 - `/terraform` - Infrastructure as Code
@@ -40,6 +43,10 @@ npm run typecheck   # TypeScript type checking
 2. **MCP Protocol Layer** - JSON-RPC compliant tool handlers
 3. **Security Middleware** - Rate limiting, injection detection
 4. **BigQuery Integration** - Connection pooling, query optimization
+5. **OIDC Authentication Gateway** - Generic JWT validation with JWKS caching (`src/auth/oidc-authenticator.ts`, `src/auth/auth-middleware.ts`)
+6. **Multi-Tenant Isolation** - Per-tenant dataset access policies, write-mode controls, hot-reloadable YAML config (`src/tenancy/`)
+7. **MCP Tool Annotations** - readOnly, destructive, idempotent hints per MCP spec (`src/mcp/tools/annotations.ts`)
+8. **HTTP Transport** - Express-based Streamable HTTP for Cloud Run deployment (`src/mcp/transports/http-transport.ts`)
 
 ## Important Reminders
 
