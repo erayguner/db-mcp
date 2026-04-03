@@ -110,10 +110,10 @@ module "cloud_run" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  project_id            = var.project_id
-  environment           = var.environment
-  cloud_run_location    = var.region
-  cloud_run_url         = module.cloud_run.service_url
+  project_id         = var.project_id
+  environment        = var.environment
+  cloud_run_location = var.region
+  cloud_run_url      = module.cloud_run.service_url
 
   # Notification channels (destructure from object)
   alert_email           = var.notification_channels.alert_email
