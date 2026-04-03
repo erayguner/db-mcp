@@ -26,7 +26,7 @@ High-level architecture overview including:
 **Status**: ✅ Complete
 
 Detailed C4 Level 2 component specifications:
-- MCP Protocol Layer (STDIO, SSE transports)
+- MCP Protocol Layer (STDIO, HTTP, SSE transports)
 - Tool Registry (QueryTool, SchemaTool, AdminTool)
 - Security Layer (WIF authentication, IAM authorization)
 - BigQuery Adapter (QueryService, SchemaService)
@@ -70,6 +70,8 @@ Comprehensive security design:
 - Automatic token refresh before expiry
 - Defense-in-depth with multiple security layers
 - Comprehensive audit trail for all operations
+- OIDC JWT authentication with JWKS caching
+- Per-tenant dataset isolation with policy enforcement
 
 ### 5. [Error Handling Strategy](./05-error-handling.md)
 **Status**: ✅ Complete
@@ -213,6 +215,61 @@ Horizontal and vertical scaling strategies:
 - ⚠️ Requires load balancer and health checks
 - ⚠️ Cache warming needed for new instances
 
+### ADR-006: Multi-Tenant Dataset Isolation
+**Status**: Accepted
+**Date**: 2026-04-03
+
+**Decision**: Implement per-tenant dataset access control via YAML configuration with allowlist/denylist policies and write-mode controls.
+
+**Rationale**:
+- Customers need isolated access to specific BigQuery datasets
+- Following Google's genai-toolbox pattern of declarative YAML config with `allowedDatasets`
+- Write-mode controls (blocked/protected/allowed) prevent accidental data modification
+- Hot-reloadable config avoids server restarts for tenant changes
+
+**Consequences**:
+- Tenant config at `src/config/tenants.yaml` with Zod validation
+- Per-request tenant context resolution from OIDC JWT claims
+- Dataset policy enforcement on every BigQuery query
+- Deny list takes precedence over allow list (security-first)
+
+### ADR-007: Generic OIDC Authentication
+**Status**: Accepted
+**Date**: 2026-04-03
+
+**Decision**: Add generic OIDC JWT authentication using the `jose` library with JWKS key caching, supporting any compliant identity provider.
+
+**Rationale**:
+- Google's managed MCP servers use identity-first authentication (no shared API keys)
+- Generic OIDC supports Google, Okta, Auth0, Azure AD without code changes
+- JWKS caching avoids repeated key fetches
+- Scope-based access control for fine-grained permissions
+
+**Consequences**:
+- New `src/auth/oidc-authenticator.ts` with JWKS discovery
+- Auth middleware extracts Bearer tokens from MCP request headers
+- Tenant resolution maps JWT email/subject claims to tenant configs
+- Issuer must use HTTPS (enforced by Zod schema)
+
+### ADR-008: HTTP Transport for Remote MCP Access
+**Status**: Accepted
+**Date**: 2026-04-03
+
+**Decision**: Add Express-based HTTP transport alongside existing stdio transport for Cloud Run deployment.
+
+**Rationale**:
+- Customers cannot connect to stdio-only servers remotely
+- Google Cloud managed MCP servers use HTTP endpoints
+- Cloud Run requires HTTP container port
+- Health endpoints needed for startup/liveness probes
+
+**Consequences**:
+- New `src/mcp/transports/http-transport.ts` with Express app
+- Security headers (HSTS, X-Frame-Options, nosniff)
+- CORS support for browser-based MCP clients
+- `/health` and `/readiness` endpoints for Cloud Run
+- `MCP_TRANSPORT` env var selects stdio or http mode
+
 ## Design Principles
 
 ### 1. Security First
@@ -266,6 +323,10 @@ Horizontal and vertical scaling strategies:
 - [ ] Rate limiting configured
 - [ ] Audit logging enabled
 - [ ] Security scanning passed
+- [ ] OIDC authenticator configured with correct issuer/audience
+- [ ] Tenant configuration reviewed (allowedDatasets, writeMode)
+- [ ] Per-tenant rate limits configured
+- [ ] Dataset access policies tested
 
 ### Monitoring Alerts
 - High error rate (>5% for 5min)
@@ -309,6 +370,6 @@ For architecture questions or clarifications:
 
 ---
 
-**Document Version**: 1.0.0
-**Last Updated**: 2025-11-02
+**Document Version**: 2.0.0
+**Last Updated**: 2026-04-03
 **Maintained By**: System Architecture Team
