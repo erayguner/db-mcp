@@ -521,12 +521,23 @@ export class SecurityAuditLogger {
   private logToCloud(event: AuditEvent): void {
     const logLevel = this.severityToLogLevel(event.severity);
     const logData = {
+      '@type': 'type.googleapis.com/google.cloud.audit.AuditLog',
       audit: true,
       eventType: event.eventType,
+      severity: event.severity,
       principal: event.principal,
+      principalType: event.principalType,
       action: event.action,
       resource: event.resource,
       outcome: event.outcome,
+      projectId: event.projectId,
+      datasetId: event.datasetId,
+      tableId: event.tableId,
+      ipAddress: event.ipAddress,
+      userAgent: event.userAgent,
+      sessionId: event.sessionId,
+      durationMs: event.durationMs,
+      bytesProcessed: event.bytesProcessed,
       ...event.metadata,
     };
 
