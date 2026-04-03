@@ -102,11 +102,12 @@ export class RateLimiter {
   /**
    * Check if request should be rate limited
    */
-  checkRateLimit(identifier: string): { allowed: boolean; remaining: number } {
+  checkRateLimit(identifier: string, maxRequests?: number): { allowed: boolean; remaining: number } {
     if (!this.config.rateLimitEnabled) {
       return { allowed: true, remaining: this.config.rateLimitMaxRequests };
     }
 
+    const effectiveMax = maxRequests ?? this.config.rateLimitMaxRequests;
     const now = Date.now();
     const entry = this.requests.get(identifier);
 
@@ -118,16 +119,16 @@ export class RateLimiter {
       });
       return {
         allowed: true,
-        remaining: this.config.rateLimitMaxRequests - 1,
+        remaining: effectiveMax - 1,
       };
     }
 
     // Check if limit exceeded
-    if (entry.count >= this.config.rateLimitMaxRequests) {
+    if (entry.count >= effectiveMax) {
       logger.warn('Rate limit exceeded', {
         identifier,
         count: entry.count,
-        limit: this.config.rateLimitMaxRequests,
+        limit: effectiveMax,
       });
       recordError('rate_limit_exceeded');
       return { allowed: false, remaining: 0 };
@@ -137,7 +138,7 @@ export class RateLimiter {
     entry.count++;
     return {
       allowed: true,
-      remaining: this.config.rateLimitMaxRequests - entry.count,
+      remaining: effectiveMax - entry.count,
     };
   }
 

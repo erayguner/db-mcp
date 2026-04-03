@@ -116,6 +116,24 @@ describe('RateLimiter', () => {
       // Assert
       expect(result.allowed).toBe(true);
     });
+
+    it('should respect per-tenant maxRequests override', () => {
+      // Arrange - RateLimiter is configured with default of 10, but we pass 5 as override
+      const identifier = 'tenant:acme';
+
+      // Act - Make 5 requests with per-tenant limit of 5 (all should be allowed)
+      for (let i = 0; i < 5; i++) {
+        const result = rateLimiter.checkRateLimit(identifier, 5);
+        expect(result.allowed).toBe(true);
+      }
+
+      // 6th request should be blocked by the per-tenant limit of 5
+      const blocked = rateLimiter.checkRateLimit(identifier, 5);
+
+      // Assert
+      expect(blocked.allowed).toBe(false);
+      expect(blocked.remaining).toBe(0);
+    });
   });
 });
 
