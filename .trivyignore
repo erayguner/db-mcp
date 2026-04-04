@@ -8,8 +8,9 @@ CVE-2026-26996
 CVE-2026-27903
 CVE-2026-27904
 
-# picomatch ReDoS — in npm's bundled dependency, not ours
+# picomatch — in npm's bundled dependency, not ours
 CVE-2026-33671
+CVE-2026-33672
 
 # brace-expansion DoS — in npm's bundled minimatch, not ours
 CVE-2026-33750
