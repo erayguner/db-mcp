@@ -172,7 +172,7 @@ export class MockDataset {
           datasetId: this.id,
           projectId: this.projectId,
         },
-        location: 'US',
+        location: 'EU',
         creationTime: Date.now(),
       },
     ];

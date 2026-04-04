@@ -67,7 +67,7 @@ describeClient('BigQueryClient', () => {
       projectId: 'test-project',
       queryDefaults: {
         useLegacySql: false,
-        location: 'US',
+        location: 'EU',
       },
       datasetManager: {
         cacheSize: 100,
@@ -277,7 +277,7 @@ describeClient('BigQueryClient', () => {
         {
           id: 'dataset1',
           projectId: 'test-project',
-          location: 'US',
+          location: 'EU',
           createdAt: new Date(),
           modifiedAt: new Date(),
           tableCount: 5,

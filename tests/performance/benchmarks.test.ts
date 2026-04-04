@@ -18,7 +18,7 @@ describePerf('Performance Benchmarks', () => {
       mockBQClient = createMockBigQueryClient();
       client = new BigQueryClient({
         projectId: 'test-project',
-        location: 'US',
+        location: 'EU',
       });
       (client as any).client = mockBQClient;
     });

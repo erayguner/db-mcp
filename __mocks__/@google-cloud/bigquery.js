@@ -110,7 +110,7 @@ export class Dataset {
           datasetId: this.id,
           projectId: this.projectId,
         },
-        location: 'US',
+        location: 'EU',
         creationTime: Date.now(),
       },
     ];
@@ -131,7 +131,7 @@ export class Dataset {
 export class BigQuery {
   constructor(options = {}) {
     this.projectId = options.projectId || 'test-project';
-    this.location = options.location || 'US';
+    this.location = options.location || 'EU';
     this.datasets = new Map();
     this.shouldFail = false;
     this.failureError = null;

@@ -23,7 +23,7 @@ describeDiscovery('DatasetDiscovery', () => {
   ): DatasetMetadata => ({
     id,
     projectId,
-    location: 'US',
+    location: 'EU',
     createdAt: new Date('2024-01-01'),
     modifiedAt: new Date('2024-01-15'),
     description: `Test dataset ${id}`,
@@ -152,7 +152,7 @@ describeDiscovery('DatasetDiscovery', () => {
 
     it('should apply region filters', async () => {
       const configWithFilter: Partial<DatasetDiscoveryConfig> = {
-        includeRegions: ['US'],
+        includeRegions: ['EU'],
         enableAutoDiscovery: false,
       };
 
@@ -164,7 +164,7 @@ describeDiscovery('DatasetDiscovery', () => {
 
       const results = await filteredDiscovery.discoverDatasets(['project1', 'project2']);
 
-      expect(results.every(d => d.location === 'US')).toBe(true);
+      expect(results.every(d => d.location === 'EU')).toBe(true);
       filteredDiscovery.shutdown();
     });
 
@@ -217,12 +217,12 @@ describeDiscovery('DatasetDiscovery', () => {
 
     it('should filter by regions', async () => {
       const query: SearchQuery = {
-        regions: ['US'],
+        regions: ['EU'],
       };
 
       const results = await discovery.search(query);
 
-      expect(results.every(r => r.dataset.location === 'US')).toBe(true);
+      expect(results.every(r => r.dataset.location === 'EU')).toBe(true);
     });
 
     it('should filter by size range', async () => {
@@ -410,7 +410,7 @@ describeDiscovery('DatasetDiscovery', () => {
     it('should track region distribution', () => {
       const stats = discovery.getStats();
 
-      expect(stats.regionDistribution['US']).toBeGreaterThan(0);
+      expect(stats.regionDistribution['EU']).toBeGreaterThan(0);
     });
 
     it('should track label distribution', () => {

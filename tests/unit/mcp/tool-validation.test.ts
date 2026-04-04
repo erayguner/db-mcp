@@ -18,7 +18,7 @@ describe('Tool Validation Schemas', () => {
         maxResults: 1000,
         timeoutMs: 30000,
         useLegacySql: false,
-        location: 'US',
+        location: 'EU',
       };
 
       const result = QueryBigQueryArgsSchema.parse(valid);

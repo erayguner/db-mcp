@@ -141,7 +141,7 @@ const prodConfig: DatasetDiscoveryConfig = {
   enableAutoDiscovery: true,
   searchIndexSize: 50000,
   fullTextIndexing: true,
-  includeRegions: ['US', 'EU'],
+  includeRegions: ['EU'],
   incrementalUpdateEnabled: true,
   cacheMetadata: true,
   metadataTTLMs: 1800000,              // 30 minutes
@@ -193,7 +193,7 @@ results.forEach(result => {
 const results = await discovery.search({
   text: 'customer',
   labels: { env: 'prod', team: 'analytics' },
-  regions: ['US'],
+  regions: ['EU'],
   minSize: 1024 * 1024 * 100,          // 100MB minimum
   maxSize: 1024 * 1024 * 1024 * 10,    // 10GB maximum
   createdAfter: new Date('2024-01-01'),
@@ -497,7 +497,7 @@ const datasets = await discovery.discoverDatasets(['project-1']);
 4. **Filter Early**
    ```typescript
    const config = {
-     includeRegions: ['US'],  // Only scan US datasets
+     includeRegions: ['EU'],  // Only scan EU datasets
      includeLabels: { env: 'prod' }  // Only production
    };
    ```

@@ -7,7 +7,7 @@ variable "project_id" {
 variable "region" {
   description = "GCP Region"
   type        = string
-  default     = "us-central1"
+  default     = "europe-west2"
 }
 
 variable "environment" {
@@ -127,7 +127,7 @@ variable "enable_binary_authorization" {
 variable "bigquery_location" {
   description = "BigQuery location for datasets"
   type        = string
-  default     = "US"
+  default     = "EU"
 }
 
 variable "iap_client_id" {

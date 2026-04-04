@@ -67,7 +67,7 @@ cd terraform
 ```bash
 # Set project ID
 export PROJECT_ID="your-gcp-project-id"
-export REGION="us-central1"
+export REGION="europe-west2"
 
 # Create GCS bucket for Terraform state
 gsutil mb -p ${PROJECT_ID} -l ${REGION} gs://${PROJECT_ID}-terraform-state
@@ -132,7 +132,7 @@ EOF
 # Create terraform.tfvars
 cat > terraform.tfvars << EOF
 project_id                  = "${PROJECT_ID}"
-region                      = "us-central1"
+region                      = "europe-west2"
 environment                 = "dev"
 google_workspace_domain     = "your-company.com"  # CHANGE THIS
 google_workspace_client_id  = "YOUR_CLIENT_ID"     # FROM STEP 1.1
@@ -143,7 +143,7 @@ notification_email          = "alerts@your-company.com"
 bigquery_datasets = {
   analytics = {
     description                   = "Analytics data"
-    location                      = "US"
+    location                      = "EU"
     delete_contents_on_destroy    = false
     default_table_expiration_ms   = 7776000000
     default_partition_expiration_ms = 0

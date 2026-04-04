@@ -55,7 +55,7 @@ describe.skip('BigQueryClientFactory', () => {
 
     defaultConfig = {
       defaultProjectId: 'test-project',
-      defaultLocation: 'US',
+      defaultLocation: 'EU',
       pooling: {
         enabled: true,
         minConnections: 2,

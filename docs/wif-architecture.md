@@ -379,7 +379,7 @@ class WorkspaceWIFAuth {
 
     const [rows] = await bigquery.query({
       query: sql,
-      location: 'US'
+      location: 'EU'
     });
 
     return rows;
@@ -574,7 +574,7 @@ class CloudRunWIFAuth {
   async executeQuery(sql: string): Promise<any[]> {
     const [rows] = await this.bigquery.query({
       query: sql,
-      location: 'US'
+      location: 'EU'
     });
 
     return rows;

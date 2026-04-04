@@ -30,7 +30,7 @@ describe.skip('Environment Configuration', () => {
 
     expect(env.GCP_PROJECT_ID).toBeDefined();
     expect(env.NODE_ENV).toBeDefined();
-    expect(env.BIGQUERY_LOCATION).toBe('US');
+    expect(env.BIGQUERY_LOCATION).toBe('europe-west2');
   });
 
   it('should use default values', () => {

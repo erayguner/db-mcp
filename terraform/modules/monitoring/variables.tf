@@ -16,7 +16,7 @@ variable "environment" {
 variable "cloud_run_location" {
   description = "Cloud Run service location"
   type        = string
-  default     = "us-central1"
+  default     = "europe-west2"
 }
 
 variable "cloud_run_url" {

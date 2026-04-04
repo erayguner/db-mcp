@@ -79,7 +79,7 @@ const advancedConfig = {
     {
       projectId: 'project-1',
       keyFilename: '/path/to/credentials.json',
-      location: 'US',
+      location: 'EU',
       labels: { env: 'prod', team: 'data' },
       priority: 'high',
       enabled: true,

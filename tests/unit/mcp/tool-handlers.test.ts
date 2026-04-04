@@ -308,7 +308,7 @@ describe('Tool Handlers', () => {
         {
           id: 'dataset1',
           projectId: 'my-project',
-          location: 'US',
+          location: 'EU',
           createdAt: new Date('2024-01-01'),
           modifiedAt: new Date('2024-01-02'),
           description: 'Test dataset 1',
@@ -348,7 +348,7 @@ describe('Tool Handlers', () => {
         {
           id: 'dataset1',
           projectId: 'my-project',
-          location: 'US',
+          location: 'EU',
           createdAt: new Date(),
           modifiedAt: new Date(),
           tableCount: 0,

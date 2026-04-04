@@ -17,7 +17,7 @@ export const EnvironmentSchema = z.object({
 
   // GCP
   GCP_PROJECT_ID: z.string(),
-  GCP_REGION: z.string().default('us-central1'),
+  GCP_REGION: z.string().default('europe-west2'),
   
   // Workload Identity Federation (optional — required only for WIF auth)
   WORKLOAD_IDENTITY_POOL_ID: z.string().default(''),
@@ -35,7 +35,7 @@ export const EnvironmentSchema = z.object({
   ),
 
   // BigQuery
-  BIGQUERY_LOCATION: z.string().default('US'),
+  BIGQUERY_LOCATION: z.string().default('europe-west2'),
   BIGQUERY_MAX_RETRIES: z.string().transform(Number).default('3'),
   BIGQUERY_TIMEOUT: z.string().transform(Number).default('60000'),
 

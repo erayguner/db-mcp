@@ -271,7 +271,7 @@ describeMulti('Multi-Project Connection Management', () => {
       const query2 = await client.query({
         query: 'SELECT 2',
         dryRun: true,
-        location: 'US',
+        location: 'EU',
       }).catch(error => ({ error }));
 
       expect(query1).toBeDefined();

@@ -256,7 +256,7 @@ async function example() {
   // Initialize BigQuery client
   const client = new BigQueryClient({
     projectId: 'your-project-id',
-    location: 'US',
+    location: 'EU',
   });
 
   // Create optimized executor

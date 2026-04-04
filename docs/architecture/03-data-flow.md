@@ -218,7 +218,7 @@ This document describes the data flows for key operations in the BigQuery MCP Se
      │  9. Datasets Response                                │
      │  ◄───────────────────────────────────────────────────│
      │  [                                                    │
-     │    { id: "dataset1", location: "US" },               │
+     │    { id: "dataset1", location: "EU" },               │
      │    { id: "dataset2", location: "EU" }                │
      │  ]                                                    │
      │                                                       │
@@ -237,7 +237,7 @@ This document describes the data flows for key operations in the BigQuery MCP Se
      │    datasets: [                                       │
      │      {                                               │
      │        id: "dataset1",                               │
-     │        location: "US",                               │
+     │        location: "EU",                               │
      │        creationTime: "..."                           │
      │      },                                              │
      │      ...                                             │

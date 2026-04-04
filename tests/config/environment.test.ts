@@ -6,13 +6,13 @@ describe('Environment Configuration', () => {
     PORT: '8080',
     LOG_LEVEL: 'info',
     GCP_PROJECT_ID: 'test-project',
-    GCP_REGION: 'us-central1',
+    GCP_REGION: 'europe-west2',
     WORKLOAD_IDENTITY_POOL_ID: 'test-pool',
     WORKLOAD_IDENTITY_PROVIDER_ID: 'test-provider',
     MCP_SERVICE_ACCOUNT_EMAIL: 'test@test-project.iam.gserviceaccount.com',
     GOOGLE_WORKSPACE_CLIENT_ID: 'test-client-id',
     GOOGLE_WORKSPACE_DOMAIN: 'example.com',
-    BIGQUERY_LOCATION: 'US',
+    BIGQUERY_LOCATION: 'europe-west2',
     BIGQUERY_MAX_RETRIES: '3',
     BIGQUERY_TIMEOUT: '60000',
   };
@@ -56,8 +56,8 @@ describe('Environment Configuration', () => {
     if (result.success) {
       expect(result.data.PORT).toBe(8080);
       expect(result.data.LOG_LEVEL).toBe('info');
-      expect(result.data.GCP_REGION).toBe('us-central1');
-      expect(result.data.BIGQUERY_LOCATION).toBe('US');
+      expect(result.data.GCP_REGION).toBe('europe-west2');
+      expect(result.data.BIGQUERY_LOCATION).toBe('europe-west2');
       expect(result.data.BIGQUERY_MAX_RETRIES).toBe(3);
       expect(result.data.BIGQUERY_TIMEOUT).toBe(60000);
     }

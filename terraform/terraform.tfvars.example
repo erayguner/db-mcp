@@ -3,7 +3,7 @@
 # ==========================================
 
 project_id  = "your-gcp-project-id"
-region      = "us-central1"
+region      = "europe-west2"
 environment = "production" # dev, staging, or production
 
 # ==========================================
@@ -26,11 +26,11 @@ allowed_audiences = [
 # BigQuery Configuration
 # ==========================================
 
-bigquery_location = "US" # or "EU", "asia-northeast1", etc.
+bigquery_location = "EU" # or "US", "asia-northeast1", etc.
 
 bigquery_datasets = {
   analytics = {
-    location                    = "US"
+    location                    = "EU"
     description                 = "Analytics data"
     delete_contents_on_destroy  = false
     default_table_expiration_ms = 7776000000 # 90 days
@@ -41,7 +41,7 @@ bigquery_datasets = {
     }
   }
   audit = {
-    location                    = "US"
+    location                    = "EU"
     description                 = "Audit logs"
     delete_contents_on_destroy  = false
     default_table_expiration_ms = 15552000000 # 180 days

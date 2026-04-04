@@ -3,8 +3,8 @@
  */
 
 export const mockDatasets = [
-  { id: 'dataset1', location: 'US' },
-  { id: 'dataset2', location: 'US' },
+  { id: 'dataset1', location: 'EU' },
+  { id: 'dataset2', location: 'EU' },
   { id: 'analytics', location: 'EU' },
 ];
 

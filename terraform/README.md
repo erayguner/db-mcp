@@ -60,7 +60,7 @@ terraform/
 
 ```bash
 # Create GCS bucket for Terraform state
-gsutil mb -p YOUR_PROJECT_ID -l us-central1 gs://YOUR_PROJECT_ID-terraform-state
+gsutil mb -p YOUR_PROJECT_ID -l europe-west2 gs://YOUR_PROJECT_ID-terraform-state
 
 # Enable versioning
 gsutil versioning set on gs://YOUR_PROJECT_ID-terraform-state
@@ -82,7 +82,7 @@ Example `terraform.tfvars`:
 
 ```hcl
 project_id                  = "your-gcp-project-id"
-region                      = "us-central1"
+region                      = "europe-west2"
 environment                 = "dev"
 google_workspace_domain     = "your-company.com"
 google_workspace_client_id  = "123456789-abc.apps.googleusercontent.com"
@@ -93,14 +93,14 @@ notification_email          = "alerts@your-company.com"
 bigquery_datasets = {
   analytics = {
     description                   = "Analytics data"
-    location                      = "US"
+    location                      = "EU"
     delete_contents_on_destroy    = false
     default_table_expiration_ms   = 7776000000  # 90 days
     default_partition_expiration_ms = 0
   }
   warehouse = {
     description                   = "Data warehouse"
-    location                      = "US"
+    location                      = "EU"
     delete_contents_on_destroy    = false
     default_table_expiration_ms   = 0
     default_partition_expiration_ms = 0

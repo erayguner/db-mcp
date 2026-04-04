@@ -211,7 +211,7 @@ npm run dev
         "USE_MOCK_BIGQUERY": "false",
         "GCP_PROJECT_ID": "your-project-id",
         "GOOGLE_APPLICATION_CREDENTIALS": "/Users/you/mcp-bigquery-key.json",
-        "BIGQUERY_LOCATION": "US",
+        "BIGQUERY_LOCATION": "EU",
         "SECURITY_RATE_LIMIT_MAX_REQUESTS": "1000",
         "LOG_LEVEL": "info"
       }
@@ -261,7 +261,7 @@ terraform init
 cat > terraform.tfvars << EOF
 project_id   = "your-production-project"
 environment  = "prod"
-region       = "us-central1"
+region       = "europe-west2"
 
 # Container image (after building)
 mcp_server_image = "us-docker.pkg.dev/your-project/mcp-servers/bigquery-server:v1.0.0"
@@ -287,7 +287,7 @@ notification_channels = {
 # BigQuery datasets (optional)
 bigquery_datasets = {
   production = {
-    location                    = "US"
+    location                    = "EU"
     description                 = "Production analytics"
     delete_contents_on_destroy  = false
     default_table_expiration_ms = 0
@@ -491,7 +491,7 @@ Claude Desktop uses JSON configuration for MCP servers:
         "NODE_ENV": "development",
         "GCP_PROJECT_ID": "my-dev-project",
         "GOOGLE_APPLICATION_CREDENTIALS": "/Users/you/.gcp/mcp-dev-key.json",
-        "BIGQUERY_LOCATION": "US",
+        "BIGQUERY_LOCATION": "EU",
         "SECURITY_RATE_LIMIT_MAX_REQUESTS": "1000",
         "LOG_LEVEL": "info"
       }

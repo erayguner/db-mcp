@@ -608,7 +608,7 @@ class HealthChecker {
       // Simple query to test connectivity
       await this.bigquery.query({
         query: 'SELECT 1',
-        location: 'US'
+        location: 'EU'
       });
 
       return {
