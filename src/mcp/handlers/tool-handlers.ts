@@ -5,6 +5,20 @@ import {
   ToolName,
 } from '../schemas/tool-schemas.js';
 import { TenantContext } from '../../tenancy/tenant-context.js';
+import type { Provenance, SchemaContext } from '../schemas/output-schemas.js';
+
+/** Safely coerce an unknown schema field value to string */
+function fieldStr(value: unknown, fallback: string): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return fallback;
+  return JSON.stringify(value);
+}
+
+/** Safely coerce an unknown schema field value to optional string */
+function fieldStrOpt(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  return undefined;
+}
 
 /**
  * MCP Tool Response Format
@@ -57,9 +71,30 @@ export abstract class BaseToolHandler {
   abstract execute(args: unknown): Promise<ToolResponse>;
 
   /**
-   * Format success response
+   * Build a GCP Console URL for a BigQuery resource
    */
-  protected formatSuccess(data: unknown, meta?: Record<string, unknown>): ToolResponse {
+  protected buildConsoleUrl(opts: { projectId: string; datasetId?: string; tableId?: string }): string {
+    const base = `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(opts.projectId)}`;
+    if (opts.datasetId && opts.tableId) {
+      return `${base}&d=${encodeURIComponent(opts.datasetId)}&t=${encodeURIComponent(opts.tableId)}&page=table`;
+    }
+    if (opts.datasetId) {
+      return `${base}&d=${encodeURIComponent(opts.datasetId)}&page=dataset`;
+    }
+    return base;
+  }
+
+  /**
+   * Format success response with provenance and optional schema context
+   */
+  protected formatSuccess(
+    data: unknown,
+    meta?: Record<string, unknown>,
+    provenance?: Provenance,
+    schemaContext?: SchemaContext,
+  ): ToolResponse {
+    const auditEventId = crypto.randomUUID();
+
     return {
       content: [
         {
@@ -71,6 +106,9 @@ export abstract class BaseToolHandler {
       _meta: {
         ...meta,
         timestamp: new Date().toISOString(),
+        auditEventId,
+        ...(provenance ? { provenance } : {}),
+        ...(schemaContext ? { schemaContext } : {}),
       },
     };
   }
@@ -200,6 +238,32 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         maximumBytesBilled: maxBytesBilled,
       });
 
+      const projectId = this.context.tenantContext?.projectId
+        ?? this.context.bigQueryClient.getProjectId();
+
+      const provenance: Provenance = {
+        source: 'bigquery',
+        projectId,
+        retrievedAt: new Date().toISOString(),
+        freshness: result.cacheHit ? 'cached' : 'real-time',
+        jobId: result.jobId,
+        bytesProcessed: result.totalBytesProcessed,
+        query: query.length > 500 ? query.slice(0, 500) + '...' : query,
+      };
+
+      // Build schema context from result schema for copilot consumption
+      let schemaContext: SchemaContext | undefined;
+      if (result.schema && Array.isArray(result.schema)) {
+        schemaContext = {
+          columns: (result.schema as Array<Record<string, unknown>>).map(f => ({
+            name: fieldStr(f.name, ''),
+            type: fieldStr(f.type, 'UNKNOWN'),
+            description: fieldStrOpt(f.description),
+            mode: fieldStr(f.mode, 'NULLABLE'),
+          })),
+        };
+      }
+
       // Use streaming response for large result sets
       if (result.rows.length > 1000) {
         return this.formatStreamingResponse(result.rows as QueryRow[], {
@@ -219,7 +283,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         cacheHit: result.cacheHit,
         executionTimeMs: result.executionTimeMs,
         totalBytesProcessed: result.totalBytesProcessed,
-      });
+      }, undefined, provenance, schemaContext);
     } catch (error) {
       return this.formatError(error as Error, 'QUERY_ERROR');
     }
@@ -248,6 +312,18 @@ export class ListDatasetsHandler extends BaseToolHandler {
         datasets = datasets.slice(0, maxResults);
       }
 
+      const resolvedProject = projectId
+        ?? this.context.tenantContext?.projectId
+        ?? this.context.bigQueryClient.getProjectId();
+
+      const provenance: Provenance = {
+        source: 'bigquery',
+        projectId: resolvedProject,
+        retrievedAt: new Date().toISOString(),
+        freshness: 'real-time',
+        consoleUrl: this.buildConsoleUrl({ projectId: resolvedProject }),
+      };
+
       return this.formatSuccess({
         count: datasets.length,
         datasets: datasets.map(ds => ({
@@ -259,8 +335,8 @@ export class ListDatasetsHandler extends BaseToolHandler {
           description: ds.description,
         })),
       }, {
-        projectId: projectId || 'default',
-      });
+        projectId: resolvedProject,
+      }, provenance);
     } catch (error) {
       return this.formatError(error as Error, 'LIST_DATASETS_ERROR');
     }
@@ -290,6 +366,19 @@ export class ListTablesHandler extends BaseToolHandler {
         tables = tables.slice(0, maxResults);
       }
 
+      const resolvedProject = projectId
+        ?? this.context.tenantContext?.projectId
+        ?? this.context.bigQueryClient.getProjectId();
+
+      const provenance: Provenance = {
+        source: 'bigquery',
+        projectId: resolvedProject,
+        datasetId,
+        retrievedAt: new Date().toISOString(),
+        freshness: 'real-time',
+        consoleUrl: this.buildConsoleUrl({ projectId: resolvedProject, datasetId }),
+      };
+
       return this.formatSuccess({
         datasetId,
         count: tables.length,
@@ -304,8 +393,8 @@ export class ListTablesHandler extends BaseToolHandler {
         })),
       }, {
         datasetId,
-        projectId: projectId || 'default',
-      });
+        projectId: resolvedProject,
+      }, provenance);
     } catch (error) {
       return this.formatError(error as Error, 'LIST_TABLES_ERROR');
     }
@@ -374,11 +463,39 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         };
       }
 
+      const resolvedProject = projectId
+        ?? this.context.tenantContext?.projectId
+        ?? this.context.bigQueryClient.getProjectId();
+
+      const provenance: Provenance = {
+        source: 'bigquery',
+        projectId: resolvedProject,
+        datasetId,
+        tableId,
+        retrievedAt: new Date().toISOString(),
+        freshness: 'real-time',
+        consoleUrl: this.buildConsoleUrl({ projectId: resolvedProject, datasetId, tableId }),
+      };
+
+      // Build schema context for copilot consumption
+      let schemaContext: SchemaContext | undefined;
+      if (table.schema && Array.isArray(table.schema)) {
+        schemaContext = {
+          columns: (table.schema as Array<Record<string, unknown>>).map(f => ({
+            name: fieldStr(f.name, ''),
+            type: fieldStr(f.type, 'UNKNOWN'),
+            description: fieldStrOpt(f.description),
+            mode: fieldStr(f.mode, 'NULLABLE'),
+          })),
+          tableDescription: table.description,
+        };
+      }
+
       return this.formatSuccess(response, {
         datasetId,
         tableId,
-        projectId: projectId || 'default',
-      });
+        projectId: resolvedProject,
+      }, provenance, schemaContext);
     } catch (error) {
       return this.formatError(error as Error, 'GET_SCHEMA_ERROR');
     }

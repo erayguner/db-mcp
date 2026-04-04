@@ -548,8 +548,8 @@ export class MCPBigQueryServer {
           resources: [
             {
               uri: 'bigquery://datasets',
-              name: 'BigQuery Datasets',
-              description: 'List of available BigQuery datasets',
+              name: 'BigQuery Dataset Catalog',
+              description: 'Discoverable catalog of all available BigQuery datasets with descriptions and metadata',
               mimeType: 'application/json',
             },
           ],
@@ -575,14 +575,122 @@ export class MCPBigQueryServer {
          await this.initializeBigQuery();
        }
 
+       const projectId = this.env.GCP_PROJECT_ID;
+       const now = new Date().toISOString();
+
+       // bigquery://datasets — full catalog
        if (uri === 'bigquery://datasets') {
          const datasets = await this.bigQueryClient!.listDatasets();
+
+         const response = {
+           datasets: datasets.map(ds => ({
+             id: ds.id,
+             projectId: ds.projectId,
+             location: ds.location,
+             description: ds.description,
+             creationTime: ds.createdAt.toISOString(),
+             lastModifiedTime: ds.modifiedAt.toISOString(),
+           })),
+           provenance: {
+             source: 'bigquery',
+             projectId,
+             retrievedAt: now,
+             freshness: 'real-time',
+             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}`,
+           },
+         };
 
          return {
            contents: [{
              uri,
              mimeType: 'application/json',
-             text: JSON.stringify({ datasets }, null, 2),
+             text: JSON.stringify(response, null, 2),
+           }],
+         };
+       }
+
+       // bigquery://datasets/{datasetId}/tables/{tableId} — table detail (check before dataset)
+       const tableMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)\/tables\/([^/]+)$/);
+       if (tableMatch) {
+         const [, datasetId, tableId] = tableMatch;
+         const table = await this.bigQueryClient!.getTable(datasetId, tableId);
+
+         const schemaContext = Array.isArray(table.schema)
+           ? {
+               columns: (table.schema as Array<Record<string, unknown>>).map(f => ({
+                 name: typeof f.name === 'string' ? f.name : '',
+                 type: typeof f.type === 'string' ? f.type : 'UNKNOWN',
+                 description: typeof f.description === 'string' ? f.description : undefined,
+                 mode: typeof f.mode === 'string' ? f.mode : 'NULLABLE',
+               })),
+               tableDescription: table.description,
+             }
+           : undefined;
+
+         const response = {
+           datasetId,
+           tableId,
+           schema: table.schema,
+           metadata: {
+             type: table.type,
+             creationTime: table.createdAt.toISOString(),
+             lastModifiedTime: table.modifiedAt.toISOString(),
+             numRows: table.numRows,
+             numBytes: table.numBytes,
+             description: table.description,
+           },
+           schemaContext,
+           provenance: {
+             source: 'bigquery',
+             projectId,
+             datasetId,
+             tableId,
+             retrievedAt: now,
+             freshness: 'real-time',
+             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
+           },
+         };
+
+         return {
+           contents: [{
+             uri,
+             mimeType: 'application/json',
+             text: JSON.stringify(response, null, 2),
+           }],
+         };
+       }
+
+       // bigquery://datasets/{datasetId} — dataset detail with table listing
+       const datasetMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)$/);
+       if (datasetMatch) {
+         const [, datasetId] = datasetMatch;
+         const tables = await this.bigQueryClient!.listTables(datasetId);
+
+         const response = {
+           datasetId,
+           tables: tables.map(t => ({
+             id: t.id,
+             type: t.type,
+             numRows: t.numRows,
+             numBytes: t.numBytes,
+             description: t.description,
+             creationTime: t.createdAt.toISOString(),
+           })),
+           provenance: {
+             source: 'bigquery',
+             projectId,
+             datasetId,
+             retrievedAt: now,
+             freshness: 'real-time',
+             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&page=dataset`,
+           },
+         };
+
+         return {
+           contents: [{
+             uri,
+             mimeType: 'application/json',
+             text: JSON.stringify(response, null, 2),
            }],
          };
        }

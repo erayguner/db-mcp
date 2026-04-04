@@ -24,11 +24,11 @@ export function destructiveAnnotations(): ToolAnnotations {
 }
 
 const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
-  query_bigquery: { ...readOnlyAnnotations(), idempotentHint: false },
-  execute_query: { ...readOnlyAnnotations(), idempotentHint: false },
-  list_datasets: readOnlyAnnotations(),
-  list_tables: readOnlyAnnotations(),
-  get_table_schema: readOnlyAnnotations(),
+  query_bigquery: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  execute_query: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  list_datasets: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  list_tables: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  get_table_schema: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
 
 export function getToolAnnotations(toolName: string): ToolAnnotations {

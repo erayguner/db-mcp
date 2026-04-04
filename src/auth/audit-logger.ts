@@ -46,6 +46,10 @@ export enum AuditEventType {
   INVALID_TOKEN = 'security.invalid_token',
   SUSPICIOUS_ACTIVITY = 'security.suspicious',
 
+  // Data provenance
+  DATA_ACCESS = 'access.data',
+  CATALOG_ACCESS = 'access.catalog',
+
   // Administrative
   ADMIN_ACTION = 'admin.action',
   CONFIG_CHANGE = 'admin.config.change',

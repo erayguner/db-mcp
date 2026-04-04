@@ -436,6 +436,13 @@ export class BigQueryClient extends EventEmitter {
   }
 
   /**
+   * Get the configured project ID
+   */
+  public getProjectId(): string {
+    return this.config.projectId ?? '';
+  }
+
+  /**
    * Test connection to BigQuery
    */
   public async testConnection(): Promise<boolean> {

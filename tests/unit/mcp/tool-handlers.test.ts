@@ -35,6 +35,7 @@ describe('Tool Handlers', () => {
       listDatasets: jest.fn(),
       listTables: jest.fn(),
       getTable: jest.fn(),
+      getProjectId: jest.fn().mockReturnValue('test-project'),
       isHealthy: jest.fn().mockReturnValue(true),
     } as any;
 
