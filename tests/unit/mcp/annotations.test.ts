@@ -1,7 +1,6 @@
 import { describe, it, expect } from '@jest/globals';
 import {
   readOnlyAnnotations,
-  destructiveAnnotations,
   getToolAnnotations,
 } from '../../../src/mcp/tools/annotations.js';
 
@@ -38,13 +37,16 @@ describe('Tool Annotations', () => {
     });
   });
 
-  it('destructiveAnnotations helper returns correct shape', () => {
-    const ann = destructiveAnnotations();
-    expect(ann).toEqual({
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: false,
-      openWorldHint: false,
-    });
+  it('all tools have openWorldHint set to false', () => {
+    const tools = ['query_bigquery', 'execute_query', 'list_datasets', 'list_tables', 'get_table_schema'];
+    for (const tool of tools) {
+      expect(getToolAnnotations(tool).openWorldHint).toBe(false);
+    }
+  });
+
+  it('returns default annotations for unknown tools', () => {
+    const annotations = getToolAnnotations('unknown_tool');
+    expect(annotations.readOnlyHint).toBe(true);
+    expect(annotations.openWorldHint).toBe(false);
   });
 });

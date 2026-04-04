@@ -19,15 +19,18 @@ export const EnvironmentSchema = z.object({
   GCP_PROJECT_ID: z.string(),
   GCP_REGION: z.string().default('us-central1'),
   
-  // Workload Identity Federation
-  WORKLOAD_IDENTITY_POOL_ID: z.string(),
-  WORKLOAD_IDENTITY_PROVIDER_ID: z.string(),
-  MCP_SERVICE_ACCOUNT_EMAIL: z.string().email(),
-  
-  // Google Workspace
-  GOOGLE_WORKSPACE_CLIENT_ID: z.string(),
-  GOOGLE_WORKSPACE_DOMAIN: z.string(),
-  GOOGLE_WORKSPACE_ALLOWED_GROUPS: z.string().optional().transform(val => 
+  // Workload Identity Federation (optional — required only for WIF auth)
+  WORKLOAD_IDENTITY_POOL_ID: z.string().default(''),
+  WORKLOAD_IDENTITY_PROVIDER_ID: z.string().default(''),
+  MCP_SERVICE_ACCOUNT_EMAIL: z.string().refine(
+    (v) => v === '' || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v),
+    { message: 'Must be empty or a valid email address' },
+  ).default(''),
+
+  // Google Workspace (optional — required only for Workspace auth)
+  GOOGLE_WORKSPACE_CLIENT_ID: z.string().default(''),
+  GOOGLE_WORKSPACE_DOMAIN: z.string().default(''),
+  GOOGLE_WORKSPACE_ALLOWED_GROUPS: z.string().optional().transform(val =>
     val ? val.split(',').map(g => g.trim()) : undefined
   ),
 

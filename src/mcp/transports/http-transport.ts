@@ -8,7 +8,7 @@ export const HttpTransportConfigSchema = z.object({
   port: z.number().min(1).max(65535).default(8080),
   host: z.string().default('0.0.0.0'),
   basePath: z.string().default('/mcp'),
-  corsOrigins: z.array(z.string()).default(['*']),
+  corsOrigins: z.array(z.string()).default([]),
   requestTimeoutMs: z.number().default(300000),
   maxRequestBodyBytes: z.number().default(1048576),
 });

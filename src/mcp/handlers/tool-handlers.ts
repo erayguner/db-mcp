@@ -20,6 +20,25 @@ function fieldStrOpt(value: unknown): string | undefined {
   return undefined;
 }
 
+/** Build SchemaContext from a raw BigQuery schema array */
+function buildSchemaContext(
+  schema: unknown,
+  tableDescription?: string,
+  datasetDescription?: string,
+): SchemaContext | undefined {
+  if (!schema || !Array.isArray(schema)) return undefined;
+  return {
+    columns: (schema as Array<Record<string, unknown>>).map(f => ({
+      name: fieldStr(f.name, ''),
+      type: fieldStr(f.type, 'UNKNOWN'),
+      description: fieldStrOpt(f.description),
+      mode: fieldStr(f.mode, 'NULLABLE'),
+    })),
+    tableDescription,
+    datasetDescription,
+  };
+}
+
 /**
  * MCP Tool Response Format
  */
@@ -252,17 +271,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
       };
 
       // Build schema context from result schema for copilot consumption
-      let schemaContext: SchemaContext | undefined;
-      if (result.schema && Array.isArray(result.schema)) {
-        schemaContext = {
-          columns: (result.schema as Array<Record<string, unknown>>).map(f => ({
-            name: fieldStr(f.name, ''),
-            type: fieldStr(f.type, 'UNKNOWN'),
-            description: fieldStrOpt(f.description),
-            mode: fieldStr(f.mode, 'NULLABLE'),
-          })),
-        };
-      }
+      const schemaContext = buildSchemaContext(result.schema);
 
       // Use streaming response for large result sets
       if (result.rows.length > 1000) {
@@ -478,18 +487,7 @@ export class GetTableSchemaHandler extends BaseToolHandler {
       };
 
       // Build schema context for copilot consumption
-      let schemaContext: SchemaContext | undefined;
-      if (table.schema && Array.isArray(table.schema)) {
-        schemaContext = {
-          columns: (table.schema as Array<Record<string, unknown>>).map(f => ({
-            name: fieldStr(f.name, ''),
-            type: fieldStr(f.type, 'UNKNOWN'),
-            description: fieldStrOpt(f.description),
-            mode: fieldStr(f.mode, 'NULLABLE'),
-          })),
-          tableDescription: table.description,
-        };
-      }
+      const schemaContext = buildSchemaContext(table.schema, table.description);
 
       return this.formatSuccess(response, {
         datasetId,

@@ -14,15 +14,6 @@ export function readOnlyAnnotations(): ToolAnnotations {
   };
 }
 
-export function destructiveAnnotations(): ToolAnnotations {
-  return {
-    readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: false,
-    openWorldHint: false,
-  };
-}
-
 const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   query_bigquery: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   execute_query: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },

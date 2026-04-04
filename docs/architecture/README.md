@@ -26,7 +26,7 @@ High-level architecture overview including:
 **Status**: ✅ Complete
 
 Detailed C4 Level 2 component specifications:
-- MCP Protocol Layer (STDIO, HTTP, SSE transports)
+- MCP Protocol Layer (STDIO, HTTP transports)
 - Tool Registry (QueryTool, SchemaTool, AdminTool)
 - Security Layer (WIF authentication, IAM authorization)
 - BigQuery Adapter (QueryService, SchemaService)

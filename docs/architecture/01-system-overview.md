@@ -16,7 +16,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 │         │                  │                  │                          │
 │         └──────────────────┴──────────────────┘                          │
 │                            │                                             │
-│                            │ MCP Protocol (stdio/SSE)                    │
+│                            │ MCP Protocol (stdio/HTTP)                   │
 └────────────────────────────┼─────────────────────────────────────────────┘
                              │
 ┌────────────────────────────┼─────────────────────────────────────────────┐
@@ -25,7 +25,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 │  ┌─────────────────────────▼──────────────────────────┐                 │
 │  │         MCP Transport Layer                        │                 │
 │  │  ┌──────────────┐    ┌──────────────┐             │                 │
-│  │  │ STDIO        │    │ SSE          │             │                 │
+│  │  │ STDIO        │    │ HTTP         │             │                 │
 │  │  │ Transport    │    │ Transport    │             │                 │
 │  │  └──────┬───────┘    └──────┬───────┘             │                 │
 │  │         └──────────────┬─────┘                     │                 │
@@ -91,7 +91,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 - **Technologies**: @modelcontextprotocol/sdk
 - **Responsibilities**:
   - STDIO transport for Claude Desktop integration
-  - SSE transport for web-based clients
+  - HTTP transport (Express-based Streamable HTTP) for Cloud Run deployment
   - Protocol serialization/deserialization
   - Connection lifecycle management
 
@@ -99,8 +99,8 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 - **Purpose**: Implement MCP tool specifications
 - **Technologies**: TypeScript, Zod for validation
 - **Responsibilities**:
-  - Query execution tools (query_bigquery, dry_run)
-  - Schema discovery tools (list_datasets, list_tables, get_schema)
+  - Query execution tool (query_bigquery, with dryRun parameter)
+  - Schema discovery tools (list_datasets, list_tables, get_table_schema)
   - Input validation and sanitization
   - Response formatting
 
@@ -135,19 +135,19 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 ## Technology Stack
 
 ### Runtime
-- **Node.js**: >= 18.0.0 (LTS)
-- **TypeScript**: 5.3.3+ (strict mode)
+- **Node.js**: >= 22.0.0 (LTS)
+- **TypeScript**: 6.0+ (strict mode)
 
 ### Core Dependencies
-- **@modelcontextprotocol/sdk**: ^0.4.0 - MCP protocol implementation
-- **@google-cloud/bigquery**: ^7.8.0 - BigQuery client
-- **google-auth-library**: ^9.6.3 - Authentication
-- **zod**: ^3.22.4 - Schema validation
-- **winston**: ^3.11.0 - Logging
+- **@modelcontextprotocol/sdk**: ^1.29.0 - MCP protocol implementation
+- **@google-cloud/bigquery**: ^8.1.1 - BigQuery client
+- **google-auth-library**: ^10.6.2 - Authentication
+- **zod**: ^3.25.76 - Schema validation
+- **winston**: ^3.19.0 - Logging
 
 ### Observability
-- **@opentelemetry/sdk-trace-node**: ^1.25.1 - Distributed tracing
-- **@opentelemetry/sdk-metrics**: ^1.25.1 - Metrics collection
+- **@opentelemetry/sdk-trace-node**: ^2.6.1 - Distributed tracing
+- **@opentelemetry/sdk-metrics**: ^2.6.1 - Metrics collection
 - **@google-cloud/opentelemetry-cloud-monitoring-exporter**: ^0.18.0
 - **@google-cloud/opentelemetry-cloud-trace-exporter**: ^2.3.0
 
@@ -168,7 +168,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 │  │         MCP Server Container                   │    │
 │  │                                                 │    │
 │  │  ┌──────────────────────────────────────┐     │    │
-│  │  │  Node.js 18 Alpine                   │     │    │
+│  │  │  Node.js 22 Alpine                   │     │    │
 │  │  │  - MCP Server Application            │     │    │
 │  │  │  - OpenTelemetry Agent               │     │    │
 │  │  └──────────────────────────────────────┘     │    │

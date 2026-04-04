@@ -9,7 +9,7 @@ import {
   InputValidator,
   SensitiveDataDetector,
   ToolValidator,
-  SecurityAuditLogger,
+  SecurityEventLog,
 } from '../../src/security/middleware.js';
 
 describe('RateLimiter', () => {
@@ -551,11 +551,11 @@ describe('ToolValidator', () => {
   });
 });
 
-describe('SecurityAuditLogger', () => {
-  let logger: SecurityAuditLogger;
+describe('SecurityEventLog', () => {
+  let logger: SecurityEventLog;
 
   beforeEach(() => {
-    logger = new SecurityAuditLogger({
+    logger = new SecurityEventLog({
       rateLimitEnabled: true,
       rateLimitWindowMs: 60000,
       rateLimitMaxRequests: 100,

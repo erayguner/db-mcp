@@ -14,10 +14,10 @@ This document provides detailed specifications for each component in the BigQuer
 │  │                      MCP Protocol Layer                              │ │
 │  │                                                                      │ │
 │  │  ┌─────────────────┐              ┌─────────────────┐              │ │
-│  │  │ StdioTransport  │              │ SSETransport    │              │ │
+│  │  │ StdioTransport  │              │ HttpTransport   │              │ │
 │  │  │                 │              │                 │              │ │
-│  │  │ - stdin/stdout  │              │ - HTTP/SSE      │              │ │
-│  │  │ - JSON-RPC      │              │ - EventStream   │              │ │
+│  │  │ - stdin/stdout  │              │ - HTTP/Express  │              │ │
+│  │  │ - JSON-RPC      │              │ - Streamable    │              │ │
 │  │  └────────┬────────┘              └────────┬────────┘              │ │
 │  │           │                                │                        │ │
 │  │           └────────────┬───────────────────┘                        │ │
@@ -166,29 +166,28 @@ interface StdioTransport {
 - Node.js readline module
 - @modelcontextprotocol/sdk
 
-#### SSETransport
+#### HttpTransport
 ```typescript
-interface SSETransport {
-  // HTTP endpoint for SSE connections
+interface HttpTransport {
+  // HTTP endpoint for Streamable HTTP connections
   endpoint: string;
 
-  // Client connection management
-  connections: Map<string, EventSource>;
+  // Express application
+  app: Express;
 
-  // Send event to all or specific clients
-  broadcast(event: SSEEvent): Promise<void>;
-  sendToClient(clientId: string, event: SSEEvent): Promise<void>;
+  // Start listening on configured port
+  start(port: number): Promise<void>;
 }
 ```
 
 **Responsibilities**:
-- HTTP/2 server for SSE connections
-- Keep-alive and reconnection handling
+- Express-based Streamable HTTP for Cloud Run deployment
+- Session management
 - Client authentication
-- Event streaming
+- Request/response handling
 
 **Dependencies**:
-- Express.js
+- Express.js (5.x)
 - @modelcontextprotocol/sdk
 
 ### 2. Tool Registry
@@ -500,13 +499,14 @@ Observability Layer
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ES2022",
+    "module": "Node16",
     "lib": ["ES2022"],
-    "moduleResolution": "node",
+    "moduleResolution": "node16",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
@@ -519,19 +519,21 @@ Observability Layer
 
 ### Docker Image
 ```dockerfile
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
-COPY . .
+RUN npm ci --production=false
+COPY tsconfig.json ./
+COPY src/ ./src/
 RUN npm run build
 
-FROM node:18-alpine
+FROM node:22-alpine
 WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package*.json ./
-RUN npm ci --production
-USER node
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+RUN addgroup -g 1001 -S mcp && adduser -S mcp -u 1001 -G mcp
+USER mcp
+COPY --from=builder --chown=mcp:mcp /app/dist ./dist
 CMD ["node", "dist/index.js"]
 ```
 

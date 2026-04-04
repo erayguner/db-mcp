@@ -340,10 +340,10 @@ export class BigQueryClient extends EventEmitter {
       const metadata = metadataResponse[0] as JobMetadata;
       const totalBytesProcessed = metadata.statistics?.query?.totalBytesProcessed || '0';
 
-      // BigQuery pricing: $5 per TB processed (as of 2024)
+      // BigQuery on-demand pricing: $6.25 per TB (as of 2025)
       const bytesProcessed = parseInt(totalBytesProcessed);
       const terabytesProcessed = bytesProcessed / (1024 ** 4);
-      const estimatedCostUSD = terabytesProcessed * 5;
+      const estimatedCostUSD = terabytesProcessed * 6.25;
 
       return {
         totalBytesProcessed,

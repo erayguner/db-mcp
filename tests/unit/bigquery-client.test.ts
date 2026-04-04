@@ -5,6 +5,8 @@
 import { BigQueryClient, BigQueryClientConfig } from '../../src/bigquery/client.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
+// Skip when global mock setup conflicts with per-test mocks.
+// TODO: Fix mock infrastructure so these 24 tests can run alongside setup.ts global mocks.
 const skipClient = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
 const describeClient = skipClient ? describe.skip : describe;
 

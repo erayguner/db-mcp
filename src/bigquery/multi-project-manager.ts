@@ -834,6 +834,7 @@ export class MultiProjectManager extends EventEmitter {
         this.emit('discovery:error', error);
       }
     }, this.config.discoveryIntervalMs);
+    if (typeof this.discoveryInterval.unref === 'function') this.discoveryInterval.unref();
 
     this.emit('auto-discovery:started', {
       intervalMs: this.config.discoveryIntervalMs,
@@ -867,11 +868,13 @@ export class MultiProjectManager extends EventEmitter {
 
     const msUntilMidnight = tomorrow.getTime() - now.getTime();
 
-    setTimeout(() => {
+    const initialTimer = setTimeout(() => {
       resetQuotas();
       // Then set daily interval
       this.quotaResetInterval = setInterval(resetQuotas, 24 * 60 * 60 * 1000);
+      if (typeof this.quotaResetInterval.unref === 'function') this.quotaResetInterval.unref();
     }, msUntilMidnight);
+    if (typeof initialTimer.unref === 'function') initialTimer.unref();
   }
 
   /**

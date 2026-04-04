@@ -1005,6 +1005,7 @@ export class DatasetDiscovery extends EventEmitter {
     this.discoveryInterval = setInterval(() => {
       this.emit('auto-discovery:trigger');
     }, this.config.scanIntervalMs);
+    if (typeof this.discoveryInterval.unref === 'function') this.discoveryInterval.unref();
 
     this.emit('auto-discovery:started', {
       intervalMs: this.config.scanIntervalMs,

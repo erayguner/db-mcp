@@ -537,7 +537,7 @@ export interface SecurityEvent {
   details: Record<string, unknown>;
 }
 
-export class SecurityAuditLogger {
+export class SecurityEventLog {
   private config: SecurityConfig;
   private events: SecurityEvent[] = [];
   private maxEvents = 10000;
@@ -608,7 +608,7 @@ export class SecurityMiddleware {
   private inputValidator: InputValidator;
   private sensitiveDetector: SensitiveDataDetector;
   private toolValidator: ToolValidator;
-  private auditLogger: SecurityAuditLogger;
+  private auditLogger: SecurityEventLog;
 
   constructor(config: Partial<SecurityConfig> = {}) {
     this.config = SecurityConfigSchema.parse(config);
@@ -617,7 +617,7 @@ export class SecurityMiddleware {
     this.inputValidator = new InputValidator(this.config);
     this.sensitiveDetector = new SensitiveDataDetector(this.config);
     this.toolValidator = new ToolValidator(this.config);
-    this.auditLogger = new SecurityAuditLogger(this.config);
+    this.auditLogger = new SecurityEventLog(this.config);
 
     logger.info('Security middleware initialized', {
       rateLimitEnabled: this.config.rateLimitEnabled,
@@ -656,7 +656,7 @@ export class SecurityMiddleware {
     return this.toolValidator;
   }
 
-  getAuditLogger(): SecurityAuditLogger {
+  getAuditLogger(): SecurityEventLog {
     return this.auditLogger;
   }
 

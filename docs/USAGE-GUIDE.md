@@ -608,12 +608,16 @@ autocannon -c 150 -d 10 \
 | `BIGQUERY_LOCATION` | No | `US` | BigQuery location |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |
 | `PORT` | No | `8080` | Server port |
+| `MCP_TRANSPORT` | No | `stdio` | MCP transport type (`stdio` or `http`) |
+| `MCP_HTTP_PORT` | No | `8080` | HTTP port when using `http` transport |
 
 #### Mock Mode
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `USE_MOCK_BIGQUERY` | No | `false` | Enable mock mode |
+
+> **Note**: `USE_MOCK_BIGQUERY` is referenced in documentation and Docker examples but is NOT validated in the server's Zod environment schema. It is handled as a conventional environment variable check, not a schema-enforced config field.
 
 #### Security Settings
 

@@ -137,13 +137,15 @@ class AuditEventStore {
   private events: AuditEvent[] = [];
   private maxEvents: number;
   private retentionMs: number;
+  private cleanupTimer: NodeJS.Timeout;
 
   constructor(maxEvents: number = 100000, retentionDays: number = 90) {
     this.maxEvents = maxEvents;
     this.retentionMs = retentionDays * 24 * 60 * 60 * 1000;
 
-    // Cleanup old events every hour
-    setInterval(() => this.cleanup(), 3600000);
+    // Cleanup old events every hour — unref to not block shutdown
+    this.cleanupTimer = setInterval(() => this.cleanup(), 3600000);
+    if (typeof this.cleanupTimer.unref === 'function') this.cleanupTimer.unref();
 
     logger.info('Audit event store initialized', {
       maxEvents,
@@ -332,6 +334,7 @@ class AuditEventStore {
    * Clear all events
    */
   clear(): void {
+    clearInterval(this.cleanupTimer);
     const count = this.events.length;
     this.events = [];
     logger.info('Audit store cleared', { eventsRemoved: count });

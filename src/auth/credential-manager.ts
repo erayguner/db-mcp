@@ -114,13 +114,15 @@ function hasGetAccessToken(
 class TokenCache {
   private tokens = new Map<string, TokenInfo>();
   private enabled: boolean;
+  private cleanupTimer?: NodeJS.Timeout;
 
   constructor(enabled: boolean) {
     this.enabled = enabled;
 
-    // Cleanup expired tokens every minute
+    // Cleanup expired tokens every minute — unref to not block shutdown
     if (enabled) {
-      setInterval(() => this.cleanup(), 60000);
+      this.cleanupTimer = setInterval(() => this.cleanup(), 60000);
+      if (typeof this.cleanupTimer.unref === 'function') this.cleanupTimer.unref();
     }
   }
 

@@ -392,6 +392,7 @@ export class QueryMetricsTracker {
     this.cleanupInterval = setInterval(() => {
       this.cleanup();
     }, 60 * 60 * 1000);
+    if (typeof this.cleanupInterval.unref === 'function') this.cleanupInterval.unref();
 
     logger.debug('Periodic metrics cleanup started');
   }

@@ -4,7 +4,7 @@
 
 **Image**: `mcp-bigquery-server:latest`
 **Size**: 142MB (optimized multi-stage build)
-**Base**: Node.js 20 Alpine Linux
+**Base**: Node.js 22 Alpine Linux
 **Build Time**: ~15 seconds
 **Created**: 2026-04-03
 
@@ -24,13 +24,13 @@ docker build -t mcp-bigquery-server .
 
 **Stages**:
 1. **Builder Stage**:
-   - Base: node:20-alpine
+   - Base: node:22-alpine
    - Installed packages via `npm ci --production=false`
    - Compiled TypeScript via `npm run build` (0 errors)
    - Output: dist/ directory
 
 2. **Production Stage**:
-   - Base: node:20-alpine
+   - Base: node:22-alpine
    - Non-root user `mcp:mcp` (uid/gid 1001)
    - Installed production packages only
    - Final size: 142MB
@@ -46,7 +46,7 @@ mcp-bigquery-server   latest    2df99fd7c6c5   11 seconds ago   142MB
 
 **Layers**:
 - Alpine Linux base: ~5MB
-- Node.js 20: ~35MB
+- Node.js 22: ~35MB
 - Production dependencies: ~95MB
 - Application code: ~7MB
 - Total: 142MB
@@ -60,7 +60,7 @@ mcp-bigquery-server   latest    2df99fd7c6c5   11 seconds ago   142MB
 ### Node.js Version
 ```bash
 $ docker run --rm mcp-bigquery-server:latest node --version
-v20.x.x
+v22.x.x
 ```
 
 ### Application Structure
@@ -271,12 +271,12 @@ docker exec <container-id> node -e "console.log('healthy')"
 ### Multi-stage Build
 ```dockerfile
 # Stage 1: Builder
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 # npm ci --production=false
 # npm run build
 
 # Stage 2: Production
-FROM node:20-alpine
+FROM node:22-alpine
 # ... only production runtime, mcp:mcp user ...
 ```
 
@@ -377,5 +377,5 @@ syft mcp-bigquery-server:latest -o json > sbom.json
 
 **Generated**: 2026-04-03
 **Image ID**: 2df99fd7c6c5
-**Node Version**: 20
+**Node Version**: 22
 **Alpine Version**: 3.21

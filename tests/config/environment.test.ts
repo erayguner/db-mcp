@@ -50,11 +50,6 @@ describe('Environment Configuration', () => {
   it('should apply default values when optional fields are missing', () => {
     const minimalEnv = {
       GCP_PROJECT_ID: 'test-project',
-      WORKLOAD_IDENTITY_POOL_ID: 'test-pool',
-      WORKLOAD_IDENTITY_PROVIDER_ID: 'test-provider',
-      MCP_SERVICE_ACCOUNT_EMAIL: 'test@test-project.iam.gserviceaccount.com',
-      GOOGLE_WORKSPACE_CLIENT_ID: 'test-client-id',
-      GOOGLE_WORKSPACE_DOMAIN: 'example.com',
     };
     const result = EnvironmentSchema.safeParse(minimalEnv);
     expect(result.success).toBe(true);
