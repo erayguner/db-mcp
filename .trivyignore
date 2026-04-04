@@ -1,0 +1,12 @@
+# Vulnerabilities in Node.js base image bundled npm packages.
+# These are transitive dependencies inside /usr/local/lib/node_modules/npm/
+# and are not used by our application code. They are fixed when the Node.js
+# base image is updated.
+
+# minimatch ReDoS — in npm's bundled glob, not our dependency
+CVE-2026-26996
+CVE-2026-27903
+CVE-2026-27904
+
+# picomatch ReDoS — in npm's bundled dependency, not ours
+CVE-2026-33671
