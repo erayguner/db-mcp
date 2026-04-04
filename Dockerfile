@@ -13,13 +13,15 @@ FROM node:22-alpine
 RUN apk upgrade --no-cache
 WORKDIR /app
 
+# Install production dependencies only (excludes devDeps like esbuild/tsx)
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
 # Security: run as non-root
 RUN addgroup -g 1001 -S mcp && adduser -S mcp -u 1001 -G mcp
 USER mcp
 
 COPY --from=builder --chown=mcp:mcp /app/dist ./dist
-COPY --from=builder --chown=mcp:mcp /app/node_modules ./node_modules
-COPY --from=builder --chown=mcp:mcp /app/package.json ./
 
 ENV NODE_ENV=production
 ENV MCP_TRANSPORT=http
