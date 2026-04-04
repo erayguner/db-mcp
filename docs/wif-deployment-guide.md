@@ -423,7 +423,7 @@ jobs:
 
 ## 🆘 Troubleshooting
 
-See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for common issues and solutions.
+See the Troubleshooting section in [terraform/README.md](../terraform/README.md#-troubleshooting) for common issues and solutions.
 
 ## 📚 Next Steps
 

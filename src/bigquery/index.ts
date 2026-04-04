@@ -9,7 +9,7 @@
  * - DatasetDiscovery for dataset search and discovery
  */
 
-export { BigQueryClient, BigQueryClientConfig, BigQueryClientConfigSchema, QueryResult, QueryOptions, BigQueryClientError, QueryBuilder } from './client.js';
+export { BigQueryClient, BigQueryClientConfig, BigQueryClientConfigSchema, QueryResult, QueryOptions, BigQueryClientError } from './client.js';
 export {
   QueryCache,
   QueryCacheConfig,

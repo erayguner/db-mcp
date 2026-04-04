@@ -128,53 +128,12 @@ export class BigQueryClient extends EventEmitter {
   private parseAndValidateConfig(config: BigQueryClientInputConfig): BigQueryClientConfig {
     const parsed = BigQueryClientConfigSchema.parse(config);
 
-    const result = {
-      projectId: parsed.projectId,
-      location: parsed.location,
-      keyFilename: parsed.keyFilename,
-      credentials: parsed.credentials,
-      connectionPool: parsed.connectionPool || {
-        minConnections: 2,
-        maxConnections: 10,
-        acquireTimeoutMs: 30000,
-        idleTimeoutMs: 300000,
-        healthCheckIntervalMs: 60000,
-        maxRetries: 3,
-        retryDelayMs: 1000,
-      },
-      datasetManager: parsed.datasetManager || {
-        cacheSize: 100,
-        cacheTTLMs: 3600000,
-        autoDiscovery: true,
-        discoveryIntervalMs: 300000,
-      },
-      retry: parsed.retry || {
-        maxRetries: 3,
-        initialDelayMs: 1000,
-        maxDelayMs: 32000,
-        backoffMultiplier: 2,
-        retryableErrors: [
-          'ECONNRESET',
-          'ETIMEDOUT',
-          'ENOTFOUND',
-          'RATE_LIMIT_EXCEEDED',
-          'BACKEND_ERROR',
-        ],
-      },
-      queryDefaults: parsed.queryDefaults || {
-        useLegacySql: false,
-        location: undefined,
-        maximumBytesBilled: undefined,
-        timeoutMs: undefined,
-      },
-    };
-
     // Merge top-level location into queryDefaults if not present
-    if (parsed.location && !result.queryDefaults.location) {
-      result.queryDefaults.location = parsed.location;
+    if (parsed.location && !parsed.queryDefaults.location) {
+      parsed.queryDefaults.location = parsed.location;
     }
 
-    return result;
+    return parsed;
   }
 
   private setupEventHandlers(): void {
@@ -454,7 +413,7 @@ export class BigQueryClient extends EventEmitter {
       } finally {
         this.connectionPool.release(client);
       }
-    } catch (_error) {
+    } catch {
       return false;
     }
   }
@@ -563,165 +522,4 @@ export class BigQueryClient extends EventEmitter {
     }
   }
 
-  /**
-   * Create a query builder for fluent API
-   */
-  public createQueryBuilder(): QueryBuilder {
-    return new QueryBuilder(this);
-  }
-}
-
-/**
- * Fluent query builder for BigQuery
- */
-export class QueryBuilder {
-  private queryParts: {
-    select?: string[];
-    from?: string;
-    where?: string[];
-    groupBy?: string[];
-    having?: string[];
-    orderBy?: string[];
-    limit?: number;
-    offset?: number;
-  } = {};
-
-  private parameters: Record<string, string | number | boolean | Date> = {};
-
-  constructor(private client: BigQueryClient) { }
-
-  select(...columns: string[]): this {
-    this.queryParts.select = columns;
-    return this;
-  }
-
-  from(table: string): this {
-    this.queryParts.from = table;
-    return this;
-  }
-
-  where(condition: string): this {
-    if (!this.queryParts.where) {
-      this.queryParts.where = [];
-    }
-    this.queryParts.where.push(condition);
-    return this;
-  }
-
-  groupBy(...columns: string[]): this {
-    this.queryParts.groupBy = columns;
-    return this;
-  }
-
-  having(condition: string): this {
-    if (!this.queryParts.having) {
-      this.queryParts.having = [];
-    }
-    this.queryParts.having.push(condition);
-    return this;
-  }
-
-  orderBy(...columns: string[]): this {
-    this.queryParts.orderBy = columns;
-    return this;
-  }
-
-  limit(count: number): this {
-    this.queryParts.limit = count;
-    return this;
-  }
-
-  offset(count: number): this {
-    this.queryParts.offset = count;
-    return this;
-  }
-
-  param(name: string, value: string | number | boolean | Date): this {
-    this.parameters[name] = value;
-    return this;
-  }
-
-  build(): string {
-    const parts: string[] = [];
-
-    // SELECT
-    if (this.queryParts.select && this.queryParts.select.length > 0) {
-      parts.push(`SELECT ${this.queryParts.select.join(', ')}`);
-    } else {
-      parts.push('SELECT *');
-    }
-
-    // FROM
-    if (this.queryParts.from) {
-      parts.push(`FROM ${this.queryParts.from}`);
-    }
-
-    // WHERE
-    if (this.queryParts.where && this.queryParts.where.length > 0) {
-      parts.push(`WHERE ${this.queryParts.where.join(' AND ')}`);
-    }
-
-    // GROUP BY
-    if (this.queryParts.groupBy && this.queryParts.groupBy.length > 0) {
-      parts.push(`GROUP BY ${this.queryParts.groupBy.join(', ')}`);
-    }
-
-    // HAVING
-    if (this.queryParts.having && this.queryParts.having.length > 0) {
-      parts.push(`HAVING ${this.queryParts.having.join(' AND ')}`);
-    }
-
-    // ORDER BY
-    if (this.queryParts.orderBy && this.queryParts.orderBy.length > 0) {
-      parts.push(`ORDER BY ${this.queryParts.orderBy.join(', ')}`);
-    }
-
-    // LIMIT
-    if (this.queryParts.limit !== undefined) {
-      parts.push(`LIMIT ${this.queryParts.limit}`);
-    }
-
-    // OFFSET
-    if (this.queryParts.offset !== undefined) {
-      parts.push(`OFFSET ${this.queryParts.offset}`);
-    }
-
-    return parts.join('\n');
-  }
-
-  async execute<T = Record<string, unknown>>(options?: Partial<QueryOptions>): Promise<QueryResult<T>> {
-    const query = this.build();
-    const params = Object.entries(this.parameters).map(([name, value]) => ({
-      name,
-      parameterType: { type: this.inferType(value) },
-      parameterValue: { value: String(value) },
-    }));
-
-    return this.client.query<T>({
-      ...options,
-      query,
-      params: params.length > 0 ? params : undefined,
-    });
-  }
-
-  async dryRun(options?: Partial<QueryOptions>): Promise<{
-    totalBytesProcessed: string;
-    estimatedCostUSD: number;
-  }> {
-    const query = this.build();
-    return this.client.dryRun(query, options);
-  }
-
-  private inferType(value: string | number | boolean | Date): string {
-    if (typeof value === 'number') {
-      return Number.isInteger(value) ? 'INT64' : 'FLOAT64';
-    }
-    if (typeof value === 'boolean') {
-      return 'BOOL';
-    }
-    if (value instanceof Date) {
-      return 'TIMESTAMP';
-    }
-    return 'STRING';
-  }
 }
