@@ -36,6 +36,16 @@ export const TenantConfigSchema = z
       )
       .optional(),
     allowedTools: z.array(z.string()).optional(),
+    columnMasking: z.object({
+      enabled: z.boolean().default(false),
+      rules: z.array(z.object({
+        datasetPattern: z.string(),
+        tablePattern: z.string(),
+        columnPattern: z.string(),
+        maskType: z.enum(['redact', 'hash', 'partial', 'nullify']).default('redact'),
+        description: z.string().optional(),
+      })).default([]),
+    }).default({ enabled: false, rules: [] }),
   });
 
 export type TenantConfig = z.infer<typeof TenantConfigSchema>;

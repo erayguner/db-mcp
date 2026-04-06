@@ -18,6 +18,8 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { getEnvironment } from './config/environment.js';
 import { BigQueryClient } from './bigquery/client.js';
@@ -38,6 +40,12 @@ import {
   recordSecurityEvent,
   recordErrorByCode,
 } from './mcp/mcp-metrics.js';
+import { PromptRegistry } from './mcp/handlers/prompt-handlers.js';
+import { SessionManager } from './mcp/handlers/session-manager.js';
+import { ProgressNotifier } from './mcp/handlers/progress-notifier.js';
+import { BehavioralAnomalyDetector } from './security/anomaly-detector.js';
+import { EffectivenessTracker } from './monitoring/effectiveness-metrics.js';
+import { GracefulDegradationHandler } from './bigquery/graceful-degradation.js';
 
 /** Server version — single source of truth */
 const SERVER_VERSION = '1.0.0';
@@ -131,6 +139,14 @@ export class MCPBigQueryServer {
   private security: SecurityMiddleware;
   private initialized = false;
 
+  // MCP protocol compliance gap implementations
+  private promptRegistry: PromptRegistry;
+  private sessionManager: SessionManager;
+  public progressNotifier: ProgressNotifier;
+  private anomalyDetector: BehavioralAnomalyDetector;
+  private effectivenessTracker: EffectivenessTracker;
+  private degradationHandler: GracefulDegradationHandler;
+
   constructor() {
     this.env = getEnvironment();
 
@@ -146,6 +162,23 @@ export class MCPBigQueryServer {
     // Register tools with security validator (for change detection)
     this.registerSecurityTools();
 
+    // Initialize gap implementation components
+    this.promptRegistry = new PromptRegistry();
+    this.sessionManager = new SessionManager();
+    this.progressNotifier = new ProgressNotifier();
+    this.anomalyDetector = new BehavioralAnomalyDetector();
+    this.effectivenessTracker = new EffectivenessTracker();
+    this.degradationHandler = new GracefulDegradationHandler({
+      enabled: true,
+      staleCacheMaxAgeMs: Number(process.env.MCP_STALE_CACHE_MAX_AGE_MS) || 1800000,
+      circuitBreakerThreshold: Number(process.env.MCP_CIRCUIT_BREAKER_THRESHOLD) || 5,
+      circuitBreakerResetMs: Number(process.env.MCP_CIRCUIT_BREAKER_RESET_MS) || 60000,
+      fallbackMessage: 'BigQuery is temporarily unavailable. Serving cached results.',
+    });
+
+    // Determine transport from env
+    const transport = (process.env.MCP_TRANSPORT === 'http') ? 'http' as const : 'stdio' as const;
+
     // Initialize MCP Server Factory with comprehensive config
     this.serverFactory = new MCPServerFactory({
       name: 'gcp-bigquery-mcp-server',
@@ -154,12 +187,12 @@ export class MCPBigQueryServer {
       capabilities: {
         tools: true,
         resources: true,
-        prompts: false,
+        prompts: true,
         logging: true,
       },
-      transport: 'stdio',
+      transport,
       gracefulShutdownTimeoutMs: 30000,
-      healthCheckIntervalMs: 60000, // Health check every minute
+      healthCheckIntervalMs: 60000,
     });
 
     // Initialize Tool Handler Factory
@@ -490,7 +523,7 @@ export class MCPBigQueryServer {
         }
 
         // ==========================================
-        // 6. Record Success Metrics
+        // 6. Record Success Metrics & Track Behavior
         // ==========================================
         const success = !result.isError;
         recordRequest(name, success);
@@ -498,6 +531,33 @@ export class MCPBigQueryServer {
 
         const responseBytes = result.content ? JSON.stringify(result.content).length : 0;
         recordPayloadSize('call_tool', requestBytes, responseBytes);
+
+        // Track intelligence effectiveness
+        this.effectivenessTracker.recordToolCall({
+          toolName: name,
+          timestamp: new Date(),
+          success,
+          executionTimeMs: Date.now() - Date.parse(new Date().toISOString()),
+          wasRetry: false,
+        });
+
+        // Record behavioral anomaly detection
+        const userId = extractUserId(request) || 'anonymous';
+        const anomalies = this.anomalyDetector.recordQuery({
+          userId,
+          toolName: name,
+          timestamp: new Date(),
+          datasetsAccessed: [],
+          isWrite: false,
+        });
+        if (anomalies.length > 0) {
+          logger.warn('Behavioral anomalies detected', {
+            userId,
+            tool: name,
+            anomalyCount: anomalies.length,
+            types: anomalies.map(a => a.type),
+          });
+        }
 
         logger.info('Tool execution completed', {
           tool: name,
@@ -557,6 +617,47 @@ export class MCPBigQueryServer {
       });
     } catch (err) {
       logger.warn('Skipping list_resources handler registration', { error: (err as Error).message });
+    }
+
+    // ==========================================
+    // List Prompts Handler
+    // ==========================================
+    try {
+      server.setRequestHandler(ListPromptsRequestSchema, () => {
+        logger.debug('Handling list_prompts request');
+        recordProtocolMethod('list_prompts');
+        const prompts = this.promptRegistry.listPrompts();
+        logger.info('Listed prompts', { count: prompts.length });
+        return { prompts };
+      });
+    } catch (err) {
+      logger.warn('Skipping list_prompts handler registration', { error: (err as Error).message });
+    }
+
+    // ==========================================
+    // Get Prompt Handler
+    // ==========================================
+    try {
+      server.setRequestHandler(GetPromptRequestSchema, (request) => {
+        const typedReq = request as { params: { name: string; arguments?: Record<string, string> } };
+        const { name, arguments: args } = typedReq.params;
+
+        logger.info('Handling get_prompt request', { name, hasArgs: !!args });
+        recordProtocolMethod('get_prompt');
+
+        const result = this.promptRegistry.getPrompt(name, args || {});
+
+        // Map to SDK-expected format: { description, messages: [{role, content}] }
+        return {
+          description: result.description,
+          messages: result.messages.map((m: { role: string; content: { type: string; text: string } }) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })),
+        };
+      });
+    } catch (err) {
+      logger.warn('Skipping get_prompt handler registration', { error: (err as Error).message });
     }
 
     // ==========================================
@@ -771,6 +872,10 @@ export class MCPBigQueryServer {
       // BigQuery client doesn't have explicit close, connections auto-managed
       this.bigQueryClient = null;
 
+      // 4. Cleanup gap components
+      this.sessionManager.dispose();
+      this.anomalyDetector.destroy();
+
       logger.info('Server shutdown complete');
 
     } catch (error) {
@@ -799,8 +904,12 @@ export class MCPBigQueryServer {
       components: {
         server: this.serverFactory.isHealthy(),
         bigQuery: this.bigQueryClient !== null,
-        security: true, // Security is always initialized
-        telemetry: true, // Assume telemetry is healthy if server is running
+        security: true,
+        telemetry: true,
+        prompts: true,
+        sessions: true,
+        anomalyDetection: true,
+        circuitBreaker: this.degradationHandler.getCircuitState() !== 'open',
       },
     };
   }

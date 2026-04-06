@@ -37,7 +37,7 @@ export const ServerFactoryConfigSchema = z.object({
     prompts: z.boolean().default(false),
     logging: z.boolean().default(true),
   }).default({}),
-  transport: z.enum(['stdio', 'sse', 'websocket']).default('stdio'),
+  transport: z.enum(['stdio', 'http', 'sse', 'websocket']).default('stdio'),
   gracefulShutdownTimeoutMs: z.number().min(1000).default(30000),
   healthCheckIntervalMs: z.number().min(1000).optional(),
 });
@@ -186,6 +186,12 @@ export class MCPServerFactory extends EventEmitter {
     switch (this.config.transport) {
       case 'stdio':
         return new StdioServerTransport();
+
+      case 'http':
+        // HTTP transport is handled externally by HttpTransportServer.
+        // Return a no-op transport that satisfies the interface for init.
+        logger.info('HTTP transport selected — server will be connected externally');
+        return new StdioServerTransport(); // placeholder; overridden by HttpTransportServer
 
       case 'sse':
       case 'websocket':

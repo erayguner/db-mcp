@@ -9,3 +9,38 @@ tenants:
     rateLimits:
       requestsPerMinute: 100
       queriesPerHour: 1000
+    columnMasking:
+      enabled: false
+      rules: []
+
+  # Example tenant with column masking enabled:
+  # - id: analytics-team
+  #   name: Analytics Team
+  #   projectId: my-project
+  #   allowedDatasets:
+  #     - analytics
+  #     - public_data
+  #   deniedDatasets:
+  #     - hr_sensitive
+  #   writeMode: blocked
+  #   maxBytesPerQuery: "10737418240"  # 10GB
+  #   oidcSubjectPattern: ".*@analytics\\.example\\.com$"
+  #   rateLimits:
+  #     requestsPerMinute: 200
+  #     queriesPerHour: 2000
+  #   columnMasking:
+  #     enabled: true
+  #     rules:
+  #       - datasetPattern: "*"
+  #         tablePattern: "*"
+  #         columnPattern: "email*"
+  #         maskType: partial
+  #         description: Mask email columns
+  #       - datasetPattern: "*"
+  #         tablePattern: "*"
+  #         columnPattern: "ssn*"
+  #         maskType: redact
+  #       - datasetPattern: "*"
+  #         tablePattern: "*"
+  #         columnPattern: "credit_card*"
+  #         maskType: hash

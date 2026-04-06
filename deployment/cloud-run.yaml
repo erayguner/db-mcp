@@ -112,6 +112,34 @@ spec:
         - name: PERMISSION_CACHE_TTL_MS
           value: "300000"  # 5 minutes
 
+        # MCP Protocol Features
+        - name: MCP_TRANSPORT
+          value: "http"
+
+        - name: MCP_HTTP_PORT
+          value: "8080"
+
+        - name: MCP_ENABLE_PROMPTS
+          value: "true"
+
+        - name: MCP_ENABLE_SESSIONS
+          value: "true"
+
+        - name: MCP_ENABLE_COMPRESSION
+          value: "true"
+
+        - name: MCP_ENABLE_ANOMALY_DETECTION
+          value: "true"
+
+        - name: MCP_SESSION_TTL_MS
+          value: "3600000"
+
+        - name: MCP_CIRCUIT_BREAKER_THRESHOLD
+          value: "5"
+
+        - name: MCP_STALE_CACHE_MAX_AGE_MS
+          value: "1800000"
+
         # Startup probe (allows time for initialization)
         startupProbe:
           httpGet:

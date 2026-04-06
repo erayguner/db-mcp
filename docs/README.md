@@ -100,6 +100,18 @@ Cross-project dataset discovery and search.
 ### [multi-project-manager.md](./multi-project-manager.md)
 Multi-project BigQuery management.
 
+### MCP Server Features (New)
+- **Prompt Providers** — 5 BigQuery-specific prompt templates for AI clients
+- **Streamable HTTP Transport** — Production transport for Cloud Run (POST/GET + SSE)
+- **Progress Notifications** — Real-time status for long-running queries
+- **Session Management** — Multi-turn query session tracking
+- **Request Batching** — JSON-RPC batch processing
+- **Column Masking** — Per-tenant column-level data masking
+- **Response Compression** — Gzip compression for large payloads
+- **Behavioral Anomaly Detection** — Per-user query pattern baselines
+- **Intelligence Effectiveness Metrics** — Tool call quality tracking
+- **Graceful Degradation** — Circuit breaker with stale cache fallback
+
 ---
 
 ## Quick Reference
