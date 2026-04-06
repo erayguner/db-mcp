@@ -154,7 +154,7 @@ export class PromptRegistry {
               '',
               'Please perform the following steps:',
               `1. Call \`list_tables\` with datasetId="${args.datasetId}" to see all tables/views in this dataset.`,
-              '2. For each table (or at least the first 10), call \`get_table_schema\` to examine the schema.',
+              '2. For each table (or at least the first 10), call `get_table_schema` to examine the schema.',
               '3. Provide a summary of the dataset:',
               '   - How many tables/views are there?',
               '   - What are the key entities or domains represented?',

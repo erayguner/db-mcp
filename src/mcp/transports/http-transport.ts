@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { createServer, IncomingMessage, ServerResponse } from 'http';
+import { createServer } from 'http';
+import type { IncomingMessage, ServerResponse } from 'http';
 import type { Server as HttpServer } from 'http';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
@@ -249,15 +250,11 @@ export class StreamableHttpTransport {
     // --- Connection tracking & latency instrumentation ---
     app.use((req: Request, res: Response, next: NextFunction) => {
       this.activeConnections++;
-      this.activeConnections++;
       const start = performance.now();
 
       res.on('finish', () => {
         this.activeConnections--;
-        this.activeConnections--;
         const durationMs = performance.now() - start;
-        logger.debug('HTTP request', { method: req.method, status: res.statusCode, durationMs });
-
         logger.debug('HTTP request completed', {
           method: req.method,
           path: req.path,
@@ -419,89 +416,3 @@ export class StreamableHttpTransport {
   }
 }
 
-/**
- * Legacy helper — creates the bare Express app with health, metrics, and
- * security middleware (no MCP routes). Kept for backward compatibility
- * with existing call-sites that import `createHttpApp`.
- */
-export { HttpTransportConfig as HttpTransportConfigLegacy };
-
-export function createHttpApp(config: {
-  basePath?: string;
-  port?: number;
-  host?: string;
-  corsOrigins?: string[];
-  requestTimeoutMs?: number;
-  maxRequestBodyBytes?: number;
-}): express.Application {
-  const app = express();
-
-  // Security headers
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    next();
-  });
-
-  // CORS
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    const origin = _req.headers.origin;
-    const corsOrigins = config.corsOrigins ?? [];
-    if (origin && (corsOrigins.includes('*') || corsOrigins.includes(origin))) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      res.setHeader('Access-Control-Max-Age', '86400');
-    }
-    if (_req.method === 'OPTIONS') {
-      res.status(204).end();
-      return;
-    }
-    next();
-  });
-
-  // Request instrumentation
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const start = performance.now();
-
-    res.on('finish', () => {
-      const durationMs = performance.now() - start;
-
-      logger.debug('HTTP request completed', {
-        method: req.method,
-        path: req.path,
-        status: res.statusCode,
-        durationMs: Math.round(durationMs),
-        contentLength: res.getHeader('content-length'),
-      });
-    });
-
-    next();
-  });
-
-  // Body parser with size limit
-  app.use(express.json({ limit: config.maxRequestBodyBytes ?? 1_048_576 }));
-
-  // Health endpoints
-  app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-  });
-
-  app.get('/readiness', (_req: Request, res: Response) => {
-    res.json({ ready: true, timestamp: new Date().toISOString() });
-  });
-
-  // Metrics endpoint (placeholder — actual metrics via OpenTelemetry)
-  app.get('/metrics', (_req: Request, res: Response) => {
-    res.json({ message: 'Metrics available via OpenTelemetry exporter' });
-  });
-
-  logger.info('HTTP transport app created', {
-    basePath: config.basePath ?? '/mcp',
-    port: config.port ?? 8080,
-    endpoints: ['/health', '/readiness', '/metrics'],
-  });
-
-  return app;
-}

@@ -381,6 +381,7 @@ export class MCPBigQueryServer {
       // Track connection and start latency timer
       recordProtocolMethod('call_tool');
       trackConnection(1);
+      const toolStartMs = Date.now();
       const stopTimer = startToolTimer(name);
 
       try {
@@ -537,7 +538,7 @@ export class MCPBigQueryServer {
           toolName: name,
           timestamp: new Date(),
           success,
-          executionTimeMs: Date.now() - Date.parse(new Date().toISOString()),
+          executionTimeMs: Date.now() - toolStartMs,
           wasRetry: false,
         });
 

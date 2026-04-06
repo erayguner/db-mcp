@@ -79,56 +79,99 @@ This will:
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | node dist/index.js
 ```
 
-## MCP Best Practices Implemented
+## Running with HTTP Transport
 
-**Protocol Compliance**:
-- **Stderr Logging**: All logs write to stderr (prevents JSON-RPC corruption)
-- **Capabilities**: Server declares resources and tools capabilities
-- **Graceful Shutdown**: SIGTERM/SIGINT handlers
-- **Error Handling**: Structured error responses with `isError` flag
-- **Schema Validation**: Zod schemas for all inputs
+For production-like local testing with the HTTP transport:
 
-## Available MCP Tools for Testing
+```bash
+# Start server with HTTP transport
+MCP_TRANSPORT=http MCP_HTTP_PORT=8080 npm run dev
 
-1. **query_bigquery**
-   ```json
-   {
-     "name": "query_bigquery",
-     "arguments": {
-       "query": "SELECT * FROM dataset.table LIMIT 10",
-       "dryRun": false
-     }
-   }
-   ```
+# In another terminal — list tools
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 
-2. **list_datasets**
-   ```json
-   {
-     "name": "list_datasets",
-     "arguments": {}
-   }
-   ```
+# List prompts
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"prompts/list","params":{}}'
 
-3. **list_tables**
-   ```json
-   {
-     "name": "list_tables",
-     "arguments": {
-       "datasetId": "analytics_dev"
-     }
-   }
-   ```
+# List resources
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"resources/list","params":{}}'
 
-4. **get_table_schema**
-   ```json
-   {
-     "name": "get_table_schema",
-     "arguments": {
-       "datasetId": "analytics_dev",
-       "tableId": "users"
-     }
-   }
-   ```
+# Batch request (multiple operations in one HTTP call)
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}},
+    {"jsonrpc":"2.0","id":2,"method":"prompts/list","params":{}}
+  ]'
+
+# Health check
+curl -s http://localhost:8080/health
+
+# SSE stream (server notifications)
+curl -N http://localhost:8080/mcp
+```
+
+## MCP Protocol Compliance
+
+See [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md) for the full compliance matrix.
+
+**Capabilities declared at connection init**:
+- **Tools**: 4 BigQuery tools (query, list datasets, list tables, get schema)
+- **Resources**: Browse datasets and tables via `bigquery://` URIs
+- **Prompts**: 5 BigQuery-specific prompt templates
+- **Logging**: Structured logging to stderr
+
+**Transport options**:
+- `stdio` (default) — for local Claude/MCP client integration
+- `http` — Streamable HTTP with SSE for production (Cloud Run)
+
+**Security**:
+- OIDC authentication with JWT verification
+- Per-tenant dataset authorization (SQL-level enforcement)
+- Rate limiting, prompt injection detection
+- Column-level data masking
+- Behavioral anomaly detection
+- Comprehensive audit logging
+
+**Resilience**:
+- Circuit breaker with stale cache fallback
+- Connection pooling with health checks
+- Graceful shutdown with drain period
+
+## Available MCP Capabilities
+
+### Tools (4)
+
+| Tool | Description |
+|------|-------------|
+| `query_bigquery` | Execute SQL on BigQuery (supports dryRun, maxResults, timeout) |
+| `list_datasets` | List all accessible BigQuery datasets |
+| `list_tables` | List tables in a dataset |
+| `get_table_schema` | Get schema and metadata for a table |
+
+### Resources (browsable via `bigquery://` URIs)
+
+| URI Pattern | Description |
+|-------------|-------------|
+| `bigquery://datasets` | Catalog of all datasets |
+| `bigquery://datasets/{id}` | Dataset detail with table listing |
+| `bigquery://datasets/{id}/tables/{id}` | Table detail with schema |
+
+### Prompts (5 AI guidance templates)
+
+| Prompt | Required Args | Description |
+|--------|--------------|-------------|
+| `analyze_table` | `datasetId`, `tableId` | Schema analysis + query suggestions |
+| `explore_dataset` | `datasetId` | Dataset exploration workflow |
+| `write_query` | `description` | Natural language to SQL |
+| `optimize_query` | `query` | Cost/performance optimization |
+| `data_quality_check` | `datasetId`, `tableId` | Data quality analysis |
 
 ## Running with Real GCP Credentials
 
@@ -154,16 +197,16 @@ ls -la dist/
 ```
 
 Expected directories:
-- `index.js` - Main entry point
-- `auth/` - Authentication modules
-- `bigquery/` - BigQuery client
-- `config/` - Configuration
-- `mcp/` - MCP server, handlers, schemas
-- `security/` - Security middleware
-- `tenancy/` - Multi-tenant components
-- `telemetry/` - OpenTelemetry instrumentation
-- `monitoring/` - Health monitoring
-- `utils/` - Utilities
+- `index.js` — Main entry point
+- `auth/` — Authentication (OIDC, WIF, audit logger)
+- `bigquery/` — BigQuery client, connection pool, query cache, graceful degradation
+- `config/` — Environment and tenant configuration
+- `mcp/` — MCP server factory, handlers (tools, prompts, sessions, progress), schemas, transports, middleware (batch, compression)
+- `security/` — Security middleware, anomaly detection, column masking
+- `tenancy/` — Multi-tenant config, registry, dataset policies, context
+- `telemetry/` — OpenTelemetry tracing and metrics
+- `monitoring/` — Health monitoring, effectiveness metrics
+- `utils/` — Logger
 
 ### Common Issues
 
@@ -211,6 +254,7 @@ open coverage/lcov-report/index.html
 ## Next Steps
 
 After local testing succeeds:
-1. Deploy to GCP (see `docs/wif-deployment-guide.md`)
-2. Set up monitoring and alerts (see `docs/MONITORING-GUIDE.md`)
-3. Configure tenant policies (see `src/config/tenants.yaml`)
+1. Review MCP protocol compliance: [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md)
+2. Deploy to GCP: [wif-deployment-guide.md](./wif-deployment-guide.md)
+3. Set up monitoring: [MONITORING-GUIDE.md](./MONITORING-GUIDE.md)
+4. Configure tenant policies and column masking: `src/config/tenants.yaml`

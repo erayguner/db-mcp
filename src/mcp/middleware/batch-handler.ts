@@ -128,8 +128,8 @@ function validateSingleRequest(
     valid: true,
     request: {
       jsonrpc: '2.0',
-      id: record.id as string | number | undefined,
-      method: record.method as string,
+      id: record.id,
+      method: record.method,
       params: record.params,
     },
   };
