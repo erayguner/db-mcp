@@ -8,7 +8,7 @@
   "delegatableAgents": [],
   "dataClasses": ["internal"],
   "approvalClass": "none",
-  "owner": { "team": "db-mcp-platform", "contact": "eray4793@gmail.com" },
+  "owner": { "team": "db-mcp-platform", "contact": "https://github.com/erayguner/db-mcp" },
   "onCallRotation": "db-mcp-oncall",
   "allocative": { "isAllocative": false, "protectedAttributes": [] },
   "compensatingRisks": [],
