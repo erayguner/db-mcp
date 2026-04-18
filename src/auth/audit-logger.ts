@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { logger } from '../utils/logger.js';
 import { recordError } from '../telemetry/metrics.js';
 import { setSpanAttributes } from '../telemetry/tracing.js';
+import { AuditChain, Signer, SignedExport, ChainEntry } from '../governance/audit-chain.js';
 
 /**
  * Enterprise Security Audit Logger
@@ -99,6 +100,16 @@ export const AuditEventSchema = z.object({
   // Performance
   durationMs: z.number().optional(),
   bytesProcessed: z.number().optional(),
+
+  // §11.7 Data lineage — retrieval source provenance on consuming events.
+  lineage: z.object({
+    sources: z.array(z.object({
+      type: z.enum(['bigquery_table', 'bigquery_dataset', 'document_store', 'vector_index', 'prompt_template']),
+      identifier: z.string(),
+      version: z.string(),
+    })).default([]),
+    promptTemplateVersion: z.string().optional(),
+  }).optional(),
 });
 
 export type AuditEvent = z.infer<typeof AuditEventSchema>;
@@ -348,21 +359,42 @@ class AuditEventStore {
 export class SecurityAuditLogger {
   private store: AuditEventStore;
   private enableCloudLogging: boolean;
+  private chain?: AuditChain<AuditEvent>;
+  private chainFile?: string;
+  private signer?: Signer;
 
   constructor(options: {
     maxEvents?: number;
     retentionDays?: number;
     enableCloudLogging?: boolean;
+    chain?: AuditChain<AuditEvent>;
+    chainFile?: string;
+    signer?: Signer;
   } = {}) {
     this.store = new AuditEventStore(
       options.maxEvents,
       options.retentionDays
     );
     this.enableCloudLogging = options.enableCloudLogging ?? true;
+    this.chain = options.chain;
+    this.chainFile = options.chainFile;
+    this.signer = options.signer;
 
     logger.info('Security audit logger initialized', {
       enableCloudLogging: this.enableCloudLogging,
+      tamperEvident: Boolean(this.chain),
     });
+  }
+
+  /** Chain-verified signed export (§8.2). */
+  exportSigned(): SignedExport<AuditEvent> | null {
+    if (!this.chain || !this.signer) return null;
+    return this.chain.exportSigned(this.signer);
+  }
+
+  /** Current chain head hash — for external attestation. */
+  chainHead(): string | null {
+    return this.chain?.head ?? null;
   }
 
   /**
@@ -376,6 +408,17 @@ export class SecurityAuditLogger {
 
     // Store in memory
     this.store.store(fullEvent);
+
+    // Append to tamper-evident chain + JSONL file if configured
+    if (this.chain) {
+      const entry: ChainEntry<AuditEvent> = this.chain.append(fullEvent, fullEvent.timestamp);
+      if (this.chainFile) {
+        // Fire-and-forget; DLQ handles write failures (§13.2).
+        this.chain.appendToFile(this.chainFile, entry).catch(err =>
+          logger.error('Audit chain append failed', { err: String(err) }),
+        );
+      }
+    }
 
     // Log to Cloud Logging
     if (this.enableCloudLogging) {

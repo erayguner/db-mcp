@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: write
+  attestations: write
 
 # Prevent multiple runs for same ref
 concurrency:
@@ -99,16 +101,57 @@ jobs:
         run: gcloud auth configure-docker
 
       - name: Build Docker image
+        id: build
         run: |
-          docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }} .
+          IMAGE=gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}
+          docker build -t $IMAGE .
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE || echo "")
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Push Docker image
-        run: docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}
+        id: push
+        run: |
+          docker push ${{ steps.build.outputs.image }}
+          DIGEST=$(gcloud container images describe ${{ steps.build.outputs.image }} --format='value(image_summary.digest)')
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy to Cloud Run
+      # §12.3 Sigstore cosign keyless signing + SLSA build provenance.
+      - name: Generate SBOM (CycloneDX via syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.build.outputs.image }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+      - name: Vulnerability scan (trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.build.outputs.image }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless, OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: '1'
+        run: cosign sign --yes gcr.io/$PROJECT_ID/$SERVICE_NAME@${{ steps.push.outputs.digest }}
+
+      - name: Generate SLSA build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Deploy to Cloud Run (pinned to signed digest)
         run: |
           gcloud run deploy $SERVICE_NAME \
-            --image gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }} \
+            --image gcr.io/$PROJECT_ID/$SERVICE_NAME@${{ steps.push.outputs.digest }} \
             --region $REGION \
             --platform managed \
             --service-account ${{ secrets.GCP_SA_EMAIL }} \

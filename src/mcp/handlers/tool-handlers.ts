@@ -6,6 +6,7 @@ import {
 } from '../schemas/tool-schemas.js';
 import { TenantContext } from '../../tenancy/tenant-context.js';
 import type { Provenance, SchemaContext } from '../schemas/output-schemas.js';
+import { getKillSwitch, SessionHaltedError } from '../../governance/kill-switch.js';
 
 /** Safely coerce an unknown schema field value to string */
 function fieldStr(value: unknown, fallback: string): string {
@@ -552,9 +553,20 @@ export class ToolHandlerFactory {
     context: ToolHandlerContext
   ): Promise<ToolResponse> {
     try {
+      // §14.1 Kill-switch: deny tool calls on halted sessions before any work.
+      const sessionId = context.metadata?.correlationId ?? context.requestId;
+      if (sessionId) getKillSwitch().enforce(sessionId);
       const handler = this.create(toolName, context);
       return await handler.execute(args);
     } catch (error) {
+      if (error instanceof SessionHaltedError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({
+            error: error.message, code: 'SESSION_HALTED', haltReason: error.haltReason, toolName,
+          }, null, 2) }],
+          isError: true,
+        };
+      }
       logger.error('Tool handler execution failed', {
         toolName,
         error,

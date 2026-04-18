@@ -1,0 +1,16 @@
+{
+  "name": "list_tables",
+  "version": "1.0.0",
+  "purpose": "Return the list of tables within a tenant-visible dataset, excluding data content.",
+  "role": "observer",
+  "inScopeTools": ["list_tables"],
+  "outOfScopeSystems": ["tables outside tenant scope", "row/column data access"],
+  "delegatableAgents": [],
+  "dataClasses": ["internal"],
+  "approvalClass": "none",
+  "owner": { "team": "db-mcp-platform", "contact": "eray4793@gmail.com" },
+  "onCallRotation": "db-mcp-oncall",
+  "allocative": { "isAllocative": false, "protectedAttributes": [] },
+  "compensatingRisks": [],
+  "reviewedAt": "2026-04-18T00:00:00.000Z"
+}

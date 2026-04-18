@@ -1,0 +1,25 @@
+{
+  "$schema": "db-mcp/data-classification.v1",
+  "version": "1.0.0",
+  "classifications": [
+    {
+      "dataset": "analytics_public",
+      "class": "public",
+      "piiFields": [],
+      "retentionDays": 365
+    },
+    {
+      "dataset": "analytics_internal",
+      "class": "internal",
+      "piiFields": [],
+      "retentionDays": 1095
+    },
+    {
+      "dataset": "customer_pii",
+      "class": "regulated",
+      "piiFields": ["email", "phone", "address", "national_id"],
+      "kAnonymityK": 20,
+      "retentionDays": 2555
+    }
+  ]
+}

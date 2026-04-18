@@ -1,0 +1,32 @@
+{
+  "$schema": "db-mcp/content-safety.v1",
+  "version": "1.0.0",
+  "piiRedactionEnabled": true,
+  "secretScannerEnabled": true,
+  "promptInjectionPatterns": [
+    "ignore previous instructions",
+    "disregard above",
+    "forget everything",
+    "new instructions:",
+    "system:",
+    "admin:",
+    "override",
+    "bypass security"
+  ],
+  "sensitivePatterns": [
+    "password",
+    "secret",
+    "api_key",
+    "token",
+    "private_key",
+    "credit_card",
+    "ssn",
+    "social_security"
+  ],
+  "deniedTopics": [
+    "credential exfiltration",
+    "destructive DDL",
+    "cross-tenant data access"
+  ],
+  "modelArmorMode": "inspect_and_block"
+}

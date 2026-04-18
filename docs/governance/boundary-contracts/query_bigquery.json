@@ -1,0 +1,26 @@
+{
+  "name": "query_bigquery",
+  "version": "1.0.0",
+  "purpose": "Execute parameterised read-only SQL against tenant-scoped BigQuery datasets for analytical exploration by MCP clients.",
+  "role": "advisor",
+  "inScopeTools": ["query_bigquery", "execute_query"],
+  "outOfScopeSystems": [
+    "production DML (INSERT/UPDATE/DELETE/MERGE)",
+    "DDL (CREATE/DROP/ALTER)",
+    "cross-tenant dataset access",
+    "system tables outside tenant allow-list"
+  ],
+  "delegatableAgents": [],
+  "dataClasses": ["internal", "confidential"],
+  "approvalClass": "none",
+  "owner": {
+    "team": "db-mcp-platform",
+    "contact": "eray4793@gmail.com"
+  },
+  "onCallRotation": "db-mcp-oncall",
+  "allocative": { "isAllocative": false, "protectedAttributes": [] },
+  "compensatingRisks": [
+    "Query governor blocks DML/DDL at the SQL boundary; SELECT * on unlisted datasets is flagged via anomaly-detector."
+  ],
+  "reviewedAt": "2026-04-18T00:00:00.000Z"
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "db-mcp/tool-governance.v1",
+  "version": "1.0.0",
+  "defaultAllow": false,
+  "allowList": [
+    "query_bigquery",
+    "execute_query",
+    "list_datasets",
+    "list_tables",
+    "get_table_schema"
+  ],
+  "denyList": [
+    "drop_table",
+    "delete_dataset",
+    "execute_dml"
+  ],
+  "requireApproval": [],
+  "categories": {
+    "query_bigquery": "execution",
+    "execute_query": "execution",
+    "list_datasets": "discovery",
+    "list_tables": "discovery",
+    "get_table_schema": "discovery"
+  },
+  "budgets": {
+    "maxTotalCalls": 500,
+    "maxCallsPerTool": {
+      "query_bigquery": 200,
+      "execute_query": 200,
+      "list_datasets": 50,
+      "list_tables": 100,
+      "get_table_schema": 200
+    },
+    "maxRuntimeMs": 600000,
+    "maxParallelism": 4,
+    "separationOfDuties": []
+  },
+  "argumentGates": [
+    {
+      "tool": "query_bigquery",
+      "maxArgBytes": 65536,
+      "denyRegex": [
+        "(?i)\\b(drop|delete|truncate|alter|create\\s+user|grant\\s+all)\\b",
+        "(?i)information_schema\\.(tables|columns)\\s+where\\s+table_catalog\\s*!="
+      ],
+      "requiredFields": ["query"]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "get_table_schema",
+  "version": "1.0.0",
+  "purpose": "Return column definitions and types for a tenant-visible BigQuery table; no row data.",
+  "role": "observer",
+  "inScopeTools": ["get_table_schema"],
+  "outOfScopeSystems": ["row data access", "cross-tenant schemas"],
+  "delegatableAgents": [],
+  "dataClasses": ["internal", "confidential"],
+  "approvalClass": "none",
+  "owner": { "team": "db-mcp-platform", "contact": "eray4793@gmail.com" },
+  "onCallRotation": "db-mcp-oncall",
+  "allocative": { "isAllocative": false, "protectedAttributes": [] },
+  "compensatingRisks": [
+    "Column names may hint at regulated data classes; dataset classification in policy enforces masking."
+  ],
+  "reviewedAt": "2026-04-18T00:00:00.000Z"
+}
