@@ -69,23 +69,17 @@ export interface LoadedPolicies {
   dataClassification: DataClassification;
 }
 
-const FILE_SCHEMAS: Record<string, z.ZodSchema> = {
-  'tool-governance.json': ToolGovernanceSchema,
-  'content-safety.json': ContentSafetySchema,
-  'data-classification.json': DataClassificationSchema,
-};
+const KNOWN_POLICY_FILES = new Set(['tool-governance.json', 'content-safety.json', 'data-classification.json']);
 
 export async function loadPolicies(dir: string): Promise<LoadedPolicies> {
   const files = await readdir(dir);
   const out: Partial<LoadedPolicies> = {};
   for (const file of files) {
-    const schema = FILE_SCHEMAS[file];
-    if (!schema) continue;
-    const raw = JSON.parse(await readFile(join(dir, file), 'utf8'));
-    const parsed = schema.parse(raw);
-    if (file === 'tool-governance.json') out.toolGovernance = parsed as ToolGovernance;
-    if (file === 'content-safety.json') out.contentSafety = parsed as ContentSafety;
-    if (file === 'data-classification.json') out.dataClassification = parsed as DataClassification;
+    if (!KNOWN_POLICY_FILES.has(file)) continue;
+    const raw: unknown = JSON.parse(await readFile(join(dir, file), 'utf8'));
+    if (file === 'tool-governance.json') out.toolGovernance = ToolGovernanceSchema.parse(raw);
+    else if (file === 'content-safety.json') out.contentSafety = ContentSafetySchema.parse(raw);
+    else if (file === 'data-classification.json') out.dataClassification = DataClassificationSchema.parse(raw);
   }
   if (!out.toolGovernance || !out.contentSafety || !out.dataClassification) {
     throw new Error(`policy directory ${dir} missing required policy files`);

@@ -31,8 +31,8 @@ export interface DlpProvider {
 
 /** Null provider used in dev/tests — does nothing, flagged in boundary contract. */
 export class NoopDlpProvider implements DlpProvider {
-  async inspectAndDeidentify(text: string): Promise<DlpInspectResult> {
-    return { findings: [], redacted: text };
+  inspectAndDeidentify(text: string): Promise<DlpInspectResult> {
+    return Promise.resolve({ findings: [], redacted: text });
   }
 }
 
