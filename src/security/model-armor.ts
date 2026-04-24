@@ -9,7 +9,7 @@ import { logger } from '../utils/logger.js';
  * provider so tests and offline envs can opt into a no-op.
  */
 
-export type ModelArmorVerdict = 'allow' | 'block' | 'warn';
+export type ModelArmorVerdict = 'allow' | 'block';
 
 export interface ModelArmorResult {
   verdict: ModelArmorVerdict;
@@ -144,10 +144,8 @@ function interpretSanitizeResponse(
  */
 export function createModelArmorProvider(env: NodeJS.ProcessEnv = process.env): ModelArmorProvider {
   const template = env.MODEL_ARMOR_TEMPLATE;
-  if (!template) {
-    if (env.MODEL_ARMOR_FALLBACK === 'heuristic') return new HeuristicModelArmorProvider();
-    return new NoopModelArmorProvider();
-  }
+  if (!template) return new NoopModelArmorProvider();
+
   const match = /^projects\/([^/]+)\/locations\/([^/]+)\/templates\/([^/]+)$/.exec(template);
   if (!match) {
     logger.error('Invalid MODEL_ARMOR_TEMPLATE; expected projects/{p}/locations/{l}/templates/{t}', { template });

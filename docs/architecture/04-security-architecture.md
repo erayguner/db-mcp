@@ -375,6 +375,21 @@ class SecretManager {
 
 ## Input Validation and Sanitization
 
+### Model Armor Pre-Flight (Content Safety)
+
+Before any tool executes, user-supplied text (queries, NL prompts) is passed
+through a `ModelArmorProvider`. The provider decides `allow` or `block` and
+the handler short-circuits on `block` with error code `MODEL_ARMOR_BLOCKED`.
+
+| Provider | When used | Behavior |
+|---|---|---|
+| `NoopModelArmorProvider` | `MODEL_ARMOR_TEMPLATE` unset (default) | Always allows |
+| `HttpModelArmorProvider` | `MODEL_ARMOR_TEMPLATE=projects/{p}/locations/{l}/templates/{t}` | Calls `modelarmor.{location}.rep.googleapis.com/v1/...:sanitizeUserPrompt` via ADC |
+| `HeuristicModelArmorProvider` | Fallback when the HTTP call fails | Local pattern match; result marked `degraded: true` |
+
+The HTTP provider uses Application Default Credentials from `google-auth-library`
+so no additional keys are required. Source: `src/security/model-armor.ts`.
+
 ### SQL Injection Prevention
 
 ```typescript

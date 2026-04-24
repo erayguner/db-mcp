@@ -16,12 +16,15 @@ Enterprise-grade MCP (Model Context Protocol) server for Google Cloud Platform B
 - **Zero Service Account Keys** - 100% Workload Identity Federation
 - **Google Workspace Integration** - OIDC user authentication
 - **MCP Protocol Compliant** - Follows official MCP SDK best practices
+- **Multi-tenant** - YAML allowlist + IAM Conditions on BigQuery datasets
 - **Security Middleware** - Rate limiting, prompt injection detection, data redaction
+- **Model Armor Pre-flight** - Optional content-safety screening before tool execution
+- **Private Service Connect** - Optional private ingress for enterprise consumers
 - **Customer-Managed Encryption** - CMEK for BigQuery datasets
 - **Comprehensive Audit Logging** - 7-year retention for compliance
 - **Terraform Infrastructure** - Complete IaC for reproducible deployments
 - **Cloud Run Deployment** - Serverless, auto-scaling architecture
-- **OpenTelemetry** - Distributed tracing and metrics
+- **OpenTelemetry** - Distributed tracing and per-tenant metrics
 
 ## Project Structure
 
@@ -208,9 +211,9 @@ GitHub Actions workflow automatically:
 
 ## Monitoring
 
-- **Cloud Monitoring**: Pre-configured dashboards
+- **Cloud Monitoring**: Pre-configured dashboards with `tenant_id` dimension on `mcp.tool.calls.total` and `mcp.tool.call.duration`
 - **Cloud Logging**: Structured JSON logs
-- **Cloud Trace**: Distributed tracing via OpenTelemetry
+- **Cloud Trace**: Distributed tracing via OpenTelemetry with `tenant.id` span attribute
 - **Audit Logs**: 7-year retention in BigQuery
 - **Alerts**: Email/Slack notifications
 
