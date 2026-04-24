@@ -106,3 +106,34 @@ variable "static_ip_address" {
   type        = string
   default     = ""
 }
+
+# Private Service Connect configuration. When enabled, a PSC service
+# attachment is created in front of the Cloud Run backend so consumer
+# projects can connect privately without traversing the public internet.
+variable "enable_private_service_connect" {
+  description = "Expose Cloud Run via a PSC service attachment"
+  type        = bool
+  default     = false
+}
+
+variable "psc_nat_subnet_id" {
+  description = "PSC NAT subnet ID (output from the networking module)"
+  type        = string
+  default     = ""
+}
+
+variable "psc_accepted_projects" {
+  description = "Consumer project IDs allowed to connect to the PSC service attachment"
+  type        = list(string)
+  default     = []
+}
+
+variable "ingress_mode" {
+  description = "Cloud Run ingress mode: all, internal, or internal-and-cloud-load-balancing"
+  type        = string
+  default     = "all"
+  validation {
+    condition     = contains(["all", "internal", "internal-and-cloud-load-balancing"], var.ingress_mode)
+    error_message = "ingress_mode must be one of: all, internal, internal-and-cloud-load-balancing."
+  }
+}

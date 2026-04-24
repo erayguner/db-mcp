@@ -30,6 +30,8 @@ interface MetricInstruments {
   authAttempts: Counter;
   authFailures: Counter;
   activeConnections: UpDownCounter;
+  toolCallCounter: Counter;
+  toolCallLatency: Histogram;
 }
 
 let instruments: MetricInstruments | null = null;
@@ -106,6 +108,16 @@ export function initializeMetrics(serviceName: string, serviceVersion: string, p
         description: 'Number of active connections',
         unit: '1',
       }),
+
+      toolCallCounter: meter.createCounter('mcp.tool.calls.total', {
+        description: 'Total MCP tool calls, labeled by tool and tenant',
+        unit: '1',
+      }),
+
+      toolCallLatency: meter.createHistogram('mcp.tool.call.duration', {
+        description: 'End-to-end MCP tool call latency',
+        unit: 'ms',
+      }),
     };
 
     logger.info('OpenTelemetry metrics initialized', {
@@ -131,13 +143,33 @@ export function getMetrics(): MetricInstruments {
 /**
  * Record MCP request
  */
-export function recordRequest(tool: string, success: boolean) {
+export function recordRequest(tool: string, success: boolean, tenantId?: string) {
   if (instruments) {
-    instruments.requestCounter.add(1, {
+    const attrs: Record<string, string> = {
       tool,
       success: success.toString(),
-    });
+    };
+    if (tenantId) attrs.tenant_id = tenantId;
+    instruments.requestCounter.add(1, attrs);
   }
+}
+
+/**
+ * Record a tool call outcome with tenant dimension (GEAP-style topology view).
+ * Emits both a counter and a latency histogram so dashboards can slice by
+ * tenant, tool, and verdict (allow/block/error).
+ */
+export function recordToolCall(
+  tool: string,
+  outcome: 'allow' | 'block' | 'error',
+  durationMs: number,
+  tenantId?: string,
+) {
+  if (!instruments) return;
+  const attrs: Record<string, string> = { tool, outcome };
+  if (tenantId) attrs.tenant_id = tenantId;
+  instruments.toolCallCounter.add(1, attrs);
+  instruments.toolCallLatency.record(durationMs, attrs);
 }
 
 /**

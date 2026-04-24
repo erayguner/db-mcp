@@ -7,6 +7,10 @@ import {
 import { TenantContext } from '../../tenancy/tenant-context.js';
 import type { Provenance, SchemaContext } from '../schemas/output-schemas.js';
 import { getKillSwitch, SessionHaltedError } from '../../governance/kill-switch.js';
+import {
+  ModelArmorProvider,
+  NoopModelArmorProvider,
+} from '../../security/model-armor.js';
 
 /** Safely coerce an unknown schema field value to string */
 function fieldStr(value: unknown, fallback: string): string {
@@ -77,6 +81,7 @@ export interface ToolHandlerContext {
   requestId?: string;
   metadata?: ToolRequestMetadata;
   tenantContext?: TenantContext;
+  modelArmor?: ModelArmorProvider;
 }
 
 /**
@@ -207,6 +212,27 @@ export class QueryBigQueryHandler extends BaseToolHandler {
     try {
       const validated = validateToolArgs('query_bigquery', args);
       const { query, dryRun, maxResults, timeoutMs, useLegacySql, location } = validated;
+
+      // Model Armor pre-flight — screen the query text before any policy or
+      // BigQuery work. Blocking verdicts short-circuit with a structured error
+      // so downstream metrics/audit still record the rejection.
+      const modelArmor = this.context.modelArmor ?? new NoopModelArmorProvider();
+      const armorResult = await modelArmor.screenUserPrompt(query, {
+        tenantId: this.context.tenantContext?.tenantId,
+        tool: 'query_bigquery',
+      });
+      if (armorResult.verdict === 'block') {
+        logger.warn('Query blocked by Model Armor', {
+          tenant: this.context.tenantContext?.tenantId,
+          matchedFilters: armorResult.matchedFilters,
+          degraded: armorResult.degraded,
+          requestId: this.context.requestId,
+        });
+        return this.formatError(
+          armorResult.reason ?? 'Input blocked by content safety policy',
+          'MODEL_ARMOR_BLOCKED'
+        );
+      }
 
       // Enforce tenant dataset policy
       if (this.context.tenantContext) {

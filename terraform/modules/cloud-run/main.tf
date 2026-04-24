@@ -147,6 +147,9 @@ resource "google_cloud_run_service" "mcp_server" {
         "run.googleapis.com/vpc-access-connector" = var.vpc_connector_id
         "run.googleapis.com/vpc-access-egress"    = "private-ranges-only"
 
+        # Ingress scope — restrict to internal/LB traffic when PSC is enabled
+        "run.googleapis.com/ingress" = var.ingress_mode
+
         # Auto-scaling configuration
         "autoscaling.knative.dev/minScale" = tostring(var.min_instances)
         "autoscaling.knative.dev/maxScale" = tostring(var.max_instances)
@@ -330,6 +333,33 @@ resource "google_bigquery_dataset_iam_member" "log_sink_writer" {
   role       = "roles/bigquery.dataEditor"
   member     = google_logging_project_sink.mcp_security_logs.writer_identity
   project    = var.project_id
+}
+
+# Private Service Connect — service attachment fronting the Cloud Run backend.
+# Consumer projects connect to this attachment via PSC endpoints, keeping
+# tenant traffic off the public internet. Requires the internal HTTPS LB
+# (var.cloud_armor_policy_id != null) and a PSC NAT subnet from networking.
+resource "google_compute_service_attachment" "mcp_psc" {
+  count = var.enable_private_service_connect && var.cloud_armor_policy_id != null && var.ssl_certificate_id != "" ? 1 : 0
+
+  name        = "mcp-bigquery-psc-${var.environment}"
+  project     = var.project_id
+  region      = var.region
+  description = "PSC service attachment for MCP BigQuery server (${var.environment})"
+
+  enable_proxy_protocol = false
+  connection_preference = length(var.psc_accepted_projects) > 0 ? "ACCEPT_MANUAL" : "ACCEPT_AUTOMATIC"
+
+  nat_subnets    = [var.psc_nat_subnet_id]
+  target_service = google_compute_global_forwarding_rule.mcp_https[0].id
+
+  dynamic "consumer_accept_lists" {
+    for_each = length(var.psc_accepted_projects) > 0 ? var.psc_accepted_projects : []
+    content {
+      project_id_or_num = consumer_accept_lists.value
+      connection_limit  = 10
+    }
+  }
 }
 
 # Secret Manager resource for tenant config

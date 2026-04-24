@@ -42,3 +42,18 @@ variable "access_policy_name" {
   type        = string
   default     = ""
 }
+
+# Private Service Connect (PSC) — optional private ingress path.
+# When enabled, a PSC NAT subnet is provisioned; consumers attach to the
+# service attachment produced by the cloud-run module (see cloud-run/main.tf).
+variable "enable_private_service_connect" {
+  description = "Provision PSC NAT subnet for private ingress to Cloud Run"
+  type        = bool
+  default     = false
+}
+
+variable "psc_nat_subnet_cidr" {
+  description = "CIDR for the PSC NAT subnet (must be disjoint from vpc_cidr)"
+  type        = string
+  default     = "10.0.1.0/24"
+}

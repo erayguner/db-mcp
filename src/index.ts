@@ -25,8 +25,9 @@ import { getEnvironment } from './config/environment.js';
 import { BigQueryClient } from './bigquery/client.js';
 import { logger } from './utils/logger.js';
 import { SecurityMiddleware } from './security/middleware.js';
+import { ModelArmorProvider, createModelArmorProvider } from './security/model-armor.js';
 import { initializeTelemetry, shutdownTelemetry } from './telemetry/index.js';
-import { recordRequest, trackConnection } from './telemetry/metrics.js';
+import { recordRequest, recordToolCall, trackConnection } from './telemetry/metrics.js';
 import { recordException, setSpanAttributes } from './telemetry/tracing.js';
 import { MCPServerFactory, ServerState } from './mcp/server-factory.js';
 import { ToolHandlerFactory, ToolHandlerContext } from './mcp/handlers/tool-handlers.js';
@@ -146,6 +147,7 @@ export class MCPBigQueryServer {
   private anomalyDetector: BehavioralAnomalyDetector;
   private effectivenessTracker: EffectivenessTracker;
   private degradationHandler: GracefulDegradationHandler;
+  private modelArmor: ModelArmorProvider;
 
   constructor() {
     this.env = getEnvironment();
@@ -161,6 +163,9 @@ export class MCPBigQueryServer {
 
     // Register tools with security validator (for change detection)
     this.registerSecurityTools();
+
+    // Model Armor pre-flight screening — no-op unless MODEL_ARMOR_TEMPLATE is set
+    this.modelArmor = createModelArmorProvider();
 
     // Initialize gap implementation components
     this.promptRegistry = new PromptRegistry();
@@ -481,12 +486,15 @@ export class MCPBigQueryServer {
             timestamp: new Date().toISOString(),
             environment: this.env.NODE_ENV,
           },
+          modelArmor: this.modelArmor,
         };
 
+        const tenantId = context.tenantContext?.tenantId;
         setSpanAttributes({
           'tool.name': name,
           'tool.request_id': requestId,
           'tool.has_user_id': !!context.userId,
+          ...(tenantId ? { 'tenant.id': tenantId } : {}),
         });
 
         const result = await this.toolHandlerFactory.execute(
@@ -527,7 +535,8 @@ export class MCPBigQueryServer {
         // 6. Record Success Metrics & Track Behavior
         // ==========================================
         const success = !result.isError;
-        recordRequest(name, success);
+        recordRequest(name, success, tenantId);
+        recordToolCall(name, success ? 'allow' : 'block', Date.now() - toolStartMs, tenantId);
         stopTimer(success);
 
         const responseBytes = result.content ? JSON.stringify(result.content).length : 0;
@@ -576,6 +585,7 @@ export class MCPBigQueryServer {
           requestId,
         });
         recordRequest(name, false);
+        recordToolCall(name, 'error', Date.now() - toolStartMs);
         recordException(error as Error);
         stopTimer(false);
         recordErrorByCode(ErrorCode.TOOL_EXECUTION_FAILED, name);

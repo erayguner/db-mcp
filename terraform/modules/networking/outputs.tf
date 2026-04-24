@@ -47,3 +47,8 @@ output "nat_ips" {
   description = "NAT external IPs"
   value       = google_compute_router_nat.mcp_nat.nat_ips
 }
+
+output "psc_nat_subnet_id" {
+  description = "Subnet ID reserved for PSC NAT (null when disabled)"
+  value       = var.enable_private_service_connect ? google_compute_subnetwork.psc_nat[0].id : null
+}
