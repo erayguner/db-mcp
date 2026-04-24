@@ -64,10 +64,12 @@ describePerf('Performance Benchmarks', () => {
 
     it('should process large result sets efficiently', async () => {
       // Arrange
-      const largeResults = Array(10000).fill(null).map((_, i) => ({
-        id: i,
-        data: `data-${i}`,
-      }));
+      const largeResults = Array(10000)
+        .fill(null)
+        .map((_, i) => ({
+          id: i,
+          data: `data-${i}`,
+        }));
 
       const mockJob = {
         id: 'job-123',
@@ -119,11 +121,13 @@ describePerf('Performance Benchmarks', () => {
 
     it('should handle 1000 validations efficiently', async () => {
       // Arrange
-      const requests = Array(1000).fill(null).map((_, i) => ({
-        toolName: 'list_datasets',
-        userId: `user-${i % 100}`,
-        arguments: {},
-      }));
+      const requests = Array(1000)
+        .fill(null)
+        .map((_, i) => ({
+          toolName: 'list_datasets',
+          userId: `user-${i % 100}`,
+          arguments: {},
+        }));
 
       // Act
       const startTime = performance.now();
@@ -194,7 +198,9 @@ describePerf('Performance Benchmarks', () => {
 
       // Assert - Memory increase should be minimal
       expect(memoryIncrease).toBeLessThan(10 * 1024 * 1024); // <10MB
-      console.log(`Memory increase after ${iterations} operations: ${(memoryIncrease / 1024 / 1024).toFixed(2)}MB`);
+      console.log(
+        `Memory increase after ${iterations} operations: ${(memoryIncrease / 1024 / 1024).toFixed(2)}MB`
+      );
     });
 
     it('should handle rate limiter cleanup efficiently', () => {
@@ -256,17 +262,23 @@ describePerf('Performance Benchmarks', () => {
       // Arrange
       const security = new SecurityMiddleware();
       const operations = [
-        () => security.validateRequest({ toolName: 'list_datasets', userId: 'user-1', arguments: {} }),
-        () => security.validateRequest({ toolName: 'query_bigquery', userId: 'user-2', arguments: { query: 'SELECT 1' } }),
+        () =>
+          security.validateRequest({ toolName: 'list_datasets', userId: 'user-1', arguments: {} }),
+        () =>
+          security.validateRequest({
+            toolName: 'query_bigquery',
+            userId: 'user-2',
+            arguments: { query: 'SELECT 1' },
+          }),
         () => security.validateResponse({ data: 'test' }),
       ];
 
       // Act
       const startTime = performance.now();
       await Promise.all(
-        Array(100).fill(null).map((_, i) =>
-          operations[i % operations.length]()
-        )
+        Array(100)
+          .fill(null)
+          .map((_, i) => operations[i % operations.length]())
       );
       const duration = performance.now() - startTime;
 

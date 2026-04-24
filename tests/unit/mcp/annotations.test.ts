@@ -1,8 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import {
-  readOnlyAnnotations,
-  getToolAnnotations,
-} from '../../../src/mcp/tools/annotations.js';
+import { readOnlyAnnotations, getToolAnnotations } from '../../../src/mcp/tools/annotations.js';
 
 describe('Tool Annotations', () => {
   it('returns read-only annotations for query_bigquery', () => {
@@ -38,7 +35,13 @@ describe('Tool Annotations', () => {
   });
 
   it('all tools have openWorldHint set to false', () => {
-    const tools = ['query_bigquery', 'execute_query', 'list_datasets', 'list_tables', 'get_table_schema'];
+    const tools = [
+      'query_bigquery',
+      'execute_query',
+      'list_datasets',
+      'list_tables',
+      'get_table_schema',
+    ];
     for (const tool of tools) {
       expect(getToolAnnotations(tool).openWorldHint).toBe(false);
     }

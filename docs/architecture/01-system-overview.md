@@ -2,7 +2,9 @@
 
 ## Executive Summary
 
-The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) server that provides secure, scalable access to Google BigQuery from AI applications like Claude Desktop. It implements Workload Identity Federation for keyless authentication and follows cloud-native best practices.
+The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) server that provides secure, scalable access
+to Google BigQuery from AI applications like Claude Desktop. It implements Workload Identity Federation for keyless
+authentication and follows cloud-native best practices.
 
 ## System Components
 
@@ -87,6 +89,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 ## Component Responsibilities
 
 ### 1. MCP Transport Layer
+
 - **Purpose**: Handle MCP protocol communication
 - **Technologies**: @modelcontextprotocol/sdk
 - **Responsibilities**:
@@ -96,6 +99,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
   - Connection lifecycle management
 
 ### 2. Tool Handler Layer
+
 - **Purpose**: Implement MCP tool specifications
 - **Technologies**: TypeScript, Zod for validation
 - **Responsibilities**:
@@ -105,6 +109,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
   - Response formatting
 
 ### 3. Security & Auth Layer
+
 - **Purpose**: Secure authentication and authorization
 - **Technologies**: google-auth-library, Workload Identity Federation
 - **Responsibilities**:
@@ -114,6 +119,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
   - Credential lifecycle management
 
 ### 4. BigQuery Client Layer
+
 - **Purpose**: Interface with BigQuery APIs
 - **Technologies**: @google-cloud/bigquery
 - **Responsibilities**:
@@ -123,6 +129,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
   - Job monitoring and cancellation
 
 ### 5. Cross-Cutting Concerns
+
 - **Purpose**: Observability and reliability
 - **Technologies**: Winston, OpenTelemetry, Express
 - **Responsibilities**:
@@ -135,10 +142,12 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 ## Technology Stack
 
 ### Runtime
+
 - **Node.js**: >= 22.0.0 (LTS)
 - **TypeScript**: 6.0+ (strict mode)
 
 ### Core Dependencies
+
 - **@modelcontextprotocol/sdk**: ^1.29.0 - MCP protocol implementation
 - **@google-cloud/bigquery**: ^8.1.1 - BigQuery client
 - **google-auth-library**: ^10.6.2 - Authentication
@@ -146,12 +155,14 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 - **winston**: ^3.19.0 - Logging
 
 ### Observability
+
 - **@opentelemetry/sdk-trace-node**: ^2.6.1 - Distributed tracing
 - **@opentelemetry/sdk-metrics**: ^2.6.1 - Metrics collection
 - **@google-cloud/opentelemetry-cloud-monitoring-exporter**: ^0.18.0
 - **@google-cloud/opentelemetry-cloud-trace-exporter**: ^2.3.0
 
 ### Development
+
 - **tsx**: Development server with hot reload
 - **jest**: Unit and integration testing
 - **eslint**: Code linting
@@ -160,6 +171,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 ## Deployment Architecture
 
 ### Container-Based Deployment
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    Cloud Run / GKE                       │
@@ -192,6 +204,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 ```
 
 ### Local Development
+
 ```
 ┌─────────────────────────────────────────────────┐
 │           Developer Workstation                  │
@@ -216,29 +229,34 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 ## Quality Attributes
 
 ### Performance
+
 - **Query Latency**: < 2s for cached schemas, < 30s for complex queries
 - **Throughput**: 100+ queries/second per instance
 - **Resource Usage**: < 512MB memory, < 50% CPU under load
 
 ### Security
+
 - **Authentication**: Workload Identity Federation (keyless)
 - **Authorization**: IAM-based with least privilege
 - **Data Protection**: TLS 1.3 for all communications
 - **Audit**: Comprehensive logging of all operations
 
 ### Reliability
+
 - **Availability**: 99.9% uptime SLA
 - **Error Rate**: < 0.1% for valid requests
 - **Recovery**: Automatic retry with exponential backoff
 - **Monitoring**: Real-time alerts on failures
 
 ### Scalability
+
 - **Horizontal**: Auto-scale from 1 to 100+ instances
 - **Vertical**: Support for dataset sizes up to petabytes
 - **Caching**: Schema caching for frequently accessed datasets
 - **Rate Limiting**: Configurable per-client limits
 
 ### Maintainability
+
 - **Code Coverage**: > 80% unit test coverage
 - **Documentation**: Comprehensive API and architecture docs
 - **Monitoring**: Distributed tracing and metrics
@@ -247,6 +265,7 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 ## Next Steps
 
 Refer to the following architecture documents for detailed designs:
+
 1. [Component Architecture](./02-component-architecture.md)
 2. [Data Flow Diagrams](./03-data-flow.md)
 3. [Security Architecture](./04-security-architecture.md)

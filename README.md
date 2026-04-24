@@ -9,7 +9,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-Enterprise-grade MCP (Model Context Protocol) server for Google Cloud Platform BigQuery with **Workload Identity Federation** authentication. Provides secure, keyless access to BigQuery through the Model Context Protocol.
+Enterprise-grade MCP (Model Context Protocol) server for Google Cloud Platform BigQuery with **Workload Identity
+Federation** authentication. Provides secure, keyless access to BigQuery through the Model Context Protocol.
 
 ## Key Features
 
@@ -52,12 +53,14 @@ db-mcp/
 ## Security Architecture
 
 ### Traditional Approach (Avoided)
+
 - Service account keys stored in files/secrets
 - Permanent credentials that never expire
 - Manual key rotation required
 - High risk of credential leakage
 
 ### Workload Identity Federation (Implemented)
+
 - **No keys anywhere** in the system
 - **1-hour token lifetime** with automatic rotation
 - **Attribute-based access** for fine-grained control
@@ -120,14 +123,15 @@ gcloud run deploy mcp-bigquery-server \
 
 The server provides these MCP tools:
 
-| Tool | Description |
-|------|-------------|
-| `query_bigquery` | Execute SQL queries on BigQuery datasets |
-| `list_datasets` | List all available BigQuery datasets |
-| `list_tables` | List tables in a specific dataset |
-| `get_table_schema` | Get schema information for a table |
+| Tool               | Description                              |
+| ------------------ | ---------------------------------------- |
+| `query_bigquery`   | Execute SQL queries on BigQuery datasets |
+| `list_datasets`    | List all available BigQuery datasets     |
+| `list_tables`      | List tables in a specific dataset        |
+| `get_table_schema` | Get schema information for a table       |
 
 **Server Capabilities**:
+
 - Resources: BigQuery datasets listing
 - Tools: Query execution and schema inspection
 - Stderr Logging: All logs to stderr (JSON-RPC compatible)
@@ -160,16 +164,16 @@ BigQuery API
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Usage Guide](docs/USAGE-GUIDE.md) | Complete guide for local dev, testing, and production |
-| [Architecture](docs/architecture/) | System design and component documentation |
-| [Security](docs/SECURITY.md) | Security middleware and best practices |
-| [WIF Guide](docs/wif-architecture.md) | Workload Identity Federation details |
-| [Deployment](docs/wif-deployment-guide.md) | Full production deployment guide |
-| [Docker](docs/DOCKER-DEPLOYMENT.md) | Container configuration |
-| [Monitoring](docs/MONITORING-GUIDE.md) | Observability setup |
-| [Documentation Index](docs/README.md) | Complete documentation map |
+| Document                                   | Description                                           |
+| ------------------------------------------ | ----------------------------------------------------- |
+| [Usage Guide](docs/USAGE-GUIDE.md)         | Complete guide for local dev, testing, and production |
+| [Architecture](docs/architecture/)         | System design and component documentation             |
+| [Security](docs/SECURITY.md)               | Security middleware and best practices                |
+| [WIF Guide](docs/wif-architecture.md)      | Workload Identity Federation details                  |
+| [Deployment](docs/wif-deployment-guide.md) | Full production deployment guide                      |
+| [Docker](docs/DOCKER-DEPLOYMENT.md)        | Container configuration                               |
+| [Monitoring](docs/MONITORING-GUIDE.md)     | Observability setup                                   |
+| [Documentation Index](docs/README.md)      | Complete documentation map                            |
 
 ## Testing
 
@@ -204,6 +208,7 @@ npm run typecheck   # TypeScript type checking
 ## CI/CD
 
 GitHub Actions workflow automatically:
+
 1. Runs tests on pull requests
 2. Builds and pushes Docker image
 3. Deploys to Cloud Run on main branch
@@ -211,7 +216,8 @@ GitHub Actions workflow automatically:
 
 ## Monitoring
 
-- **Cloud Monitoring**: Pre-configured dashboards with `tenant_id` dimension on `mcp.tool.calls.total` and `mcp.tool.call.duration`
+- **Cloud Monitoring**: Pre-configured dashboards with `tenant_id` dimension on `mcp.tool.calls.total` and
+  `mcp.tool.call.duration`
 - **Cloud Logging**: Structured JSON logs
 - **Cloud Trace**: Distributed tracing via OpenTelemetry with `tenant.id` span attribute
 - **Audit Logs**: 7-year retention in BigQuery
@@ -240,6 +246,4 @@ MIT License - see [LICENSE](LICENSE) for details
 
 ---
 
-**Status**: Production Ready
-**Version**: 1.0.0
-**Last Updated**: April 2026
+**Status**: Production Ready **Version**: 1.0.0 **Last Updated**: April 2026

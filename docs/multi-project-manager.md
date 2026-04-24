@@ -1,6 +1,7 @@
 # Multi-Project Manager for BigQuery
 
-Enterprise-grade multi-project dataset connection manager for the BigQuery MCP server, supporting concurrent connections to multiple GCP projects with advanced features.
+Enterprise-grade multi-project dataset connection manager for the BigQuery MCP server, supporting concurrent connections
+to multiple GCP projects with advanced features.
 
 ## Features
 
@@ -165,11 +166,10 @@ discoveries.forEach((result) => {
 ```typescript
 // Validate permissions before operations
 try {
-  const validation = await manager.validatePermission(
-    'my-project',
-    'query_execution',
-    ['bigquery.jobs.create', 'bigquery.datasets.get']
-  );
+  const validation = await manager.validatePermission('my-project', 'query_execution', [
+    'bigquery.jobs.create',
+    'bigquery.datasets.get',
+  ]);
 
   if (validation.hasAccess) {
     // Proceed with operation
@@ -431,12 +431,14 @@ interface CrossProjectQueryOptions {
 ### Connection Pooling
 
 Each project maintains its own connection pool with configurable limits:
+
 - `minConnectionsPerProject`: Minimum active connections (default: 2)
 - `maxConnectionsPerProject`: Maximum active connections (default: 10)
 
 ### Caching
 
 Multiple levels of caching:
+
 - **Dataset metadata**: 1 hour TTL by default
 - **Permission validation**: 5 minutes TTL by default
 - **LRU eviction** when cache limits reached
@@ -444,6 +446,7 @@ Multiple levels of caching:
 ### Auto-Discovery
 
 Auto-discovery runs at configurable intervals (default: 5 minutes) to:
+
 - Update dataset listings
 - Refresh permissions
 - Monitor quota usage

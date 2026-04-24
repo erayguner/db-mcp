@@ -21,9 +21,9 @@ import { logger } from '../utils/logger.js';
 
 export interface DegradationConfig {
   enabled: boolean;
-  staleCacheMaxAgeMs: number;       // max age for stale cache to serve (default 30min)
-  circuitBreakerThreshold: number;  // failures before opening circuit (default 5)
-  circuitBreakerResetMs: number;    // time before half-open (default 60s)
+  staleCacheMaxAgeMs: number; // max age for stale cache to serve (default 30min)
+  circuitBreakerThreshold: number; // failures before opening circuit (default 5)
+  circuitBreakerResetMs: number; // time before half-open (default 60s)
   fallbackMessage: string;
 }
 
@@ -58,10 +58,11 @@ export class GracefulDegradationHandler {
   constructor(config?: Partial<DegradationConfig>) {
     this.config = {
       enabled: config?.enabled ?? true,
-      staleCacheMaxAgeMs: config?.staleCacheMaxAgeMs ?? 30 * 60 * 1000,       // 30 minutes
+      staleCacheMaxAgeMs: config?.staleCacheMaxAgeMs ?? 30 * 60 * 1000, // 30 minutes
       circuitBreakerThreshold: config?.circuitBreakerThreshold ?? 5,
-      circuitBreakerResetMs: config?.circuitBreakerResetMs ?? 60 * 1000,       // 60 seconds
-      fallbackMessage: config?.fallbackMessage ??
+      circuitBreakerResetMs: config?.circuitBreakerResetMs ?? 60 * 1000, // 60 seconds
+      fallbackMessage:
+        config?.fallbackMessage ??
         'BigQuery is temporarily unavailable. Results may be stale or incomplete.',
     };
 
@@ -83,7 +84,7 @@ export class GracefulDegradationHandler {
   async executeWithFallback<T>(
     operation: () => Promise<T>,
     cacheKey: string,
-    cache: QueryCache<T>,
+    cache: QueryCache<T>
   ): Promise<DegradationResult<T>> {
     if (!this.config.enabled) {
       const result = await operation();

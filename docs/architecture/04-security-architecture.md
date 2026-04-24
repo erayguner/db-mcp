@@ -2,7 +2,8 @@
 
 ## Overview
 
-The BigQuery MCP Server implements defense-in-depth security with multiple layers of protection, focusing on zero-trust principles and keyless authentication via Workload Identity Federation.
+The BigQuery MCP Server implements defense-in-depth security with multiple layers of protection, focusing on zero-trust
+principles and keyless authentication via Workload Identity Federation.
 
 ## Security Principles
 
@@ -103,6 +104,7 @@ The BigQuery MCP Server implements defense-in-depth security with multiple layer
 ### WIF Configuration
 
 **Workload Identity Pool Setup:**
+
 ```bash
 # Create workload identity pool
 gcloud iam workload-identity-pools create "github-pool" \
@@ -128,6 +130,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 ```
 
 **Attribute Conditions:**
+
 ```json
 {
   "attributeCondition": "assertion.repository == 'org/repo-name' && assertion.repository_owner == 'org'"
@@ -156,7 +159,7 @@ class TokenManager {
     this.tokenCache.set(cacheKey, {
       token: token.accessToken,
       expiresAt: new Date(token.expireTime),
-      acquiredAt: new Date()
+      acquiredAt: new Date(),
     });
 
     return token.accessToken;
@@ -165,7 +168,7 @@ class TokenManager {
   private isExpiringSoon(cached: CachedToken, bufferSeconds: number): boolean {
     const now = Date.now();
     const expiry = cached.expiresAt.getTime();
-    return (expiry - now) < (bufferSeconds * 1000);
+    return expiry - now < bufferSeconds * 1000;
   }
 
   private async acquireWIFToken(): Promise<AccessToken> {
@@ -235,9 +238,9 @@ Service Account: mcp-server@PROJECT.iam.gserviceaccount.com
 ### Custom IAM Role Definition
 
 ```yaml
-title: "MCP BigQuery Reader"
-description: "Minimal permissions for MCP BigQuery Server"
-stage: "GA"
+title: 'MCP BigQuery Reader'
+description: 'Minimal permissions for MCP BigQuery Server'
+stage: 'GA'
 includedPermissions:
   # Dataset permissions
   - bigquery.datasets.get
@@ -262,10 +265,7 @@ includedPermissions:
 
 ```typescript
 class AuthorizationManager {
-  async validatePermissions(
-    resource: string,
-    requiredPermissions: string[]
-  ): Promise<AuthResult> {
+  async validatePermissions(resource: string, requiredPermissions: string[]): Promise<AuthResult> {
     try {
       // Get IAM policy for resource
       const policy = await this.getIAMPolicy(resource);
@@ -276,7 +276,7 @@ class AuthorizationManager {
           return {
             allowed: false,
             reason: `Missing permission: ${permission}`,
-            suggestion: `Grant ${permission} to service account`
+            suggestion: `Grant ${permission} to service account`,
           };
         }
       }
@@ -287,7 +287,7 @@ class AuthorizationManager {
       return {
         allowed: false,
         reason: 'Unable to validate permissions',
-        error: error.message
+        error: error.message,
       };
     }
   }
@@ -364,7 +364,7 @@ class SecretManager {
   private async loadFromSecretManager(secretName: string): Promise<WIFConfig> {
     const client = new SecretManagerServiceClient();
     const [version] = await client.accessSecretVersion({
-      name: `projects/${PROJECT_ID}/secrets/${secretName}/versions/latest`
+      name: `projects/${PROJECT_ID}/secrets/${secretName}/versions/latest`,
     });
 
     const config = JSON.parse(version.payload.data.toString());
@@ -377,18 +377,17 @@ class SecretManager {
 
 ### Model Armor Pre-Flight (Content Safety)
 
-Before any tool executes, user-supplied text (queries, NL prompts) is passed
-through a `ModelArmorProvider`. The provider decides `allow` or `block` and
-the handler short-circuits on `block` with error code `MODEL_ARMOR_BLOCKED`.
+Before any tool executes, user-supplied text (queries, NL prompts) is passed through a `ModelArmorProvider`. The
+provider decides `allow` or `block` and the handler short-circuits on `block` with error code `MODEL_ARMOR_BLOCKED`.
 
-| Provider | When used | Behavior |
-|---|---|---|
-| `NoopModelArmorProvider` | `MODEL_ARMOR_TEMPLATE` unset (default) | Always allows |
-| `HttpModelArmorProvider` | `MODEL_ARMOR_TEMPLATE=projects/{p}/locations/{l}/templates/{t}` | Calls `modelarmor.{location}.rep.googleapis.com/v1/...:sanitizeUserPrompt` via ADC |
-| `HeuristicModelArmorProvider` | Fallback when the HTTP call fails | Local pattern match; result marked `degraded: true` |
+| Provider                      | When used                                                       | Behavior                                                                           |
+| ----------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `NoopModelArmorProvider`      | `MODEL_ARMOR_TEMPLATE` unset (default)                          | Always allows                                                                      |
+| `HttpModelArmorProvider`      | `MODEL_ARMOR_TEMPLATE=projects/{p}/locations/{l}/templates/{t}` | Calls `modelarmor.{location}.rep.googleapis.com/v1/...:sanitizeUserPrompt` via ADC |
+| `HeuristicModelArmorProvider` | Fallback when the HTTP call fails                               | Local pattern match; result marked `degraded: true`                                |
 
-The HTTP provider uses Application Default Credentials from `google-auth-library`
-so no additional keys are required. Source: `src/security/model-armor.ts`.
+The HTTP provider uses Application Default Credentials from `google-auth-library` so no additional keys are required.
+Source: `src/security/model-armor.ts`.
 
 ### SQL Injection Prevention
 
@@ -400,8 +399,8 @@ class QueryValidator {
     /;\s*UPDATE\s+.*SET\s+/i,
     /EXEC\s*\(/i,
     /xp_cmdshell/i,
-    /--\s*$/,  // SQL comments
-    /\/\*.*\*\//  // Multi-line comments
+    /--\s*$/, // SQL comments
+    /\/\*.*\*\//, // Multi-line comments
   ];
 
   async validateQuery(query: string): Promise<ValidationResult> {
@@ -411,7 +410,7 @@ class QueryValidator {
         return {
           valid: false,
           reason: 'Query contains potentially dangerous pattern',
-          pattern: pattern.toString()
+          pattern: pattern.toString(),
         };
       }
     }
@@ -425,7 +424,7 @@ class QueryValidator {
         return {
           valid: false,
           reason: 'Only SELECT queries are allowed',
-          actual: ast.type
+          actual: ast.type,
         };
       }
 
@@ -439,20 +438,17 @@ class QueryValidator {
       return {
         valid: false,
         reason: 'Invalid SQL syntax',
-        error: error.message
+        error: error.message,
       };
     }
   }
 
   // Use parameterized queries when possible
-  buildParameterizedQuery(
-    template: string,
-    params: Record<string, any>
-  ): Query {
+  buildParameterizedQuery(template: string, params: Record<string, any>): Query {
     return {
       query: template,
       params: this.sanitizeParams(params),
-      parameterMode: 'NAMED'
+      parameterMode: 'NAMED',
     };
   }
 
@@ -461,8 +457,8 @@ class QueryValidator {
       name,
       parameterType: this.inferType(value),
       parameterValue: {
-        value: this.escapeValue(value)
-      }
+        value: this.escapeValue(value),
+      },
     }));
   }
 }
@@ -528,12 +524,12 @@ class RateLimiter {
     queries_per_hour: 1000,
 
     // Per-query limits
-    max_query_size: 1024 * 1024,  // 1MB
+    max_query_size: 1024 * 1024, // 1MB
     max_result_rows: 100000,
-    max_execution_time: 300000,    // 5 minutes
+    max_execution_time: 300000, // 5 minutes
 
     // Global limits
-    concurrent_queries: 100
+    concurrent_queries: 100,
   };
 
   private clientBuckets: Map<string, TokenBucket> = new Map();
@@ -549,7 +545,7 @@ class RateLimiter {
         reason: 'Rate limit exceeded',
         limit: this.limits.queries_per_minute,
         resetAt: resetTime,
-        retryAfter: Math.ceil((resetTime - Date.now()) / 1000)
+        retryAfter: Math.ceil((resetTime - Date.now()) / 1000),
       };
     }
 
@@ -558,10 +554,13 @@ class RateLimiter {
 
   private getOrCreateBucket(clientId: string): TokenBucket {
     if (!this.clientBuckets.has(clientId)) {
-      this.clientBuckets.set(clientId, new TokenBucket({
-        capacity: this.limits.queries_per_minute,
-        fillRate: this.limits.queries_per_minute / 60  // per second
-      }));
+      this.clientBuckets.set(
+        clientId,
+        new TokenBucket({
+          capacity: this.limits.queries_per_minute,
+          fillRate: this.limits.queries_per_minute / 60, // per second
+        })
+      );
     }
 
     return this.clientBuckets.get(clientId)!;
@@ -588,16 +587,12 @@ class AuditLogger {
         ...event.metadata,
         ip_address: event.sourceIP,
         user_agent: event.userAgent,
-        request_id: event.requestId
-      }
+        request_id: event.requestId,
+      },
     };
 
     // Log to multiple destinations
-    await Promise.all([
-      this.logToFile(auditLog),
-      this.logToCloudLogging(auditLog),
-      this.sendToSIEM(auditLog)
-    ]);
+    await Promise.all([this.logToFile(auditLog), this.logToCloudLogging(auditLog), this.sendToSIEM(auditLog)]);
 
     // Alert on critical events
     if (event.severity === 'CRITICAL') {
@@ -606,51 +601,37 @@ class AuditLogger {
   }
 
   // Log all authentication attempts
-  async logAuthAttempt(
-    principal: string,
-    success: boolean,
-    reason?: string
-  ): Promise<void> {
+  async logAuthAttempt(principal: string, success: boolean, reason?: string): Promise<void> {
     await this.logSecurityEvent({
       severity: success ? 'INFO' : 'WARNING',
       principal,
       action: 'AUTHENTICATE',
       resource: 'WIF_TOKEN',
       result: success ? 'SUCCESS' : 'FAILURE',
-      metadata: { reason }
+      metadata: { reason },
     });
   }
 
   // Log all authorization checks
-  async logAuthzCheck(
-    principal: string,
-    resource: string,
-    action: string,
-    allowed: boolean
-  ): Promise<void> {
+  async logAuthzCheck(principal: string, resource: string, action: string, allowed: boolean): Promise<void> {
     await this.logSecurityEvent({
       severity: allowed ? 'INFO' : 'WARNING',
       principal,
       action,
       resource,
-      result: allowed ? 'ALLOWED' : 'DENIED'
+      result: allowed ? 'ALLOWED' : 'DENIED',
     });
   }
 
   // Log all data access
-  async logDataAccess(
-    principal: string,
-    dataset: string,
-    table: string,
-    rowsAccessed: number
-  ): Promise<void> {
+  async logDataAccess(principal: string, dataset: string, table: string, rowsAccessed: number): Promise<void> {
     await this.logSecurityEvent({
       severity: 'INFO',
       principal,
       action: 'DATA_ACCESS',
       resource: `${dataset}.${table}`,
       result: 'SUCCESS',
-      metadata: { rowsAccessed }
+      metadata: { rowsAccessed },
     });
   }
 }
@@ -671,7 +652,7 @@ class ThreatDetector {
         type: 'BRUTE_FORCE',
         severity: 'HIGH',
         principal: event.principal,
-        action: 'BLOCK_IP'
+        action: 'BLOCK_IP',
       });
     }
 
@@ -681,7 +662,7 @@ class ThreatDetector {
         type: 'PRIVILEGE_ESCALATION',
         severity: 'CRITICAL',
         principal: event.principal,
-        action: 'REVOKE_TOKEN'
+        action: 'REVOKE_TOKEN',
       });
     }
 
@@ -691,7 +672,7 @@ class ThreatDetector {
         type: 'DATA_EXFILTRATION',
         severity: 'CRITICAL',
         principal: event.principal,
-        action: 'ALERT_ADMIN'
+        action: 'ALERT_ADMIN',
       });
     }
 
@@ -728,6 +709,7 @@ class ThreatDetector {
 ## Security Checklist
 
 ### Pre-Deployment
+
 - [ ] WIF properly configured with attribute conditions
 - [ ] Service account has minimal IAM permissions
 - [ ] No service account keys exist
@@ -737,6 +719,7 @@ class ThreatDetector {
 - [ ] Security scanning passed (Checkov, Trivy)
 
 ### Runtime
+
 - [ ] TLS 1.3 enforced for all connections
 - [ ] Tokens refreshed before expiry
 - [ ] All queries validated and sanitized
@@ -745,6 +728,7 @@ class ThreatDetector {
 - [ ] Audit logs reviewed regularly
 
 ### Post-Incident
+
 - [ ] Tokens revoked
 - [ ] Audit trail preserved
 - [ ] Root cause identified

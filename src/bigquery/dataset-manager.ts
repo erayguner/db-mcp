@@ -208,11 +208,7 @@ export class DatasetManager extends EventEmitter {
 
       return await Promise.all(metadataPromises);
     } catch (error) {
-      throw new DatasetManagerError(
-        'Failed to list datasets',
-        'LIST_DATASETS_ERROR',
-        error
-      );
+      throw new DatasetManagerError('Failed to list datasets', 'LIST_DATASETS_ERROR', error);
     }
   }
 
@@ -476,9 +472,7 @@ export class DatasetManager extends EventEmitter {
    * Generate cache key for table
    */
   private getTableCacheKey(datasetId: string, tableId: string, projectId?: string): string {
-    return projectId
-      ? `${projectId}:${datasetId}.${tableId}`
-      : `${datasetId}.${tableId}`;
+    return projectId ? `${projectId}:${datasetId}.${tableId}` : `${datasetId}.${tableId}`;
   }
 
   /**
@@ -529,7 +523,7 @@ export class DatasetManager extends EventEmitter {
 
     // Clean up access order
     this.accessOrder = this.accessOrder.filter(
-      key => this.datasetCache.has(key) || this.tableCache.has(key)
+      (key) => this.datasetCache.has(key) || this.tableCache.has(key)
     );
   }
 

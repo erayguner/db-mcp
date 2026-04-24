@@ -109,18 +109,11 @@ function validateSingleRequest(
     return { valid: false, error: 'Missing or invalid "method" field' };
   }
 
-  if (
-    record.id !== undefined &&
-    typeof record.id !== 'string' &&
-    typeof record.id !== 'number'
-  ) {
+  if (record.id !== undefined && typeof record.id !== 'string' && typeof record.id !== 'number') {
     return { valid: false, error: '"id" must be a string or number if present' };
   }
 
-  if (
-    record.params !== undefined &&
-    typeof record.params !== 'object'
-  ) {
+  if (record.params !== undefined && typeof record.params !== 'object') {
     return { valid: false, error: '"params" must be an object or array if present' };
   }
 
@@ -150,9 +143,7 @@ export async function processBatch(
 ): Promise<JsonRpcResponse[]> {
   logger.debug('Processing JSON-RPC batch', { count: requests.length });
 
-  const settled = await Promise.allSettled(
-    requests.map((req) => handler(req))
-  );
+  const settled = await Promise.allSettled(requests.map((req) => handler(req)));
 
   return settled.map((outcome, index) => {
     if (outcome.status === 'fulfilled') {
@@ -160,9 +151,8 @@ export async function processBatch(
     }
 
     const request = requests[index];
-    const reason = outcome.reason instanceof Error
-      ? outcome.reason.message
-      : String(outcome.reason);
+    const reason =
+      outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
 
     logger.error('Batch request handler failed', {
       method: request.method,

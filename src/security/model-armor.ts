@@ -20,7 +20,10 @@ export interface ModelArmorResult {
 }
 
 export interface ModelArmorProvider {
-  screenUserPrompt(text: string, metadata?: { tenantId?: string; tool?: string }): Promise<ModelArmorResult>;
+  screenUserPrompt(
+    text: string,
+    metadata?: { tenantId?: string; tool?: string }
+  ): Promise<ModelArmorResult>;
 }
 
 /** Null provider for dev/tests — always allows. */
@@ -83,12 +86,14 @@ export class HttpModelArmorProvider implements ModelArmorProvider {
   constructor(opts: HttpModelArmorOptions) {
     this.auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
     this.resource = `projects/${opts.projectId}/locations/${opts.location}/templates/${opts.templateId}`;
-    this.endpoint = opts.endpoint
-      ?? `https://modelarmor.${opts.location}.rep.googleapis.com`;
+    this.endpoint = opts.endpoint ?? `https://modelarmor.${opts.location}.rep.googleapis.com`;
     this.fallback = opts.fallback ?? new HeuristicModelArmorProvider();
   }
 
-  async screenUserPrompt(text: string, metadata?: { tenantId?: string; tool?: string }): Promise<ModelArmorResult> {
+  async screenUserPrompt(
+    text: string,
+    metadata?: { tenantId?: string; tool?: string }
+  ): Promise<ModelArmorResult> {
     try {
       const client = await this.auth.getClient();
       const url = `${this.endpoint}/v1/${this.resource}:sanitizeUserPrompt`;
@@ -121,7 +126,7 @@ interface ModelArmorApiResponse {
 
 function interpretSanitizeResponse(
   response: ModelArmorApiResponse,
-  metadata?: { tenantId?: string; tool?: string },
+  metadata?: { tenantId?: string; tool?: string }
 ): ModelArmorResult {
   const result = response.sanitizationResult;
   if (!result || result.filterMatchState !== 'MATCH_FOUND') {
@@ -148,7 +153,10 @@ export function createModelArmorProvider(env: NodeJS.ProcessEnv = process.env): 
 
   const match = /^projects\/([^/]+)\/locations\/([^/]+)\/templates\/([^/]+)$/.exec(template);
   if (!match) {
-    logger.error('Invalid MODEL_ARMOR_TEMPLATE; expected projects/{p}/locations/{l}/templates/{t}', { template });
+    logger.error(
+      'Invalid MODEL_ARMOR_TEMPLATE; expected projects/{p}/locations/{l}/templates/{t}',
+      { template }
+    );
     return new HeuristicModelArmorProvider();
   }
   const [, projectId, location, templateId] = match;

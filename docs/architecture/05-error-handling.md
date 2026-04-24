@@ -2,25 +2,29 @@
 
 ## Overview
 
-The BigQuery MCP Server implements comprehensive error handling with automatic retry, graceful degradation, and detailed error reporting to ensure reliability and debuggability.
+The BigQuery MCP Server implements comprehensive error handling with automatic retry, graceful degradation, and detailed
+error reporting to ensure reliability and debuggability.
 
 ## Error Classification
 
 ### 1. Transient Errors (Retry-able)
 
 **Network Errors**
+
 - `ECONNRESET`: Connection reset by peer
 - `ETIMEDOUT`: Request timeout
 - `ECONNREFUSED`: Connection refused
 - `ENETUNREACH`: Network unreachable
 
 **BigQuery Errors**
+
 - `503 Service Unavailable`: Temporary BigQuery outage
 - `429 Too Many Requests`: Rate limiting
 - `500 Internal Server Error`: Temporary server error
 - `409 Conflict`: Concurrent modification (for DDL)
 
 **Authentication Errors**
+
 - `401 Unauthorized`: Token expired (refresh and retry)
 - `403 Forbidden` (transient): Temporary IAM propagation delay
 
@@ -29,20 +33,24 @@ The BigQuery MCP Server implements comprehensive error handling with automatic r
 ### 2. Permanent Errors (Non-retry-able)
 
 **Client Errors**
+
 - `400 Bad Request`: Invalid SQL syntax
 - `403 Forbidden` (persistent): Missing IAM permissions
 - `404 Not Found`: Dataset or table doesn't exist
 - `413 Payload Too Large`: Query too long
 
 **Authorization Errors**
+
 - `403 Forbidden`: Insufficient permissions
 - `401 Unauthorized` (persistent): Invalid credentials
 
 **Resource Errors**
+
 - `404 Not Found`: Resource doesn't exist
 - `410 Gone`: Resource deleted
 
 **Validation Errors**
+
 - SQL injection detected
 - Invalid parameter format
 - Schema mismatch
@@ -52,6 +60,7 @@ The BigQuery MCP Server implements comprehensive error handling with automatic r
 ### 3. Degraded State Errors
 
 **Partial Failures**
+
 - Query succeeded but pagination failed
 - Metrics export failed
 - Cache write failed
@@ -69,13 +78,10 @@ class RetryStrategy {
     baseDelayMs: 1000,
     maxDelayMs: 32000,
     exponentialBase: 2,
-    jitterFactor: 0.1
+    jitterFactor: 0.1,
   };
 
-  async executeWithRetry<T>(
-    operation: () => Promise<T>,
-    context: RetryContext
-  ): Promise<T> {
+  async executeWithRetry<T>(operation: () => Promise<T>, context: RetryContext): Promise<T> {
     let lastError: Error;
     let attempt = 0;
 
@@ -90,12 +96,11 @@ class RetryStrategy {
         if (attempt > 1) {
           logger.info('Operation succeeded after retry', {
             operation: context.operationName,
-            attempts: attempt
+            attempts: attempt,
           });
         }
 
         return result;
-
       } catch (error) {
         lastError = error;
 
@@ -106,10 +111,7 @@ class RetryStrategy {
 
         // Check if we have attempts left
         if (attempt >= this.config.maxAttempts) {
-          throw new MaxRetriesExceededError(
-            `Operation failed after ${attempt} attempts`,
-            lastError
-          );
+          throw new MaxRetriesExceededError(`Operation failed after ${attempt} attempts`, lastError);
         }
 
         // Calculate delay with exponential backoff and jitter
@@ -120,7 +122,7 @@ class RetryStrategy {
           attempt,
           maxAttempts: this.config.maxAttempts,
           error: error.message,
-          retryAfter: delay
+          retryAfter: delay,
         });
 
         // Wait before retry
@@ -133,8 +135,7 @@ class RetryStrategy {
 
   private calculateDelay(attempt: number): number {
     // Exponential backoff: baseDelay * (exponentialBase ^ attempt)
-    const exponentialDelay = this.config.baseDelayMs *
-      Math.pow(this.config.exponentialBase, attempt - 1);
+    const exponentialDelay = this.config.baseDelayMs * Math.pow(this.config.exponentialBase, attempt - 1);
 
     // Cap at max delay
     const cappedDelay = Math.min(exponentialDelay, this.config.maxDelayMs);
@@ -171,7 +172,7 @@ class RetryStrategy {
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 ```
@@ -181,32 +182,32 @@ class RetryStrategy {
 ```typescript
 const retryConfigs: Record<string, RetryConfig> = {
   // Query operations: aggressive retry
-  'query_execute': {
+  query_execute: {
     maxAttempts: 5,
     baseDelayMs: 1000,
-    maxDelayMs: 32000
+    maxDelayMs: 32000,
   },
 
   // Schema operations: moderate retry (cached)
-  'schema_list': {
+  schema_list: {
     maxAttempts: 3,
     baseDelayMs: 500,
-    maxDelayMs: 8000
+    maxDelayMs: 8000,
   },
 
   // Auth operations: quick retry
-  'auth_token': {
+  auth_token: {
     maxAttempts: 3,
     baseDelayMs: 200,
-    maxDelayMs: 2000
+    maxDelayMs: 2000,
   },
 
   // Write operations: minimal retry
-  'table_insert': {
+  table_insert: {
     maxAttempts: 2,
     baseDelayMs: 1000,
-    maxDelayMs: 5000
-  }
+    maxDelayMs: 5000,
+  },
 };
 ```
 
@@ -219,9 +220,9 @@ class CircuitBreaker {
   private lastFailureTime?: Date;
 
   private readonly config = {
-    failureThreshold: 5,        // Open after 5 failures
-    resetTimeout: 60000,        // Try closing after 60s
-    halfOpenSuccessThreshold: 2 // Close after 2 successes
+    failureThreshold: 5, // Open after 5 failures
+    resetTimeout: 60000, // Try closing after 60s
+    halfOpenSuccessThreshold: 2, // Close after 2 successes
   };
 
   async execute<T>(operation: () => Promise<T>): Promise<T> {
@@ -231,10 +232,7 @@ class CircuitBreaker {
         this.state = 'HALF_OPEN';
         logger.info('Circuit breaker entering half-open state');
       } else {
-        throw new CircuitOpenError(
-          'Circuit breaker is OPEN',
-          this.lastFailureTime
-        );
+        throw new CircuitOpenError('Circuit breaker is OPEN', this.lastFailureTime);
       }
     }
 
@@ -245,7 +243,6 @@ class CircuitBreaker {
       this.onSuccess();
 
       return result;
-
     } catch (error) {
       // Failure - update state
       this.onFailure();
@@ -269,7 +266,7 @@ class CircuitBreaker {
     if (this.failureCount >= this.config.failureThreshold) {
       logger.error('Circuit breaker opening due to failures', {
         failureCount: this.failureCount,
-        threshold: this.config.failureThreshold
+        threshold: this.config.failureThreshold,
       });
       this.state = 'OPEN';
     }
@@ -287,7 +284,7 @@ class CircuitBreaker {
   getState(): { state: string; failureCount: number } {
     return {
       state: this.state,
-      failureCount: this.failureCount
+      failureCount: this.failureCount,
     };
   }
 }
@@ -326,7 +323,7 @@ enum ErrorCode {
   // Application errors
   QUERY_ERROR = 'QUERY_ERROR',
   SCHEMA_ERROR = 'SCHEMA_ERROR',
-  AUTH_ERROR = 'AUTH_ERROR'
+  AUTH_ERROR = 'AUTH_ERROR',
 }
 
 class ErrorFormatter {
@@ -352,35 +349,35 @@ class ErrorFormatter {
       message: 'An unexpected error occurred',
       details: {
         debugInfo: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-        helpUrl: 'https://docs.example.com/errors/internal'
+        helpUrl: 'https://docs.example.com/errors/internal',
       },
-      retryable: false
+      retryable: false,
     };
   }
 
   private formatBigQueryError(error: BigQueryError, context: ErrorContext): MCPError {
     const errorMap: Record<string, { code: ErrorCode; retryable: boolean }> = {
-      'invalidQuery': {
+      invalidQuery: {
         code: ErrorCode.INVALID_ARGUMENT,
-        retryable: false
+        retryable: false,
       },
-      'notFound': {
+      notFound: {
         code: ErrorCode.NOT_FOUND,
-        retryable: false
+        retryable: false,
       },
-      'rateLimitExceeded': {
+      rateLimitExceeded: {
         code: ErrorCode.RESOURCE_EXHAUSTED,
-        retryable: true
+        retryable: true,
       },
-      'backendError': {
+      backendError: {
         code: ErrorCode.UNAVAILABLE,
-        retryable: true
-      }
+        retryable: true,
+      },
     };
 
     const mapping = errorMap[error.code] || {
       code: ErrorCode.INTERNAL,
-      retryable: false
+      retryable: false,
     };
 
     return {
@@ -391,25 +388,23 @@ class ErrorFormatter {
         location: error.location,
         debugInfo: {
           query: context.query?.substring(0, 200), // Truncate for privacy
-          jobId: context.jobId
+          jobId: context.jobId,
         },
-        helpUrl: `https://cloud.google.com/bigquery/docs/error-messages#${error.code}`
+        helpUrl: `https://cloud.google.com/bigquery/docs/error-messages#${error.code}`,
       },
-      retryable: mapping.retryable
+      retryable: mapping.retryable,
     };
   }
 
   private formatAuthError(error: AuthError, context: ErrorContext): MCPError {
     return {
-      code: error.code === 'token-expired'
-        ? ErrorCode.UNAUTHENTICATED
-        : ErrorCode.PERMISSION_DENIED,
+      code: error.code === 'token-expired' ? ErrorCode.UNAUTHENTICATED : ErrorCode.PERMISSION_DENIED,
       message: 'Authentication failed',
       details: {
         reason: error.code,
-        helpUrl: 'https://docs.example.com/auth/troubleshooting'
+        helpUrl: 'https://docs.example.com/auth/troubleshooting',
       },
-      retryable: error.code === 'token-expired'
+      retryable: error.code === 'token-expired',
     };
   }
 
@@ -420,9 +415,9 @@ class ErrorFormatter {
       details: {
         reason: error.field,
         location: error.location,
-        helpUrl: 'https://docs.example.com/validation'
+        helpUrl: 'https://docs.example.com/validation',
       },
-      retryable: false
+      retryable: false,
     };
   }
 }
@@ -444,19 +439,19 @@ class ErrorLogger {
         name: error.name,
         message: error.message,
         stack: error.stack,
-        code: (error as any).code
+        code: (error as any).code,
       },
       context: {
         operation: context.operation,
         requestId: context.requestId,
         principal: context.principal,
-        resource: context.resource
+        resource: context.resource,
       },
       metadata: {
         ...context.metadata,
         retryable: this.isRetryable(error),
-        clientVisible: !this.isSensitive(error)
-      }
+        clientVisible: !this.isSensitive(error),
+      },
     };
 
     // Log to appropriate destination
@@ -501,10 +496,12 @@ class ErrorLogger {
 
   private isSensitive(error: Error): boolean {
     // Don't expose sensitive errors to clients
-    return error instanceof AuthError ||
-           error instanceof InternalError ||
-           error.message.includes('credential') ||
-           error.message.includes('token');
+    return (
+      error instanceof AuthError ||
+      error instanceof InternalError ||
+      error.message.includes('credential') ||
+      error.message.includes('token')
+    );
   }
 
   private async sendToErrorTracking(logEntry: any): Promise<void> {
@@ -514,7 +511,7 @@ class ErrorLogger {
         error: logEntry.error,
         context: logEntry.context,
         severity: logEntry.severity,
-        fingerprint: this.generateFingerprint(logEntry)
+        fingerprint: this.generateFingerprint(logEntry),
       });
     } catch (err) {
       // Don't let error tracking failures affect main flow
@@ -532,7 +529,7 @@ class ErrorLogger {
       error_type: error.name,
       error_code: (error as any).code || 'unknown',
       operation: context.operation,
-      retryable: this.isRetryable(error).toString()
+      retryable: this.isRetryable(error).toString(),
     });
   }
 }
@@ -544,17 +541,13 @@ class ErrorLogger {
 
 ```typescript
 class GracefulDegradation {
-  async executeWithFallback<T>(
-    primary: () => Promise<T>,
-    fallback: () => Promise<T>,
-    context: string
-  ): Promise<T> {
+  async executeWithFallback<T>(primary: () => Promise<T>, fallback: () => Promise<T>, context: string): Promise<T> {
     try {
       return await primary();
     } catch (error) {
       logger.warn(`Primary operation failed, using fallback`, {
         context,
-        error: error.message
+        error: error.message,
       });
 
       try {
@@ -563,7 +556,7 @@ class GracefulDegradation {
         logger.error(`Fallback also failed`, {
           context,
           primaryError: error.message,
-          fallbackError: fallbackError.message
+          fallbackError: fallbackError.message,
         });
         throw error; // Throw original error
       }
@@ -571,10 +564,7 @@ class GracefulDegradation {
   }
 
   // Example: Schema with cache fallback
-  async getTableSchema(
-    datasetId: string,
-    tableId: string
-  ): Promise<TableSchema> {
+  async getTableSchema(datasetId: string, tableId: string): Promise<TableSchema> {
     return this.executeWithFallback(
       // Primary: Fetch from BigQuery
       () => this.bigqueryClient.getTableSchema(datasetId, tableId),
@@ -582,7 +572,7 @@ class GracefulDegradation {
       // Fallback: Return cached schema (even if expired)
       async () => {
         const cached = await this.cache.get(`schema:${datasetId}.${tableId}`, {
-          ignoreExpiry: true
+          ignoreExpiry: true,
         });
 
         if (!cached) {
@@ -592,13 +582,13 @@ class GracefulDegradation {
         logger.info('Returning stale cached schema', {
           datasetId,
           tableId,
-          cacheAge: cached.age
+          cacheAge: cached.age,
         });
 
         return {
           ...cached.value,
           _stale: true,
-          _cacheAge: cached.age
+          _cacheAge: cached.age,
         };
       },
 
@@ -615,14 +605,14 @@ class GracefulDegradation {
       if (error instanceof PaginationError && error.partialResults) {
         logger.warn('Returning partial query results', {
           totalRows: error.partialResults.length,
-          error: error.message
+          error: error.message,
         });
 
         return {
           rows: error.partialResults,
           schema: error.schema,
           incomplete: true,
-          warning: 'Result set may be incomplete due to pagination failure'
+          warning: 'Result set may be incomplete due to pagination failure',
         };
       }
 
@@ -636,23 +626,14 @@ class GracefulDegradation {
 
 ```typescript
 class TimeoutManager {
-  async executeWithTimeout<T>(
-    operation: () => Promise<T>,
-    timeoutMs: number,
-    operationName: string
-  ): Promise<T> {
-    return Promise.race([
-      operation(),
-      this.createTimeout(timeoutMs, operationName)
-    ]);
+  async executeWithTimeout<T>(operation: () => Promise<T>, timeoutMs: number, operationName: string): Promise<T> {
+    return Promise.race([operation(), this.createTimeout(timeoutMs, operationName)]);
   }
 
   private createTimeout(timeoutMs: number, operationName: string): Promise<never> {
     return new Promise((_, reject) => {
       setTimeout(() => {
-        reject(new TimeoutError(
-          `Operation ${operationName} exceeded timeout of ${timeoutMs}ms`
-        ));
+        reject(new TimeoutError(`Operation ${operationName} exceeded timeout of ${timeoutMs}ms`));
       }, timeoutMs);
     });
   }
@@ -666,10 +647,7 @@ class TimeoutManager {
     const controller = new AbortController();
 
     try {
-      return await Promise.race([
-        operation(controller.signal),
-        this.createTimeout(timeoutMs, operationName)
-      ]);
+      return await Promise.race([operation(controller.signal), this.createTimeout(timeoutMs, operationName)]);
     } catch (error) {
       // Abort operation on timeout
       controller.abort();
@@ -679,10 +657,7 @@ class TimeoutManager {
 }
 
 // Example usage with BigQuery
-async function executeQueryWithTimeout(
-  query: string,
-  timeoutMs: number
-): Promise<QueryResult> {
+async function executeQueryWithTimeout(query: string, timeoutMs: number): Promise<QueryResult> {
   const timeout = new TimeoutManager();
 
   return timeout.executeWithTimeoutAndCleanup(

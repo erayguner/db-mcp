@@ -44,9 +44,7 @@ describe.skip('Security Integration Tests', () => {
       ];
 
       // Act - Process all requests
-      const results = await Promise.all(
-        requests.map((req) => security.validateRequest(req))
-      );
+      const results = await Promise.all(requests.map((req) => security.validateRequest(req)));
 
       // Assert - All should be allowed
       results.forEach((result) => {
@@ -80,9 +78,7 @@ describe.skip('Security Integration Tests', () => {
       ];
 
       // Act
-      const results = await Promise.all(
-        attacks.map((req) => security.validateRequest(req))
-      );
+      const results = await Promise.all(attacks.map((req) => security.validateRequest(req)));
 
       // Assert - All should be blocked
       results.forEach((result) => {
@@ -94,16 +90,16 @@ describe.skip('Security Integration Tests', () => {
     it('should enforce rate limits across requests', async () => {
       // Arrange
       const userId = 'user-123';
-      const requests = Array(15).fill(null).map(() => ({
-        toolName: 'list_datasets',
-        userId,
-        arguments: {},
-      }));
+      const requests = Array(15)
+        .fill(null)
+        .map(() => ({
+          toolName: 'list_datasets',
+          userId,
+          arguments: {},
+        }));
 
       // Act
-      const results = await Promise.all(
-        requests.map((req) => security.validateRequest(req))
-      );
+      const results = await Promise.all(requests.map((req) => security.validateRequest(req)));
 
       // Assert
       const allowed = results.filter((r) => r.allowed);
@@ -189,7 +185,9 @@ describe.skip('Security Integration Tests', () => {
       expect(result.allowed).toBe(true);
       expect(result.redacted).toBeDefined();
       expect(result.warnings).toBeDefined();
-      expect(result.warnings).toContain('Sensitive data detected in fields: 0.password, 0.api_key, 1.password, 1.api_key');
+      expect(result.warnings).toContain(
+        'Sensitive data detected in fields: 0.password, 0.api_key, 1.password, 1.api_key'
+      );
 
       // Verify redaction
       const redactedData = result.redacted as any[];
@@ -202,17 +200,17 @@ describe.skip('Security Integration Tests', () => {
   describe('Performance Under Load', () => {
     it('should handle high request volume', async () => {
       // Arrange - Create 100 concurrent requests
-      const requests = Array(100).fill(null).map((_, i) => ({
-        toolName: 'list_datasets',
-        userId: `user-${i % 10}`, // 10 different users
-        arguments: {},
-      }));
+      const requests = Array(100)
+        .fill(null)
+        .map((_, i) => ({
+          toolName: 'list_datasets',
+          userId: `user-${i % 10}`, // 10 different users
+          arguments: {},
+        }));
 
       // Act
       const startTime = Date.now();
-      const results = await Promise.all(
-        requests.map((req) => security.validateRequest(req))
-      );
+      const results = await Promise.all(requests.map((req) => security.validateRequest(req)));
       const duration = Date.now() - startTime;
 
       // Assert
@@ -225,20 +223,21 @@ describe.skip('Security Integration Tests', () => {
 
     it('should maintain security under concurrent attacks', async () => {
       // Arrange - Mix of valid and malicious requests
-      const requests = Array(50).fill(null).map((_, i) => ({
-        toolName: 'query_bigquery',
-        userId: `user-${i}`,
-        arguments: {
-          query: i % 2 === 0
-            ? 'SELECT * FROM dataset.table LIMIT 10'
-            : 'SELECT * FROM users; DROP TABLE users',
-        },
-      }));
+      const requests = Array(50)
+        .fill(null)
+        .map((_, i) => ({
+          toolName: 'query_bigquery',
+          userId: `user-${i}`,
+          arguments: {
+            query:
+              i % 2 === 0
+                ? 'SELECT * FROM dataset.table LIMIT 10'
+                : 'SELECT * FROM users; DROP TABLE users',
+          },
+        }));
 
       // Act
-      const results = await Promise.all(
-        requests.map((req) => security.validateRequest(req))
-      );
+      const results = await Promise.all(requests.map((req) => security.validateRequest(req)));
 
       // Assert
       const valid = results.filter((r) => r.allowed);

@@ -59,7 +59,7 @@ describeMP('MultiProjectManager', () => {
       manager = new MultiProjectManager(config);
 
       // Wait for initialization
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const projects = manager.listProjects();
       expect(projects.length).toBe(3);
@@ -74,7 +74,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const current = manager.getCurrentProject();
       expect(current.projectId).toBe('project-2');
@@ -115,7 +115,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should switch between projects', () => {
@@ -158,7 +158,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should list all projects', () => {
@@ -214,7 +214,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should execute cross-project queries', async () => {
@@ -238,9 +238,9 @@ describeMP('MultiProjectManager', () => {
         projectIds: Array.from({ length: 10 }, (_, i) => `project-${i}`),
       };
 
-      await expect(
-        manager.executeCrossProjectQuery(query, options)
-      ).rejects.toThrow('Cannot query more than');
+      await expect(manager.executeCrossProjectQuery(query, options)).rejects.toThrow(
+        'Cannot query more than'
+      );
     });
 
     it('should emit cross-project events', (done) => {
@@ -272,15 +272,13 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should validate permissions', async () => {
-      const result = await manager.validatePermission(
-        'project-1',
-        'query',
-        ['bigquery.jobs.create']
-      );
+      const result = await manager.validatePermission('project-1', 'query', [
+        'bigquery.jobs.create',
+      ]);
 
       expect(result.hasAccess).toBeDefined();
       expect(result.permissions).toBeInstanceOf(Array);
@@ -292,11 +290,7 @@ describeMP('MultiProjectManager', () => {
       mockGetPermissions.mockResolvedValue([]);
 
       await expect(
-        manager.validatePermission(
-          'project-1',
-          'sensitive_operation',
-          ['bigquery.admin']
-        )
+        manager.validatePermission('project-1', 'sensitive_operation', ['bigquery.admin'])
       ).rejects.toThrow(PermissionDeniedError);
     });
 
@@ -323,7 +317,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should track quota usage', () => {
@@ -378,7 +372,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should discover all projects', async () => {
@@ -419,7 +413,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should add project dynamically', async () => {
@@ -440,9 +434,7 @@ describeMP('MultiProjectManager', () => {
     });
 
     it('should throw error when adding duplicate project', async () => {
-      await expect(
-        manager.addProject(mockProjects[0])
-      ).rejects.toThrow('already exists');
+      await expect(manager.addProject(mockProjects[0])).rejects.toThrow('already exists');
     });
 
     it('should remove project', async () => {
@@ -472,7 +464,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should calculate aggregated metrics', () => {
@@ -507,7 +499,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should report healthy status', () => {
@@ -538,7 +530,7 @@ describeMP('MultiProjectManager', () => {
       };
 
       manager = new MultiProjectManager(config);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should shutdown gracefully', async () => {

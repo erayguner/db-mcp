@@ -44,9 +44,15 @@ export class KillSwitch {
     return rec;
   }
 
-  isHalted(sessionId: string): boolean { return this.halted.has(sessionId); }
-  reason(sessionId: string): string | undefined { return this.halted.get(sessionId)?.reason; }
-  listHalted(): HaltRecord[] { return [...this.halted.values()]; }
+  isHalted(sessionId: string): boolean {
+    return this.halted.has(sessionId);
+  }
+  reason(sessionId: string): string | undefined {
+    return this.halted.get(sessionId)?.reason;
+  }
+  listHalted(): HaltRecord[] {
+    return [...this.halted.values()];
+  }
 
   /** Call at the top of every governed tool handler. Throws if halted. */
   enforce(sessionId: string): void {
@@ -56,7 +62,10 @@ export class KillSwitch {
 }
 
 export class SessionHaltedError extends Error {
-  constructor(public readonly sessionId: string, public readonly haltReason: string) {
+  constructor(
+    public readonly sessionId: string,
+    public readonly haltReason: string
+  ) {
     super(`session ${sessionId} halted: ${haltReason}`);
     this.name = 'SessionHaltedError';
   }

@@ -34,7 +34,7 @@ describePool('Connection Pool Integration Tests', () => {
   describe('Pool Initialization', () => {
     it('should initialize with minimum connections', async () => {
       // Wait for initialization
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       const metrics = pool.getMetrics();
       expect(metrics.totalConnections).toBeGreaterThanOrEqual(2);
@@ -76,12 +76,11 @@ describePool('Connection Pool Integration Tests', () => {
         },
       });
 
-
       errorPool.once('error', () => {
         // errorEmitted = true;
       });
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Error handling should not crash the pool
       await errorPool.shutdown();
@@ -98,14 +97,16 @@ describePool('Connection Pool Integration Tests', () => {
 
       pool.release(client);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const metricsAfter = pool.getMetrics();
       expect(metricsAfter.totalReleased).toBeGreaterThanOrEqual(1);
     });
 
     it('should handle concurrent acquisitions', async () => {
-      const acquisitions = Array(10).fill(null).map(() => pool.acquire());
+      const acquisitions = Array(10)
+        .fill(null)
+        .map(() => pool.acquire());
 
       const clients = await Promise.all(acquisitions);
 
@@ -115,9 +116,9 @@ describePool('Connection Pool Integration Tests', () => {
       expect(metrics.totalConnections).toBeLessThanOrEqual(5); // maxConnections
 
       // Release all
-      clients.forEach(client => pool.release(client));
+      clients.forEach((client) => pool.release(client));
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should queue requests when pool is exhausted', async () => {
@@ -126,16 +127,20 @@ describePool('Connection Pool Integration Tests', () => {
 
       // Acquire all available connections
       const clients = await Promise.all(
-        Array(maxConnections).fill(null).map(() => pool.acquire())
+        Array(maxConnections)
+          .fill(null)
+          .map(() => pool.acquire())
       );
 
       const metrics1 = pool.getMetrics();
       expect(metrics1.totalConnections).toBe(maxConnections);
 
       // Try to acquire more (should queue)
-      const queuedPromises = Array(extraRequests).fill(null).map(() => pool.acquire());
+      const queuedPromises = Array(extraRequests)
+        .fill(null)
+        .map(() => pool.acquire());
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const metrics2 = pool.getMetrics();
       expect(metrics2.waitingRequests).toBe(extraRequests);
@@ -143,16 +148,16 @@ describePool('Connection Pool Integration Tests', () => {
       // Release one connection to unblock queue
       pool.release(clients[0]);
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Queue should be processing
       const metrics3 = pool.getMetrics();
       expect(metrics3.waitingRequests).toBeLessThan(extraRequests);
 
       // Cleanup
-      clients.slice(1).forEach(client => pool.release(client));
+      clients.slice(1).forEach((client) => pool.release(client));
       const remainingClients = await Promise.allSettled(queuedPromises);
-      remainingClients.forEach(result => {
+      remainingClients.forEach((result) => {
         if (result.status === 'fulfilled') {
           pool.release(result.value);
         }
@@ -202,7 +207,7 @@ describePool('Connection Pool Integration Tests', () => {
       pool.on('health:check:failed', () => healthCheckFailed++);
 
       // Wait for health check interval
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      await new Promise((resolve) => setTimeout(resolve, 2500));
 
       // At least one health check should have occurred
       const totalHealthChecks = healthCheckSuccess + healthCheckFailed;
@@ -232,7 +237,7 @@ describePool('Connection Pool Integration Tests', () => {
       });
 
       // Wait for potential health check failures
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       await unhealthyPool.shutdown();
 
@@ -241,13 +246,10 @@ describePool('Connection Pool Integration Tests', () => {
     });
 
     it('should create replacement connections', async () => {
-
-
-
       // Simulate connection failure scenario
       // In production, this would be triggered by health check failures
 
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       const finalMetrics = pool.getMetrics();
 
@@ -271,17 +273,19 @@ describePool('Connection Pool Integration Tests', () => {
 
       // Create extra connections
       const clients = await Promise.all(
-        Array(8).fill(null).map(() => idlePool.acquire())
+        Array(8)
+          .fill(null)
+          .map(() => idlePool.acquire())
       );
 
       // Release all immediately
-      clients.forEach(client => idlePool.release(client));
+      clients.forEach((client) => idlePool.release(client));
 
       const metricsBefore = idlePool.getMetrics();
       expect(metricsBefore.totalConnections).toBeGreaterThan(2);
 
       // Wait for idle timeout
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
 
       const metricsAfter = idlePool.getMetrics();
 
@@ -304,7 +308,7 @@ describePool('Connection Pool Integration Tests', () => {
       const client = await pool.acquire();
       pool.release(client);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Should have captured some lifecycle events
       expect(events.length).toBeGreaterThan(0);
@@ -313,11 +317,13 @@ describePool('Connection Pool Integration Tests', () => {
     });
 
     it('should maintain connection limits under load', async () => {
-      const operations = Array(50).fill(null).map(async () => {
-        const client = await pool.acquire();
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
-        pool.release(client);
-      });
+      const operations = Array(50)
+        .fill(null)
+        .map(async () => {
+          const client = await pool.acquire();
+          await new Promise((resolve) => setTimeout(resolve, Math.random() * 100));
+          pool.release(client);
+        });
 
       await Promise.allSettled(operations);
 
@@ -381,7 +387,7 @@ describePool('Connection Pool Integration Tests', () => {
       });
 
       // Wait for initialization attempt
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       await failPool.shutdown();
 
@@ -403,7 +409,7 @@ describePool('Connection Pool Integration Tests', () => {
         retryDelayMs: 1000,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       let shutdownStarted = false;
       let shutdownCompleted = false;
@@ -429,7 +435,7 @@ describePool('Connection Pool Integration Tests', () => {
       const shutdownPromise = pool.shutdown();
 
       // Shutdown should wait
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Release connection
       pool.release(client);
@@ -443,7 +449,9 @@ describePool('Connection Pool Integration Tests', () => {
     it('should reject waiting requests on shutdown', async () => {
       // Acquire all connections
       const clients = await Promise.all(
-        Array(5).fill(null).map(() => pool.acquire())
+        Array(5)
+          .fill(null)
+          .map(() => pool.acquire())
       );
 
       // Queue additional requests
@@ -456,7 +464,7 @@ describePool('Connection Pool Integration Tests', () => {
       await expect(queuedPromise).rejects.toThrow(/shutdown/i);
 
       // Cleanup
-      clients.forEach(client => pool.release(client));
+      clients.forEach((client) => pool.release(client));
       await shutdownPromise;
     });
 
@@ -469,7 +477,7 @@ describePool('Connection Pool Integration Tests', () => {
 
   describe('Performance Metrics', () => {
     it('should track uptime', async () => {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       const metrics = pool.getMetrics();
       expect(metrics.uptime).toBeGreaterThan(900); // At least 900ms

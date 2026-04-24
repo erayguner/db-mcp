@@ -12,8 +12,15 @@ const skipWif = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUER
 const describeWif = skipWif ? describe.skip : describe;
 
 beforeAll(() => {
-  jest.spyOn(WorkloadIdentityFederation.prototype, 'exchangeToken').mockImplementation(function (this: any, token: string) {
-    if (this.projectId && typeof this.projectId === 'string' && this.projectId.includes('invalid')) {
+  jest.spyOn(WorkloadIdentityFederation.prototype, 'exchangeToken').mockImplementation(function (
+    this: any,
+    token: string
+  ) {
+    if (
+      this.projectId &&
+      typeof this.projectId === 'string' &&
+      this.projectId.includes('invalid')
+    ) {
       return Promise.reject(new Error('Invalid configuration'));
     }
     if (token.includes('<') || token.includes('..') || token.includes(';')) {
@@ -22,7 +29,9 @@ beforeAll(() => {
     return Promise.resolve('mock-access-token');
   });
 
-  jest.spyOn(WorkloadIdentityFederation.prototype, 'impersonateServiceAccount').mockImplementation(async () => 'mock-impersonated-token');
+  jest
+    .spyOn(WorkloadIdentityFederation.prototype, 'impersonateServiceAccount')
+    .mockImplementation(async () => 'mock-impersonated-token');
 });
 
 describeWif('Workload Identity Federation Integration Tests', () => {
@@ -89,10 +98,11 @@ describeWif('Workload Identity Federation Integration Tests', () => {
   });
 
   describe('Token Exchange', () => {
-    const mockOIDCToken = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.test';
+    const mockOIDCToken =
+      'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.test';
 
     it('should exchange OIDC token for GCP access token', async () => {
-      const result = await wif.exchangeToken(mockOIDCToken).catch(error => ({
+      const result = await wif.exchangeToken(mockOIDCToken).catch((error) => ({
         error: error.message,
       }));
 
@@ -120,7 +130,7 @@ describeWif('Workload Identity Federation Integration Tests', () => {
       const token1 = await shortLifeWif.exchangeToken(mockOIDCToken).catch(() => null);
 
       // Wait for token to expire
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
 
       const token2 = await shortLifeWif.exchangeToken(mockOIDCToken).catch(() => null);
 
@@ -140,9 +150,7 @@ describeWif('Workload Identity Federation Integration Tests', () => {
         serviceAccountEmail: 'invalid@test.com',
       });
 
-      await expect(
-        invalidWif.exchangeToken('invalid-token')
-      ).rejects.toThrow();
+      await expect(invalidWif.exchangeToken('invalid-token')).rejects.toThrow();
     });
 
     it('should clear token cache on demand', async () => {
@@ -161,7 +169,7 @@ describeWif('Workload Identity Federation Integration Tests', () => {
     const mockAccessToken = 'ya29.mock-access-token';
 
     it('should impersonate service account', async () => {
-      const result = await wif.impersonateServiceAccount(mockAccessToken).catch(error => ({
+      const result = await wif.impersonateServiceAccount(mockAccessToken).catch((error) => ({
         error: error.message,
       }));
 
@@ -172,7 +180,7 @@ describeWif('Workload Identity Federation Integration Tests', () => {
 
     it('should include correct scopes in impersonation request', async () => {
       // This test verifies the implementation structure
-      const sa = await wif.impersonateServiceAccount(mockAccessToken).catch(error => {
+      const sa = await wif.impersonateServiceAccount(mockAccessToken).catch((error) => {
         // Check that error contains expected patterns
         expect(error.message).toBeDefined();
         return null;
@@ -195,9 +203,7 @@ describeWif('Workload Identity Federation Integration Tests', () => {
     });
 
     it('should handle impersonation errors', async () => {
-      await expect(
-        wif.impersonateServiceAccount('invalid-token')
-      ).rejects.toThrow();
+      await expect(wif.impersonateServiceAccount('invalid-token')).rejects.toThrow();
     });
   });
 
@@ -243,17 +249,19 @@ describeWif('Workload Identity Federation Integration Tests', () => {
     });
 
     it('should handle concurrent token exchanges', async () => {
-      const tokens = Array(10).fill(null).map((_, i) => `token-${i}`);
+      const tokens = Array(10)
+        .fill(null)
+        .map((_, i) => `token-${i}`);
 
-      const exchanges = tokens.map(token =>
-        wif.exchangeToken(token).catch(error => ({ error: error.message }))
+      const exchanges = tokens.map((token) =>
+        wif.exchangeToken(token).catch((error) => ({ error: error.message }))
       );
 
       const results = await Promise.all(exchanges);
 
       expect(results).toHaveLength(10);
       // All should complete without crashing
-      expect(results.every(r => r !== undefined)).toBe(true);
+      expect(results.every((r) => r !== undefined)).toBe(true);
     });
   });
 
@@ -286,10 +294,12 @@ describeWif('Workload Identity Federation Integration Tests', () => {
         // In production, WIF credentials would be configured here
       });
 
-      const result = await client.query({
-        query: 'SELECT 1',
-        dryRun: true,
-      }).catch(error => ({ error: error.message }));
+      const result = await client
+        .query({
+          query: 'SELECT 1',
+          dryRun: true,
+        })
+        .catch((error) => ({ error: error.message }));
 
       expect(result).toBeDefined();
 
@@ -300,9 +310,7 @@ describeWif('Workload Identity Federation Integration Tests', () => {
   describe('Error Scenarios', () => {
     it('should handle network failures gracefully', async () => {
       // Simulate network error by using invalid endpoint
-      await expect(
-        wif.exchangeToken('mock-token')
-      ).rejects.toThrow();
+      await expect(wif.exchangeToken('mock-token')).rejects.toThrow();
     });
 
     it('should handle malformed tokens', async () => {
@@ -316,7 +324,7 @@ describeWif('Workload Identity Federation Integration Tests', () => {
 
       for (const token of malformedTokens) {
         if (token !== null && token !== undefined) {
-          const result = await wif.exchangeToken(token).catch(error => ({
+          const result = await wif.exchangeToken(token).catch((error) => ({
             error: error.message,
           }));
 
@@ -326,11 +334,10 @@ describeWif('Workload Identity Federation Integration Tests', () => {
     });
 
     it('should handle expired OIDC tokens', async () => {
-      const expiredToken = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiZXhwIjoxMH0.expired';
+      const expiredToken =
+        'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiZXhwIjoxMH0.expired';
 
-      await expect(
-        wif.exchangeToken(expiredToken)
-      ).rejects.toThrow();
+      await expect(wif.exchangeToken(expiredToken)).rejects.toThrow();
     });
 
     it('should handle service account permission errors', async () => {
@@ -341,9 +348,7 @@ describeWif('Workload Identity Federation Integration Tests', () => {
         serviceAccountEmail: 'unauthorized@test.com',
       });
 
-      await expect(
-        unauthorizedWif.impersonateServiceAccount('mock-token')
-      ).rejects.toThrow();
+      await expect(unauthorizedWif.impersonateServiceAccount('mock-token')).rejects.toThrow();
     });
   });
 
@@ -365,7 +370,9 @@ describeWif('Workload Identity Federation Integration Tests', () => {
     });
 
     it('should handle cache eviction correctly', async () => {
-      const tokens = Array(100).fill(null).map((_, i) => `token-${i}`);
+      const tokens = Array(100)
+        .fill(null)
+        .map((_, i) => `token-${i}`);
 
       for (const token of tokens) {
         await wif.exchangeToken(token).catch(() => {});
@@ -384,8 +391,12 @@ describeWif('Workload Identity Federation Integration Tests', () => {
       const originalImpersonate = wif.impersonateServiceAccount.bind(wif);
 
       // Count would be tracked in production monitoring
-      await originalImpersonate(accessToken).catch(() => { callCount++; });
-      await originalImpersonate(accessToken).catch(() => { callCount++; });
+      await originalImpersonate(accessToken).catch(() => {
+        callCount++;
+      });
+      await originalImpersonate(accessToken).catch(() => {
+        callCount++;
+      });
 
       expect(callCount).toBeGreaterThan(0);
     });
@@ -410,9 +421,7 @@ describeWif('Workload Identity Federation Integration Tests', () => {
       ];
 
       for (const invalidToken of invalidFormats) {
-        await expect(
-          wif.exchangeToken(invalidToken)
-        ).rejects.toThrow();
+        await expect(wif.exchangeToken(invalidToken)).rejects.toThrow();
       }
     });
 

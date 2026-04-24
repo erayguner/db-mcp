@@ -29,16 +29,20 @@ export const BoundaryContractSchema = z.object({
   }),
   onCallRotation: z.string(),
 
-  foundationModel: z.object({
-    cardUrl: z.string().url().optional(),
-    id: z.string().optional(),
-    adapterVersion: z.string().optional(),
-  }).optional(),
+  foundationModel: z
+    .object({
+      cardUrl: z.string().url().optional(),
+      id: z.string().optional(),
+      adapterVersion: z.string().optional(),
+    })
+    .optional(),
 
-  allocative: z.object({
-    isAllocative: z.boolean(),
-    protectedAttributes: z.array(z.string()).default([]),
-  }).default({ isAllocative: false, protectedAttributes: [] }),
+  allocative: z
+    .object({
+      isAllocative: z.boolean(),
+      protectedAttributes: z.array(z.string()).default([]),
+    })
+    .default({ isAllocative: false, protectedAttributes: [] }),
 
   compensatingRisks: z.array(z.string()).default([]),
   reviewedAt: z.string().datetime(),

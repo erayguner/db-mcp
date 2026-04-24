@@ -19,9 +19,9 @@ import { logger } from '../utils/logger.js';
 // ==========================================
 
 export interface ColumnMaskingRule {
-  datasetPattern: string;      // glob or regex pattern for dataset
-  tablePattern: string;        // glob or regex pattern for table
-  columnPattern: string;       // glob or regex pattern for column name
+  datasetPattern: string; // glob or regex pattern for dataset
+  tablePattern: string; // glob or regex pattern for table
+  columnPattern: string; // glob or regex pattern for column name
   maskType: 'redact' | 'hash' | 'partial' | 'nullify';
   description?: string;
 }
@@ -49,7 +49,7 @@ export class ColumnMaskingEngine {
 
   constructor(config: MaskingConfig) {
     this.config = config;
-    this.compiledRules = config.rules.map(rule => ({
+    this.compiledRules = config.rules.map((rule) => ({
       rule,
       datasetRegex: this.globToRegex(rule.datasetPattern),
       tableRegex: this.globToRegex(rule.tablePattern),
@@ -70,7 +70,7 @@ export class ColumnMaskingEngine {
     row: Record<string, unknown>,
     datasetId: string,
     tableId: string,
-    schema?: Array<{ name: string; type: string }>,
+    schema?: Array<{ name: string; type: string }>
   ): Record<string, unknown> {
     if (!this.config.enabled) {
       return row;
@@ -82,17 +82,13 @@ export class ColumnMaskingEngine {
     }
 
     const masked = { ...row };
-    const schemaMap = new Map(schema?.map(s => [s.name, s.type]) ?? []);
+    const schemaMap = new Map(schema?.map((s) => [s.name, s.type]) ?? []);
 
     for (const columnName of Object.keys(masked)) {
       const matchingRule = this.findMatchingRule(applicableRules, columnName);
       if (matchingRule) {
         const columnType = schemaMap.get(columnName);
-        masked[columnName] = this.applyMask(
-          masked[columnName],
-          matchingRule.maskType,
-          columnType,
-        );
+        masked[columnName] = this.applyMask(masked[columnName], matchingRule.maskType, columnType);
       }
     }
 
@@ -106,13 +102,13 @@ export class ColumnMaskingEngine {
     rows: Record<string, unknown>[],
     datasetId: string,
     tableId: string,
-    schema?: Array<{ name: string; type: string }>,
+    schema?: Array<{ name: string; type: string }>
   ): Record<string, unknown>[] {
     if (!this.config.enabled) {
       return rows;
     }
 
-    return rows.map(row => this.maskRow(row, datasetId, tableId, schema));
+    return rows.map((row) => this.maskRow(row, datasetId, tableId, schema));
   }
 
   /**
@@ -120,10 +116,8 @@ export class ColumnMaskingEngine {
    */
   getApplicableRules(datasetId: string, tableId: string): ColumnMaskingRule[] {
     return this.compiledRules
-      .filter(
-        cr => cr.datasetRegex.test(datasetId) && cr.tableRegex.test(tableId),
-      )
-      .map(cr => cr.rule);
+      .filter((cr) => cr.datasetRegex.test(datasetId) && cr.tableRegex.test(tableId))
+      .map((cr) => cr.rule);
   }
 
   // ==========================================
@@ -135,13 +129,10 @@ export class ColumnMaskingEngine {
    */
   private findMatchingRule(
     applicableRules: ColumnMaskingRule[],
-    columnName: string,
+    columnName: string
   ): ColumnMaskingRule | null {
     for (const compiled of this.compiledRules) {
-      if (
-        applicableRules.includes(compiled.rule) &&
-        compiled.columnRegex.test(columnName)
-      ) {
+      if (applicableRules.includes(compiled.rule) && compiled.columnRegex.test(columnName)) {
         return compiled.rule;
       }
     }
@@ -154,7 +145,7 @@ export class ColumnMaskingEngine {
   private applyMask(
     value: unknown,
     maskType: ColumnMaskingRule['maskType'],
-    _columnType?: string,
+    _columnType?: string
   ): unknown {
     if (value === null || value === undefined) {
       return value;
@@ -225,8 +216,8 @@ export class ColumnMaskingEngine {
    */
   private globToRegex(pattern: string): RegExp {
     const escaped = pattern
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // escape regex meta (except *)
-      .replace(/\*/g, '.*');                    // convert glob * to regex .*
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex meta (except *)
+      .replace(/\*/g, '.*'); // convert glob * to regex .*
     return new RegExp(`^${escaped}$`, 'i');
   }
 }

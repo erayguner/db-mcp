@@ -1,13 +1,7 @@
 {
   "version": "0.2",
   "language": "en",
-  "enableFiletypes": [
-    "typescript",
-    "javascript",
-    "markdown",
-    "json",
-    "yaml"
-  ],
+  "enableFiletypes": ["typescript", "javascript", "markdown", "json", "yaml"],
   "ignorePaths": [
     "node_modules/**",
     "dist/**",
@@ -93,12 +87,7 @@
     "struct",
     "jsonpath"
   ],
-  "flagWords": [
-    "hte",
-    "teh",
-    "todo",
-    "fixme"
-  ],
+  "flagWords": ["hte", "teh", "todo", "fixme"],
   "dictionaries": [
     "typescript",
     "node",
@@ -115,26 +104,11 @@
   "overrides": [
     {
       "filename": "**/*.md",
-      "words": [
-        "claude",
-        "anthropic",
-        "sparc",
-        "swarm",
-        "megalinter",
-        "megalinter's"
-      ]
+      "words": ["claude", "anthropic", "sparc", "swarm", "megalinter", "megalinter's"]
     },
     {
       "filename": "**/terraform/**/*.tf",
-      "words": [
-        "tfvars",
-        "tfstate",
-        "backend",
-        "gcs",
-        "vpc",
-        "subnet",
-        "cidr"
-      ]
+      "words": ["tfvars", "tfstate", "backend", "gcs", "vpc", "subnet", "cidr"]
     }
   ]
 }

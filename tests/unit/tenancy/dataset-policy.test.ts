@@ -30,10 +30,12 @@ describe('DatasetPolicy', () => {
   });
 
   it('denies explicitly denied datasets even with wildcard', () => {
-    const policy = new DatasetPolicy(makeTenant({
-      allowedDatasets: ['*'],
-      deniedDatasets: ['pii_data'],
-    }));
+    const policy = new DatasetPolicy(
+      makeTenant({
+        allowedDatasets: ['*'],
+        deniedDatasets: ['pii_data'],
+      })
+    );
     expect(policy.canAccessDataset('pii_data')).toBe(false);
     expect(policy.canAccessDataset('analytics')).toBe(true);
   });
@@ -53,7 +55,9 @@ describe('DatasetPolicy', () => {
     expect(policy.isDMLQuery('INSERT INTO t VALUES (1)')).toBe(true);
     expect(policy.isDMLQuery('UPDATE t SET x = 1')).toBe(true);
     expect(policy.isDMLQuery('DELETE FROM t WHERE id = 1')).toBe(true);
-    expect(policy.isDMLQuery('MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET x = 1')).toBe(true);
+    expect(
+      policy.isDMLQuery('MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET x = 1')
+    ).toBe(true);
     expect(policy.isDMLQuery('SELECT * FROM t')).toBe(false);
   });
 

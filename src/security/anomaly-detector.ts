@@ -42,8 +42,8 @@ export interface UserBaseline {
   averageBytesProcessed: number;
   totalBytesProcessed: number;
   bytesQueryCount: number;
-  hourHistogram: number[];         // 24 entries, one per hour
-  queriesPerMinute: number[];      // rolling minute counts
+  hourHistogram: number[]; // 24 entries, one per hour
+  queriesPerMinute: number[]; // rolling minute counts
   lastQueryTimestamp: number;
   createdAt: number;
   updatedAt: number;
@@ -68,7 +68,7 @@ export class BehavioralAnomalyDetector {
   private static readonly MAX_QUERIES_PER_USER = 1000;
   private static readonly MAX_ALERTS = 10000;
   private static readonly STALE_BASELINE_MS = 24 * 60 * 60 * 1000; // 24 hours
-  private static readonly CLEANUP_INTERVAL_MS = 5 * 60 * 1000;     // 5 minutes
+  private static readonly CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   private static readonly VOLUME_SPIKE_MULTIPLIER = 3;
   private static readonly COST_SPIKE_MULTIPLIER = 10;
   private static readonly MIN_QUERIES_FOR_BASELINE = 5;
@@ -76,7 +76,7 @@ export class BehavioralAnomalyDetector {
   constructor() {
     this.cleanupInterval = setInterval(
       () => this.cleanupStaleBaselines(),
-      BehavioralAnomalyDetector.CLEANUP_INTERVAL_MS,
+      BehavioralAnomalyDetector.CLEANUP_INTERVAL_MS
     );
     this.cleanupInterval.unref();
 
@@ -111,7 +111,7 @@ export class BehavioralAnomalyDetector {
         {
           toolName: pattern.toolName,
           datasetsAccessed: pattern.datasetsAccessed,
-        },
+        }
       );
       triggered.push(alert);
     }
@@ -127,7 +127,7 @@ export class BehavioralAnomalyDetector {
           {
             dataset,
             previousDatasets: Array.from(baseline.datasetsAccessed),
-          },
+          }
         );
         triggered.push(alert);
       }
@@ -181,7 +181,7 @@ export class BehavioralAnomalyDetector {
       logger.warn('Anomaly alerts triggered', {
         userId: pattern.userId,
         alertCount: triggered.length,
-        types: triggered.map(a => a.type),
+        types: triggered.map((a) => a.type),
       });
     }
 
@@ -202,10 +202,10 @@ export class BehavioralAnomalyDetector {
     let filtered = this.alerts;
 
     if (options?.userId) {
-      filtered = filtered.filter(a => a.userId === options.userId);
+      filtered = filtered.filter((a) => a.userId === options.userId);
     }
     if (options?.severity) {
-      filtered = filtered.filter(a => a.severity === options.severity);
+      filtered = filtered.filter((a) => a.severity === options.severity);
     }
 
     const limit = options?.limit ?? filtered.length;
@@ -215,7 +215,11 @@ export class BehavioralAnomalyDetector {
   /**
    * Get summary statistics.
    */
-  getStats(): { totalAlerts: number; alertsBySeverity: Record<string, number>; monitoredUsers: number } {
+  getStats(): {
+    totalAlerts: number;
+    alertsBySeverity: Record<string, number>;
+    monitoredUsers: number;
+  } {
     const alertsBySeverity: Record<string, number> = {
       low: 0,
       medium: 0,
@@ -267,7 +271,7 @@ export class BehavioralAnomalyDetector {
     baseline: UserBaseline,
     pattern: QueryPattern,
     now: number,
-    hour: number,
+    hour: number
   ): void {
     baseline.queryCount++;
     baseline.updatedAt = now;
@@ -285,8 +289,7 @@ export class BehavioralAnomalyDetector {
     if (pattern.bytesProcessed !== undefined && pattern.bytesProcessed > 0) {
       baseline.totalBytesProcessed += pattern.bytesProcessed;
       baseline.bytesQueryCount++;
-      baseline.averageBytesProcessed =
-        baseline.totalBytesProcessed / baseline.bytesQueryCount;
+      baseline.averageBytesProcessed = baseline.totalBytesProcessed / baseline.bytesQueryCount;
     }
   }
 
@@ -294,15 +297,14 @@ export class BehavioralAnomalyDetector {
     userId: string,
     now: number,
     _baseline: UserBaseline,
-    history: InternalQueryRecord[],
+    history: InternalQueryRecord[]
   ): AnomalyAlert | null {
     const oneMinuteAgo = now - 60_000;
-    const recentCount = history.filter(q => q.timestamp >= oneMinuteAgo).length;
+    const recentCount = history.filter((q) => q.timestamp >= oneMinuteAgo).length;
 
     // Calculate average queries per minute based on the time span of the history
-    const historySpanMs = history.length > 1
-      ? history[history.length - 1].timestamp - history[0].timestamp
-      : 0;
+    const historySpanMs =
+      history.length > 1 ? history[history.length - 1].timestamp - history[0].timestamp : 0;
 
     if (historySpanMs < 60_000) {
       // Not enough time span to calculate meaningful rate
@@ -325,7 +327,7 @@ export class BehavioralAnomalyDetector {
           currentRate: recentCount,
           averageRate: avgQueriesPerMinute,
           multiplier: recentCount / avgQueriesPerMinute,
-        },
+        }
       );
     }
 
@@ -335,7 +337,7 @@ export class BehavioralAnomalyDetector {
   private detectCostSpike(
     userId: string,
     bytesProcessed: number,
-    baseline: UserBaseline,
+    baseline: UserBaseline
   ): AnomalyAlert | null {
     if (baseline.averageBytesProcessed <= 0) {
       return null;
@@ -353,7 +355,7 @@ export class BehavioralAnomalyDetector {
           bytesProcessed,
           averageBytes: baseline.averageBytesProcessed,
           multiplier,
-        },
+        }
       );
     }
 
@@ -363,7 +365,7 @@ export class BehavioralAnomalyDetector {
   private detectUnusualTiming(
     userId: string,
     hour: number,
-    baseline: UserBaseline,
+    baseline: UserBaseline
   ): AnomalyAlert | null {
     const totalQueries = baseline.hourHistogram.reduce((s, v) => s + v, 0);
     if (totalQueries < BehavioralAnomalyDetector.MIN_QUERIES_FOR_BASELINE) {
@@ -372,7 +374,7 @@ export class BehavioralAnomalyDetector {
 
     // The user has never queried at this hour and has a clear pattern
     const hourFraction = baseline.hourHistogram[hour] / totalQueries;
-    const activeHours = baseline.hourHistogram.filter(h => h > 0).length;
+    const activeHours = baseline.hourHistogram.filter((h) => h > 0).length;
 
     // If the user has used at least a few distinct hours but never this hour,
     // and they have a concentrated usage pattern (active in <=12 hours)
@@ -386,7 +388,7 @@ export class BehavioralAnomalyDetector {
           hour,
           activeHours,
           histogram: baseline.hourHistogram,
-        },
+        }
       );
     }
 
@@ -398,7 +400,7 @@ export class BehavioralAnomalyDetector {
     severity: AnomalyAlert['severity'],
     userId: string,
     message: string,
-    details: Record<string, unknown>,
+    details: Record<string, unknown>
   ): AnomalyAlert {
     return {
       type,

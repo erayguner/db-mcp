@@ -28,8 +28,9 @@ export class DatasetPolicy {
   }
 
   canWrite(): boolean {
-    return this.tenant.writeMode === WriteMode.ALLOWED
-      || this.tenant.writeMode === WriteMode.PROTECTED;
+    return (
+      this.tenant.writeMode === WriteMode.ALLOWED || this.tenant.writeMode === WriteMode.PROTECTED
+    );
   }
 
   isDMLQuery(query: string): boolean {
@@ -73,7 +74,7 @@ export class DatasetPolicy {
       };
     }
 
-    const unauthorized = datasetsAccessed.filter(ds => !this.canAccessDataset(ds));
+    const unauthorized = datasetsAccessed.filter((ds) => !this.canAccessDataset(ds));
     if (unauthorized.length > 0) {
       logger.warn('Dataset access denied by tenant policy', {
         tenant: this.tenant.id,

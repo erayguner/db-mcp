@@ -53,7 +53,9 @@ export function initializeTelemetry(
       projectId,
     });
   } catch (err) {
-    logger.error('Failed to initialize telemetry', { error: err instanceof Error ? err.message : err });
+    logger.error('Failed to initialize telemetry', {
+      error: err instanceof Error ? err.message : err,
+    });
     throw err;
   }
 }
@@ -66,6 +68,8 @@ export async function shutdownTelemetry(): Promise<void> {
     await Promise.all([shutdownTracing(), shutdownMetrics()]);
     logger.info('Telemetry shutdown complete');
   } catch (err) {
-    logger.error('Error during telemetry shutdown', { error: err instanceof Error ? err.message : err });
+    logger.error('Error during telemetry shutdown', {
+      error: err instanceof Error ? err.message : err,
+    });
   }
 }

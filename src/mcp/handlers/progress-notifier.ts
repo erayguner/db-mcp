@@ -27,7 +27,7 @@ export class ProgressTracker {
 
   constructor(
     private readonly operationId: string,
-    private readonly callback: ProgressCallback,
+    private readonly callback: ProgressCallback
   ) {}
 
   /** Mark the operation as queued (waiting to start). */
@@ -50,9 +50,8 @@ export class ProgressTracker {
     this.currentProgress = bytesProcessed;
     this.currentTotal = totalBytes;
 
-    const pct = totalBytes && totalBytes > 0
-      ? ((bytesProcessed / totalBytes) * 100).toFixed(1)
-      : undefined;
+    const pct =
+      totalBytes && totalBytes > 0 ? ((bytesProcessed / totalBytes) * 100).toFixed(1) : undefined;
 
     const message = pct
       ? `Processing — ${pct}% (${formatBytes(bytesProcessed)} / ${formatBytes(totalBytes!)})`

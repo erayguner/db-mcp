@@ -32,8 +32,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -49,8 +49,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -66,8 +66,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -128,7 +128,7 @@ jobs:
         with:
           image-ref: ${{ steps.build.outputs.image }}
           format: table
-          exit-code: '1'
+          exit-code: "1"
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           trivyignores: .trivyignore
@@ -138,7 +138,7 @@ jobs:
 
       - name: Sign image (keyless, OIDC)
         env:
-          COSIGN_EXPERIMENTAL: '1'
+          COSIGN_EXPERIMENTAL: "1"
         run: cosign sign --yes gcr.io/$PROJECT_ID/$SERVICE_NAME@${{ steps.push.outputs.digest }}
 
       - name: Generate SLSA build provenance

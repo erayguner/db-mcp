@@ -1,16 +1,10 @@
 import { BigQueryClient } from '../../bigquery/client.js';
 import { logger } from '../../utils/logger.js';
-import {
-  validateToolArgs,
-  ToolName,
-} from '../schemas/tool-schemas.js';
+import { validateToolArgs, ToolName } from '../schemas/tool-schemas.js';
 import { TenantContext } from '../../tenancy/tenant-context.js';
 import type { Provenance, SchemaContext } from '../schemas/output-schemas.js';
 import { getKillSwitch, SessionHaltedError } from '../../governance/kill-switch.js';
-import {
-  ModelArmorProvider,
-  NoopModelArmorProvider,
-} from '../../security/model-armor.js';
+import { ModelArmorProvider, NoopModelArmorProvider } from '../../security/model-armor.js';
 
 /** Safely coerce an unknown schema field value to string */
 function fieldStr(value: unknown, fallback: string): string {
@@ -29,11 +23,11 @@ function fieldStrOpt(value: unknown): string | undefined {
 function buildSchemaContext(
   schema: unknown,
   tableDescription?: string,
-  datasetDescription?: string,
+  datasetDescription?: string
 ): SchemaContext | undefined {
   if (!schema || !Array.isArray(schema)) return undefined;
   return {
-    columns: (schema as Array<Record<string, unknown>>).map(f => ({
+    columns: (schema as Array<Record<string, unknown>>).map((f) => ({
       name: fieldStr(f.name, ''),
       type: fieldStr(f.type, 'UNKNOWN'),
       description: fieldStrOpt(f.description),
@@ -88,7 +82,7 @@ export interface ToolHandlerContext {
  * Base Tool Handler
  */
 export abstract class BaseToolHandler {
-  constructor(protected context: ToolHandlerContext) { }
+  constructor(protected context: ToolHandlerContext) {}
 
   /**
    * Execute the tool
@@ -98,7 +92,11 @@ export abstract class BaseToolHandler {
   /**
    * Build a GCP Console URL for a BigQuery resource
    */
-  protected buildConsoleUrl(opts: { projectId: string; datasetId?: string; tableId?: string }): string {
+  protected buildConsoleUrl(opts: {
+    projectId: string;
+    datasetId?: string;
+    tableId?: string;
+  }): string {
     const base = `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(opts.projectId)}`;
     if (opts.datasetId && opts.tableId) {
       return `${base}&d=${encodeURIComponent(opts.datasetId)}&t=${encodeURIComponent(opts.tableId)}&page=table`;
@@ -116,7 +114,7 @@ export abstract class BaseToolHandler {
     data: unknown,
     meta?: Record<string, unknown>,
     provenance?: Provenance,
-    schemaContext?: SchemaContext,
+    schemaContext?: SchemaContext
   ): ToolResponse {
     const auditEventId = crypto.randomUUID();
 
@@ -284,8 +282,8 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         maximumBytesBilled: maxBytesBilled,
       });
 
-      const projectId = this.context.tenantContext?.projectId
-        ?? this.context.bigQueryClient.getProjectId();
+      const projectId =
+        this.context.tenantContext?.projectId ?? this.context.bigQueryClient.getProjectId();
 
       const provenance: Provenance = {
         source: 'bigquery',
@@ -311,15 +309,20 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         });
       }
 
-      return this.formatSuccess({
-        rowCount: result.rows.length,
-        rows: result.rows,
-        schema: result.schema,
-        jobId: result.jobId,
-        cacheHit: result.cacheHit,
-        executionTimeMs: result.executionTimeMs,
-        totalBytesProcessed: result.totalBytesProcessed,
-      }, undefined, provenance, schemaContext);
+      return this.formatSuccess(
+        {
+          rowCount: result.rows.length,
+          rows: result.rows,
+          schema: result.schema,
+          jobId: result.jobId,
+          cacheHit: result.cacheHit,
+          executionTimeMs: result.executionTimeMs,
+          totalBytesProcessed: result.totalBytesProcessed,
+        },
+        undefined,
+        provenance,
+        schemaContext
+      );
     } catch (error) {
       return this.formatError(error as Error, 'QUERY_ERROR');
     }
@@ -348,9 +351,10 @@ export class ListDatasetsHandler extends BaseToolHandler {
         datasets = datasets.slice(0, maxResults);
       }
 
-      const resolvedProject = projectId
-        ?? this.context.tenantContext?.projectId
-        ?? this.context.bigQueryClient.getProjectId();
+      const resolvedProject =
+        projectId ??
+        this.context.tenantContext?.projectId ??
+        this.context.bigQueryClient.getProjectId();
 
       const provenance: Provenance = {
         source: 'bigquery',
@@ -360,19 +364,23 @@ export class ListDatasetsHandler extends BaseToolHandler {
         consoleUrl: this.buildConsoleUrl({ projectId: resolvedProject }),
       };
 
-      return this.formatSuccess({
-        count: datasets.length,
-        datasets: datasets.map(ds => ({
-          id: ds.id,
-          projectId: ds.projectId,
-          location: ds.location,
-          creationTime: ds.createdAt.toISOString(),
-          lastModifiedTime: ds.modifiedAt.toISOString(),
-          description: ds.description,
-        })),
-      }, {
-        projectId: resolvedProject,
-      }, provenance);
+      return this.formatSuccess(
+        {
+          count: datasets.length,
+          datasets: datasets.map((ds) => ({
+            id: ds.id,
+            projectId: ds.projectId,
+            location: ds.location,
+            creationTime: ds.createdAt.toISOString(),
+            lastModifiedTime: ds.modifiedAt.toISOString(),
+            description: ds.description,
+          })),
+        },
+        {
+          projectId: resolvedProject,
+        },
+        provenance
+      );
     } catch (error) {
       return this.formatError(error as Error, 'LIST_DATASETS_ERROR');
     }
@@ -402,9 +410,10 @@ export class ListTablesHandler extends BaseToolHandler {
         tables = tables.slice(0, maxResults);
       }
 
-      const resolvedProject = projectId
-        ?? this.context.tenantContext?.projectId
-        ?? this.context.bigQueryClient.getProjectId();
+      const resolvedProject =
+        projectId ??
+        this.context.tenantContext?.projectId ??
+        this.context.bigQueryClient.getProjectId();
 
       const provenance: Provenance = {
         source: 'bigquery',
@@ -415,22 +424,26 @@ export class ListTablesHandler extends BaseToolHandler {
         consoleUrl: this.buildConsoleUrl({ projectId: resolvedProject, datasetId }),
       };
 
-      return this.formatSuccess({
-        datasetId,
-        count: tables.length,
-        tables: tables.map(table => ({
-          id: table.id,
-          tableId: table.id, // tableId is same as id in metadata
-          type: table.type,
-          creationTime: table.createdAt.toISOString(),
-          numRows: table.numRows,
-          numBytes: table.numBytes,
-          description: table.description,
-        })),
-      }, {
-        datasetId,
-        projectId: resolvedProject,
-      }, provenance);
+      return this.formatSuccess(
+        {
+          datasetId,
+          count: tables.length,
+          tables: tables.map((table) => ({
+            id: table.id,
+            tableId: table.id, // tableId is same as id in metadata
+            type: table.type,
+            creationTime: table.createdAt.toISOString(),
+            numRows: table.numRows,
+            numBytes: table.numBytes,
+            description: table.description,
+          })),
+        },
+        {
+          datasetId,
+          projectId: resolvedProject,
+        },
+        provenance
+      );
     } catch (error) {
       return this.formatError(error as Error, 'LIST_TABLES_ERROR');
     }
@@ -475,11 +488,7 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         requestId: this.context.requestId,
       });
 
-      const table = await this.context.bigQueryClient.getTable(
-        datasetId,
-        tableId,
-        projectId
-      );
+      const table = await this.context.bigQueryClient.getTable(datasetId, tableId, projectId);
 
       const response: TableSchemaResponse = {
         datasetId,
@@ -499,9 +508,10 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         };
       }
 
-      const resolvedProject = projectId
-        ?? this.context.tenantContext?.projectId
-        ?? this.context.bigQueryClient.getProjectId();
+      const resolvedProject =
+        projectId ??
+        this.context.tenantContext?.projectId ??
+        this.context.bigQueryClient.getProjectId();
 
       const provenance: Provenance = {
         source: 'bigquery',
@@ -516,11 +526,16 @@ export class GetTableSchemaHandler extends BaseToolHandler {
       // Build schema context for copilot consumption
       const schemaContext = buildSchemaContext(table.schema, table.description);
 
-      return this.formatSuccess(response, {
-        datasetId,
-        tableId,
-        projectId: resolvedProject,
-      }, provenance, schemaContext);
+      return this.formatSuccess(
+        response,
+        {
+          datasetId,
+          tableId,
+          projectId: resolvedProject,
+        },
+        provenance,
+        schemaContext
+      );
     } catch (error) {
       return this.formatError(error as Error, 'GET_SCHEMA_ERROR');
     }
@@ -587,9 +602,21 @@ export class ToolHandlerFactory {
     } catch (error) {
       if (error instanceof SessionHaltedError) {
         return {
-          content: [{ type: 'text', text: JSON.stringify({
-            error: error.message, code: 'SESSION_HALTED', haltReason: error.haltReason, toolName,
-          }, null, 2) }],
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  error: error.message,
+                  code: 'SESSION_HALTED',
+                  haltReason: error.haltReason,
+                  toolName,
+                },
+                null,
+                2
+              ),
+            },
+          ],
           isError: true,
         };
       }
@@ -603,11 +630,15 @@ export class ToolHandlerFactory {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({
-              error: (error as Error).message,
-              code: 'HANDLER_ERROR',
-              toolName,
-            }, null, 2),
+            text: JSON.stringify(
+              {
+                error: (error as Error).message,
+                code: 'HANDLER_ERROR',
+                toolName,
+              },
+              null,
+              2
+            ),
           },
         ],
         isError: true,

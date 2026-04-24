@@ -3,10 +3,10 @@ import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose';
 import { logger } from '../utils/logger.js';
 
 export const OIDCConfigSchema = z.object({
-  issuer: z.string().url().refine(
-    (url) => url.startsWith('https://'),
-    { message: 'Issuer must use HTTPS' }
-  ),
+  issuer: z
+    .string()
+    .url()
+    .refine((url) => url.startsWith('https://'), { message: 'Issuer must use HTTPS' }),
   audience: z.string().min(1),
   jwksUri: z.string().url().optional(),
   requiredScopes: z.array(z.string()).default([]),
@@ -64,14 +64,23 @@ export class OIDCAuthenticator {
       const tokenScopes = typeof payload.scope === 'string' ? payload.scope.split(' ') : [];
       for (const required of this.config.requiredScopes) {
         if (!tokenScopes.includes(required)) {
-          throw new OIDCAuthenticationError(`Missing required scope: ${required}`, 'INSUFFICIENT_SCOPE', 403);
+          throw new OIDCAuthenticationError(
+            `Missing required scope: ${required}`,
+            'INSUFFICIENT_SCOPE',
+            403
+          );
         }
       }
       return {
         subject: payload.sub || '',
         email: (payload.email as string) || '',
         issuer: payload.iss || '',
-        audience: typeof payload.aud === 'string' ? payload.aud : Array.isArray(payload.aud) ? payload.aud[0] : '',
+        audience:
+          typeof payload.aud === 'string'
+            ? payload.aud
+            : Array.isArray(payload.aud)
+              ? payload.aud[0]
+              : '',
         scopes: tokenScopes,
         claims: payload,
         authenticatedAt: new Date(),

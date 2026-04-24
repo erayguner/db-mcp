@@ -25,7 +25,7 @@ export class WorkloadIdentityFederation {
 
   constructor(config: WIFConfig) {
     this.config = WIFConfigSchema.parse(config);
-    
+
     // Initialize Google Auth with Workload Identity Federation
     this.auth = new GoogleAuth({
       scopes: ['https://www.googleapis.com/auth/cloud-platform'],
@@ -42,7 +42,7 @@ export class WorkloadIdentityFederation {
    */
   async exchangeToken(oidcToken: string): Promise<string> {
     const cacheKey = this.hashToken(oidcToken);
-    
+
     // Check cache
     const cached = this.tokenCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
@@ -102,7 +102,7 @@ export class WorkloadIdentityFederation {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -115,7 +115,7 @@ export class WorkloadIdentityFederation {
         throw new Error(`Service account impersonation failed: ${response.statusText}`);
       }
 
-      const data = await response.json() as { accessToken: string; expireTime: string };
+      const data = (await response.json()) as { accessToken: string; expireTime: string };
 
       logger.info('Service account impersonation successful', {
         serviceAccount: this.config.serviceAccountEmail,

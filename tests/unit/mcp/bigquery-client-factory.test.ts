@@ -30,22 +30,23 @@ describe.skip('BigQueryClientFactory', () => {
     jest.useFakeTimers();
 
     // Create mock BigQuery client factory function
-    const createMockClient = () => ({
-      isHealthy: jest.fn().mockReturnValue(true),
-      shutdown: jest.fn().mockResolvedValue(undefined),
-      invalidateCache: jest.fn(),
-      getPoolMetrics: jest.fn().mockReturnValue({
-        activeConnections: 2,
-        idleConnections: 1,
-        totalConnections: 3,
-      }),
-      getCacheStats: jest.fn().mockReturnValue({
-        hits: 10,
-        misses: 5,
-        size: 15,
-      }),
-      on: jest.fn(),
-    } as any);
+    const createMockClient = () =>
+      ({
+        isHealthy: jest.fn().mockReturnValue(true),
+        shutdown: jest.fn().mockResolvedValue(undefined),
+        invalidateCache: jest.fn(),
+        getPoolMetrics: jest.fn().mockReturnValue({
+          activeConnections: 2,
+          idleConnections: 1,
+          totalConnections: 3,
+        }),
+        getCacheStats: jest.fn().mockReturnValue({
+          hits: 10,
+          misses: 5,
+          size: 15,
+        }),
+        on: jest.fn(),
+      }) as any;
 
     // Mock implementation returns a new instance each time
     MockBigQueryClient.mockImplementation(createMockClient);
@@ -260,7 +261,9 @@ describe.skip('BigQueryClientFactory', () => {
         } as any;
       };
 
-      (BigQueryClient as jest.MockedClass<typeof BigQueryClient>).mockImplementation(createMockWithHealth);
+      (BigQueryClient as jest.MockedClass<typeof BigQueryClient>).mockImplementation(
+        createMockWithHealth
+      );
 
       const factory = new BigQueryClientFactory(defaultConfig);
 
@@ -472,7 +475,9 @@ describe.skip('BigQueryClientFactory', () => {
       await factory.getClient('test-project');
 
       const clientOnCalls = mockBigQueryClient.on.mock.calls;
-      const queryCompletedCallback = clientOnCalls.find(([event]) => event === 'query:completed')?.[1];
+      const queryCompletedCallback = clientOnCalls.find(
+        ([event]) => event === 'query:completed'
+      )?.[1];
 
       queryCompletedCallback?.({ queryId: 'query-123', duration: 1500 });
 
@@ -864,11 +869,7 @@ describe.skip('BigQueryClientFactory', () => {
 
   describe('ClientFactoryError', () => {
     it('should create error with all properties', () => {
-      const error = new ClientFactoryError(
-        'Test error',
-        'TEST_CODE',
-        { detail: 'extra info' }
-      );
+      const error = new ClientFactoryError('Test error', 'TEST_CODE', { detail: 'extra info' });
 
       expect(error).toBeInstanceOf(Error);
       expect(error).toBeInstanceOf(ClientFactoryError);

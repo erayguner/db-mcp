@@ -1,14 +1,13 @@
 # Enterprise Connection Pooling & Dataset Management System
+
 ## BigQuery MCP Server Architecture Design
 
-**Version:** 1.0.0
-**Date:** 2025-11-01
-**Status:** Design Specification
-**Owner:** System Architecture Team
+**Version:** 1.0.0 **Date:** 2025-11-01 **Status:** Design Specification **Owner:** System Architecture Team
 
 ---
 
 ## Table of Contents
+
 1. [Executive Summary](#executive-summary)
 2. [System Architecture](#system-architecture)
 3. [Connection Pool Design](#connection-pool-design)
@@ -25,9 +24,13 @@
 ## Executive Summary
 
 ### Overview
-This document specifies an enterprise-grade connection pooling and dataset management system for the BigQuery MCP server, designed to optimize resource utilization, ensure high availability, and provide predictable performance at scale.
+
+This document specifies an enterprise-grade connection pooling and dataset management system for the BigQuery MCP
+server, designed to optimize resource utilization, ensure high availability, and provide predictable performance at
+scale.
 
 ### Key Objectives
+
 - **Resource Efficiency**: Minimize BigQuery API calls and connection overhead
 - **High Availability**: 99.95% uptime through intelligent failover and health checks
 - **Performance**: <100ms pool acquisition time, <500ms metadata cache hit
@@ -35,6 +38,7 @@ This document specifies an enterprise-grade connection pooling and dataset manag
 - **Cost Optimization**: Reduce BigQuery API costs by 60% through intelligent caching
 
 ### Design Principles
+
 1. **Fail-Fast Philosophy**: Early detection and rapid recovery
 2. **Graceful Degradation**: Maintain partial functionality during failures
 3. **Observable by Default**: Built-in metrics, logging, and tracing
@@ -119,6 +123,7 @@ This document specifies an enterprise-grade connection pooling and dataset manag
 ### Component Responsibilities
 
 #### Connection Pool Manager
+
 - **Primary Role**: Orchestrate connection lifecycle across projects/datasets
 - **Key Functions**:
   - Pool initialization and warmup
@@ -127,6 +132,7 @@ This document specifies an enterprise-grade connection pooling and dataset manag
   - Metrics aggregation and reporting
 
 #### Dataset Manager
+
 - **Primary Role**: Manage dataset metadata and optimize access patterns
 - **Key Functions**:
   - Metadata caching with TTL-based invalidation
@@ -135,6 +141,7 @@ This document specifies an enterprise-grade connection pooling and dataset manag
   - Query pattern analysis for optimization
 
 #### BigQuery Client Pool
+
 - **Primary Role**: Maintain reusable BigQuery client connections
 - **Key Functions**:
   - Connection pooling (min/max sizing)
@@ -181,7 +188,7 @@ interface PoolHierarchy {
 ### Pool Configuration Matrix
 
 | Environment | Min Conn/Dataset | Max Conn/Dataset | Max Datasets | Total Max Conn | Idle Timeout |
-|-------------|------------------|------------------|--------------|----------------|--------------|
+| ----------- | ---------------- | ---------------- | ------------ | -------------- | ------------ |
 | Development | 1                | 5                | 10           | 50             | 2 min        |
 | Staging     | 2                | 10               | 50           | 200            | 5 min        |
 | Production  | 2                | 20               | 100          | 500            | 5 min        |
@@ -219,12 +226,10 @@ class ConnectionPool {
       .map(() => this.createConnection());
 
     const results = await Promise.allSettled(warmupPromises);
-    const failed = results.filter(r => r.status === 'rejected');
+    const failed = results.filter((r) => r.status === 'rejected');
 
     if (failed.length > count * 0.5) {
-      throw new PoolInitializationError(
-        `Failed to warm up pool: ${failed.length}/${count} connections failed`
-      );
+      throw new PoolInitializationError(`Failed to warm up pool: ${failed.length}/${count} connections failed`);
     }
   }
 }
@@ -234,9 +239,9 @@ class ConnectionPool {
 
 ```typescript
 interface AcquisitionOptions {
-  timeout?: number;           // Max wait time (default: 5000ms)
-  priority?: Priority;        // HIGH, NORMAL, LOW
-  retryPolicy?: RetryPolicy;  // Retry configuration
+  timeout?: number; // Max wait time (default: 5000ms)
+  priority?: Priority; // HIGH, NORMAL, LOW
+  retryPolicy?: RetryPolicy; // Retry configuration
   tags?: Record<string, string>; // For tracing
 }
 
@@ -358,10 +363,10 @@ class ConnectionPool {
 
 ```typescript
 interface HealthCheckConfig {
-  interval: number;           // Check interval (default: 30s)
-  timeout: number;            // Check timeout (default: 5s)
+  interval: number; // Check interval (default: 30s)
+  timeout: number; // Check timeout (default: 5s)
   unhealthyThreshold: number; // Failures before marking unhealthy (default: 3)
-  healthyThreshold: number;   // Successes before marking healthy (default: 2)
+  healthyThreshold: number; // Successes before marking healthy (default: 2)
 }
 
 class HealthMonitor {
@@ -374,7 +379,7 @@ class HealthMonitor {
         query: 'SELECT 1 as health_check',
         useLegacySql: false,
         timeoutMs: this.config.timeout,
-        maxResults: 1
+        maxResults: 1,
       });
 
       connection.consecutiveFailures = 0;
@@ -389,7 +394,7 @@ class HealthMonitor {
       this.logger.warn('Health check failed', {
         connectionId: connection.id,
         failures: connection.consecutiveFailures,
-        error: error.message
+        error: error.message,
       });
 
       return connection.consecutiveFailures < this.config.unhealthyThreshold;
@@ -471,9 +476,9 @@ class PassiveHealthMonitor {
 
 ```typescript
 enum CircuitState {
-  CLOSED = 'CLOSED',     // Normal operation
-  OPEN = 'OPEN',         // Failing, reject requests
-  HALF_OPEN = 'HALF_OPEN' // Testing recovery
+  CLOSED = 'CLOSED', // Normal operation
+  OPEN = 'OPEN', // Failing, reject requests
+  HALF_OPEN = 'HALF_OPEN', // Testing recovery
 }
 
 class CircuitBreaker {
@@ -496,8 +501,7 @@ class CircuitBreaker {
   recordSuccess(): void {
     this.successCount++;
 
-    if (this.state === CircuitState.HALF_OPEN
-        && this.successCount >= this.config.successThreshold) {
+    if (this.state === CircuitState.HALF_OPEN && this.successCount >= this.config.successThreshold) {
       this.transitionTo(CircuitState.CLOSED);
       this.failureCount = 0;
     }
@@ -525,7 +529,7 @@ class CircuitBreaker {
     this.logger.info('Circuit breaker state transition', {
       from: oldState,
       to: newState,
-      failureCount: this.failureCount
+      failureCount: this.failureCount,
     });
 
     this.metrics.recordStateTransition(oldState, newState);
@@ -583,7 +587,7 @@ class DatasetManager {
       ttl: config.defaultTTL,
       updateAgeOnGet: true,
       updateAgeOnHas: false,
-      dispose: (key, value) => this.onCacheEviction(key, value)
+      dispose: (key, value) => this.onCacheEviction(key, value),
     });
 
     this.discoveryService = new DatasetDiscoveryService(config.discovery);
@@ -641,7 +645,7 @@ class MetadataCache {
     await Promise.all([
       this.l1Cache.set(key, metadata),
       this.l2Cache.set(key, metadata),
-      this.l3Cache.set(key, metadata)
+      this.l3Cache.set(key, metadata),
     ]);
   }
 
@@ -656,10 +660,10 @@ class MetadataCache {
 
 ```typescript
 enum InvalidationStrategy {
-  TTL_BASED = 'TTL_BASED',           // Time-to-live expiration
-  EVENT_BASED = 'EVENT_BASED',       // Invalidate on schema changes
-  LAZY_REFRESH = 'LAZY_REFRESH',     // Refresh on access if stale
-  PROACTIVE_REFRESH = 'PROACTIVE_REFRESH' // Background refresh before expiry
+  TTL_BASED = 'TTL_BASED', // Time-to-live expiration
+  EVENT_BASED = 'EVENT_BASED', // Invalidate on schema changes
+  LAZY_REFRESH = 'LAZY_REFRESH', // Refresh on access if stale
+  PROACTIVE_REFRESH = 'PROACTIVE_REFRESH', // Background refresh before expiry
 }
 
 class CacheInvalidator {
@@ -726,12 +730,10 @@ class DatasetDiscoveryService {
     const datasets = await this.fetchDatasetsFromBigQuery(projectId);
 
     // Step 3: Enrich with metadata (parallel)
-    const enriched = await Promise.all(
-      datasets.map(ds => this.enrichDatasetMetadata(ds))
-    );
+    const enriched = await Promise.all(datasets.map((ds) => this.enrichDatasetMetadata(ds)));
 
     // Step 4: Register discovered datasets
-    enriched.forEach(ds => {
+    enriched.forEach((ds) => {
       this.datasetManager.registerDataset(ds);
       this.discoveredDatasets.add(ds.datasetId);
     });
@@ -745,7 +747,7 @@ class DatasetDiscoveryService {
   private async enrichDatasetMetadata(dataset: Dataset): Promise<DatasetMetadata> {
     const [tables, labels] = await Promise.all([
       this.fetchTables(dataset.projectId, dataset.datasetId),
-      this.fetchLabels(dataset.projectId, dataset.datasetId)
+      this.fetchLabels(dataset.projectId, dataset.datasetId),
     ]);
 
     return {
@@ -755,7 +757,7 @@ class DatasetDiscoveryService {
       cachedAt: Date.now(),
       ttl: this.calculateOptimalTTL(dataset),
       isHealthy: true,
-      lastHealthCheck: Date.now()
+      lastHealthCheck: Date.now(),
     };
   }
 
@@ -783,13 +785,10 @@ class ConnectionAllocator {
     ['round-robin', new RoundRobinStrategy()],
     ['least-connections', new LeastConnectionsStrategy()],
     ['weighted', new WeightedStrategy()],
-    ['locality-aware', new LocalityAwareStrategy()]
+    ['locality-aware', new LocalityAwareStrategy()],
   ]);
 
-  selectConnection(
-    dataset: DatasetMetadata,
-    strategy: string = 'least-connections'
-  ): PooledConnection {
+  selectConnection(dataset: DatasetMetadata, strategy: string = 'least-connections'): PooledConnection {
     const allocStrategy = this.strategies.get(strategy);
     if (!allocStrategy) {
       throw new Error(`Unknown allocation strategy: ${strategy}`);
@@ -816,7 +815,7 @@ class LocalityAwareStrategy implements AllocationStrategy {
     // Prefer connections in same region as dataset
     const connections = pool.getAvailableConnections();
 
-    const local = connections.filter(c => c.location === dataset.location);
+    const local = connections.filter((c) => c.location === dataset.location);
     if (local.length > 0) {
       return this.selectLeastLoaded(local);
     }
@@ -897,6 +896,7 @@ interface PoolConfiguration {
 ### Configuration Files
 
 #### development.json
+
 ```json
 {
   "pool": {
@@ -936,6 +936,7 @@ interface PoolConfiguration {
 ```
 
 #### production.json
+
 ```json
 {
   "pool": {
@@ -1035,7 +1036,7 @@ class ConfigurationManager {
   }
 
   private notifyWatchers(): void {
-    this.watchers.forEach(watcher => watcher(this.config));
+    this.watchers.forEach((watcher) => watcher(this.config));
   }
 }
 ```
@@ -1110,15 +1111,11 @@ class QueryOptimizer {
     return {
       query: optimized,
       connection,
-      estimatedCost: this.estimateQueryCost(optimized, dataset)
+      estimatedCost: this.estimateQueryCost(optimized, dataset),
     };
   }
 
-  private applyOptimizations(
-    query: string,
-    analysis: QueryAnalysis,
-    dataset: DatasetMetadata
-  ): string {
+  private applyOptimizations(query: string, analysis: QueryAnalysis, dataset: DatasetMetadata): string {
     let optimized = query;
 
     // Add LIMIT if missing for large result sets
@@ -1192,7 +1189,7 @@ class MetricsCollector {
       ...this.metrics,
       p95AcquisitionTime: this.histogram.percentile('acquisition_time', 0.95),
       p99AcquisitionTime: this.histogram.percentile('acquisition_time', 0.99),
-      cacheHitRate: this.calculateCacheHitRate()
+      cacheHitRate: this.calculateCacheHitRate(),
     };
   }
 
@@ -1219,10 +1216,7 @@ interface RetryPolicy {
 }
 
 class RetryManager {
-  async executeWithRetry<T>(
-    operation: () => Promise<T>,
-    policy: RetryPolicy
-  ): Promise<T> {
+  async executeWithRetry<T>(operation: () => Promise<T>, policy: RetryPolicy): Promise<T> {
     let lastError: Error;
     let delay = policy.initialDelay;
 
@@ -1239,10 +1233,7 @@ class RetryManager {
 
         // Last attempt - throw error
         if (attempt === policy.maxAttempts) {
-          throw new MaxRetriesExceededError(
-            `Failed after ${attempt} attempts`,
-            lastError
-          );
+          throw new MaxRetriesExceededError(`Failed after ${attempt} attempts`, lastError);
         }
 
         // Wait before retry with exponential backoff
@@ -1252,7 +1243,7 @@ class RetryManager {
         this.logger.debug('Retrying operation', {
           attempt,
           delay,
-          error: error.message
+          error: error.message,
         });
       }
     }
@@ -1279,13 +1270,10 @@ class GracefulDegradationManager {
 
     try {
       // Try primary operation with timeout
-      return await Promise.race([
-        primary(),
-        this.timeoutPromise(timeout)
-      ]);
+      return await Promise.race([primary(), this.timeoutPromise(timeout)]);
     } catch (error) {
       this.logger.warn('Primary operation failed, using fallback', {
-        error: error.message
+        error: error.message,
       });
 
       // Record degradation event
@@ -1344,8 +1332,8 @@ class StructuredLogger {
       error: {
         message: error.message,
         stack: error.stack,
-        code: (error as any).code
-      }
+        code: (error as any).code,
+      },
     });
   }
 
@@ -1356,7 +1344,7 @@ class StructuredLogger {
       message,
       ...context,
       service: 'bigquery-mcp',
-      version: this.version
+      version: this.version,
     };
 
     console.log(JSON.stringify(logEntry));
@@ -1375,7 +1363,7 @@ class MetricsExporter {
     await Promise.all([
       this.exportToPrometheus(metrics),
       this.exportToCloudMonitoring(metrics),
-      this.exportToDatadog(metrics)
+      this.exportToDatadog(metrics),
     ]);
   }
 
@@ -1386,7 +1374,7 @@ class MetricsExporter {
       `pool_connections_active ${metrics.activeConnections}`,
       `pool_connections_idle ${metrics.idleConnections}`,
       `pool_acquisition_seconds_avg ${metrics.avgAcquisitionTime / 1000}`,
-      `pool_cache_hit_rate ${metrics.cacheHitRate}`
+      `pool_cache_hit_rate ${metrics.cacheHitRate}`,
     ].join('\n');
 
     // Expose via HTTP endpoint
@@ -1421,7 +1409,7 @@ class TracingManager {
     } catch (error) {
       span.setStatus({
         code: SpanStatusCode.ERROR,
-        message: error.message
+        message: error.message,
       });
       span.recordException(error);
       throw error;
@@ -1437,6 +1425,7 @@ class TracingManager {
 ## Implementation Roadmap
 
 ### Phase 1: Foundation (Weeks 1-2)
+
 - ✅ Basic connection pool implementation
 - ✅ Pool lifecycle management (create, acquire, release)
 - ✅ Configuration management system
@@ -1444,6 +1433,7 @@ class TracingManager {
 - ✅ Logging infrastructure
 
 ### Phase 2: Dataset Management (Weeks 3-4)
+
 - ✅ Dataset registry implementation
 - ✅ Multi-tier metadata caching
 - ✅ Dataset discovery service
@@ -1451,6 +1441,7 @@ class TracingManager {
 - ✅ Cache invalidation policies
 
 ### Phase 3: Resilience (Weeks 5-6)
+
 - ✅ Circuit breaker implementation
 - ✅ Retry policies
 - ✅ Graceful degradation
@@ -1458,6 +1449,7 @@ class TracingManager {
 - ✅ Error categorization
 
 ### Phase 4: Optimization (Weeks 7-8)
+
 - ✅ Query optimization
 - ✅ Performance metrics collection
 - ✅ Adaptive pool sizing
@@ -1465,6 +1457,7 @@ class TracingManager {
 - ✅ Connection reuse optimization
 
 ### Phase 5: Observability (Weeks 9-10)
+
 - ✅ Metrics export (Prometheus, Cloud Monitoring)
 - ✅ Distributed tracing (OpenTelemetry)
 - ✅ Structured logging
@@ -1472,6 +1465,7 @@ class TracingManager {
 - ✅ Alerting rules
 
 ### Phase 6: Testing & Validation (Weeks 11-12)
+
 - Load testing (1000+ QPS)
 - Chaos engineering tests
 - Performance benchmarking
@@ -1485,6 +1479,7 @@ class TracingManager {
 ### A. Configuration Reference
 
 #### Environment Variables
+
 ```bash
 # Pool Configuration
 POOL_MIN_CONNECTIONS=2
@@ -1515,43 +1510,46 @@ LOG_LEVEL=info
 
 ### B. Performance Benchmarks
 
-| Metric | Target | Achieved |
-|--------|--------|----------|
-| Pool Acquisition Time (p50) | <50ms | 42ms |
-| Pool Acquisition Time (p95) | <100ms | 87ms |
-| Pool Acquisition Time (p99) | <200ms | 156ms |
-| Cache Hit Rate | >80% | 87.3% |
-| Cache Hit Time | <10ms | 6.2ms |
-| Query Throughput | 1000 QPS | 1247 QPS |
-| Connection Reuse Rate | >90% | 94.1% |
-| Circuit Breaker Recovery Time | <60s | 43s |
+| Metric                        | Target   | Achieved |
+| ----------------------------- | -------- | -------- |
+| Pool Acquisition Time (p50)   | <50ms    | 42ms     |
+| Pool Acquisition Time (p95)   | <100ms   | 87ms     |
+| Pool Acquisition Time (p99)   | <200ms   | 156ms    |
+| Cache Hit Rate                | >80%     | 87.3%    |
+| Cache Hit Time                | <10ms    | 6.2ms    |
+| Query Throughput              | 1000 QPS | 1247 QPS |
+| Connection Reuse Rate         | >90%     | 94.1%    |
+| Circuit Breaker Recovery Time | <60s     | 43s      |
 
 ### C. Error Codes
 
-| Code | Category | Retryable | Description |
-|------|----------|-----------|-------------|
-| CONN_001 | FATAL | No | Authentication failure |
-| CONN_002 | TRANSIENT | Yes | Network timeout |
-| CONN_003 | TRANSIENT | Yes | Rate limit exceeded |
-| CONN_004 | FATAL | No | Invalid credentials |
-| POOL_001 | TRANSIENT | Yes | Pool exhausted |
-| POOL_002 | FATAL | No | Pool initialization failed |
-| CACHE_001 | BENIGN | No | Cache miss |
-| CACHE_002 | TRANSIENT | Yes | Cache eviction |
+| Code      | Category  | Retryable | Description                |
+| --------- | --------- | --------- | -------------------------- |
+| CONN_001  | FATAL     | No        | Authentication failure     |
+| CONN_002  | TRANSIENT | Yes       | Network timeout            |
+| CONN_003  | TRANSIENT | Yes       | Rate limit exceeded        |
+| CONN_004  | FATAL     | No        | Invalid credentials        |
+| POOL_001  | TRANSIENT | Yes       | Pool exhausted             |
+| POOL_002  | FATAL     | No        | Pool initialization failed |
+| CACHE_001 | BENIGN    | No        | Cache miss                 |
+| CACHE_002 | TRANSIENT | Yes       | Cache eviction             |
 
 ### D. Security Considerations
 
 #### Authentication
+
 - Service account key rotation every 90 days
 - Principle of least privilege for BigQuery IAM roles
 - Encrypted credential storage
 
 #### Network Security
+
 - TLS 1.3 for all BigQuery API calls
 - Private Service Connect for VPC-SC environments
 - Network egress logging
 
 #### Data Protection
+
 - Query result caching with encryption at rest
 - PII redaction in logs
 - Audit logging for all queries
@@ -1560,9 +1558,9 @@ LOG_LEVEL=info
 
 ## Document History
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0.0 | 2025-11-01 | System Architecture | Initial design specification |
+| Version | Date       | Author              | Changes                      |
+| ------- | ---------- | ------------------- | ---------------------------- |
+| 1.0.0   | 2025-11-01 | System Architecture | Initial design specification |
 
 ---
 

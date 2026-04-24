@@ -12,14 +12,17 @@ export type BreakerState = 'closed' | 'open' | 'half-open';
 
 export interface BreakerOptions {
   name: string;
-  failureThreshold: number;      // consecutive failures to open
-  halfOpenAfterMs: number;        // cool-down before trial request
-  successThreshold: number;       // successes in half-open to close
-  callTimeoutMs?: number;         // optional per-call timeout
+  failureThreshold: number; // consecutive failures to open
+  halfOpenAfterMs: number; // cool-down before trial request
+  successThreshold: number; // successes in half-open to close
+  callTimeoutMs?: number; // optional per-call timeout
 }
 
 export class CircuitOpenError extends Error {
-  constructor(public readonly breaker: string, public readonly reason: string) {
+  constructor(
+    public readonly breaker: string,
+    public readonly reason: string
+  ) {
     super(`circuit open: ${breaker} — ${reason}`);
     this.name = 'CircuitOpenError';
   }
@@ -33,7 +36,9 @@ export class CircuitBreaker {
 
   constructor(private readonly opts: BreakerOptions) {}
 
-  get currentState(): BreakerState { return this.state; }
+  get currentState(): BreakerState {
+    return this.state;
+  }
 
   async execute<T>(fn: () => Promise<T>): Promise<T> {
     if (this.state === 'open') {
@@ -59,7 +64,10 @@ export class CircuitBreaker {
       return await Promise.race([
         fn(),
         new Promise<T>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`timeout after ${this.opts.callTimeoutMs}ms`)), this.opts.callTimeoutMs);
+          timer = setTimeout(
+            () => reject(new Error(`timeout after ${this.opts.callTimeoutMs}ms`)),
+            this.opts.callTimeoutMs
+          );
         }),
       ]);
     } finally {
@@ -78,7 +86,11 @@ export class CircuitBreaker {
   private onFailure(err: unknown): void {
     this.successes = 0;
     this.failures += 1;
-    logger.warn('circuit-breaker failure', { name: this.opts.name, failures: this.failures, err: String(err) });
+    logger.warn('circuit-breaker failure', {
+      name: this.opts.name,
+      failures: this.failures,
+      err: String(err),
+    });
     if (this.state === 'half-open' || this.failures >= this.opts.failureThreshold) {
       this.openedAt = Date.now();
       this.transition('open');
@@ -87,9 +99,16 @@ export class CircuitBreaker {
 
   private transition(next: BreakerState): void {
     if (this.state === next) return;
-    logger.info('circuit-breaker state change', { name: this.opts.name, from: this.state, to: next });
+    logger.info('circuit-breaker state change', {
+      name: this.opts.name,
+      from: this.state,
+      to: next,
+    });
     this.state = next;
-    if (next === 'closed') { this.failures = 0; this.successes = 0; }
+    if (next === 'closed') {
+      this.failures = 0;
+      this.successes = 0;
+    }
     if (next === 'half-open') this.successes = 0;
   }
 }

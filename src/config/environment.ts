@@ -11,28 +11,33 @@ dotenv.config();
 
 export const EnvironmentSchema = z.object({
   // Server
-  NODE_ENV: z.enum(['development', 'staging', 'production', 'test']).default(process.env.JEST_WORKER_ID ? 'test' : 'development'),
+  NODE_ENV: z
+    .enum(['development', 'staging', 'production', 'test'])
+    .default(process.env.JEST_WORKER_ID ? 'test' : 'development'),
   PORT: z.string().transform(Number).default('8080'),
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
 
   // GCP
   GCP_PROJECT_ID: z.string(),
   GCP_REGION: z.string().default('europe-west2'),
-  
+
   // Workload Identity Federation (optional — required only for WIF auth)
   WORKLOAD_IDENTITY_POOL_ID: z.string().default(''),
   WORKLOAD_IDENTITY_PROVIDER_ID: z.string().default(''),
-  MCP_SERVICE_ACCOUNT_EMAIL: z.string().refine(
-    (v) => v === '' || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v),
-    { message: 'Must be empty or a valid email address' },
-  ).default(''),
+  MCP_SERVICE_ACCOUNT_EMAIL: z
+    .string()
+    .refine((v) => v === '' || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), {
+      message: 'Must be empty or a valid email address',
+    })
+    .default(''),
 
   // Google Workspace (optional — required only for Workspace auth)
   GOOGLE_WORKSPACE_CLIENT_ID: z.string().default(''),
   GOOGLE_WORKSPACE_DOMAIN: z.string().default(''),
-  GOOGLE_WORKSPACE_ALLOWED_GROUPS: z.string().optional().transform(val =>
-    val ? val.split(',').map(g => g.trim()) : undefined
-  ),
+  GOOGLE_WORKSPACE_ALLOWED_GROUPS: z
+    .string()
+    .optional()
+    .transform((val) => (val ? val.split(',').map((g) => g.trim()) : undefined)),
 
   // BigQuery
   BIGQUERY_LOCATION: z.string().default('europe-west2'),
@@ -45,7 +50,10 @@ export const EnvironmentSchema = z.object({
 
   // Tenancy
   TENANT_CONFIG_PATH: z.string().default('./src/config/tenants.yaml'),
-  TENANT_HOT_RELOAD: z.string().transform(v => v === 'true').default('true'),
+  TENANT_HOT_RELOAD: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('true'),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

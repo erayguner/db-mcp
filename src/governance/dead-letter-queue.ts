@@ -20,8 +20,8 @@ export interface DlqEntry<T> {
 export interface DlqOptions<T> {
   name: string;
   maxAttempts: number;
-  baseDelayMs: number;        // exponential backoff base
-  maxBacklog: number;         // hard cap; beyond this, entries drop with alert
+  baseDelayMs: number; // exponential backoff base
+  maxBacklog: number; // hard cap; beyond this, entries drop with alert
   handler: (payload: T) => Promise<void>;
 }
 
@@ -31,7 +31,9 @@ export class DeadLetterQueue<T> {
 
   constructor(private readonly opts: DlqOptions<T>) {}
 
-  get size(): number { return this.entries.size; }
+  get size(): number {
+    return this.entries.size;
+  }
 
   oldestAgeMs(): number {
     let oldest = Number.POSITIVE_INFINITY;
@@ -59,26 +61,39 @@ export class DeadLetterQueue<T> {
       existing.lastError = error;
     } else {
       this.entries.set(id, {
-        id, payload, attempts: 1,
+        id,
+        payload,
+        attempts: 1,
         firstSeenAt: Date.now(),
         lastAttemptAt: Date.now(),
         lastError: error,
       });
     }
-    logger.warn('DLQ enqueue', { dlq: this.opts.name, id, attempts: this.entries.get(id)?.attempts });
+    logger.warn('DLQ enqueue', {
+      dlq: this.opts.name,
+      id,
+      attempts: this.entries.get(id)?.attempts,
+    });
   }
 
   /** Retry due entries. Call from a scheduler (reconciliation agent, §13.3). */
-  async drain(now: number = Date.now()): Promise<{ succeeded: number; retained: number; dropped: number }> {
+  async drain(
+    now: number = Date.now()
+  ): Promise<{ succeeded: number; retained: number; dropped: number }> {
     if (this.draining) return { succeeded: 0, retained: this.entries.size, dropped: 0 };
     this.draining = true;
-    let succeeded = 0, dropped = 0;
+    let succeeded = 0,
+      dropped = 0;
     try {
       for (const [id, entry] of [...this.entries.entries()]) {
         const due = entry.lastAttemptAt + this.backoff(entry.attempts);
         if (now < due) continue;
         if (entry.attempts >= this.opts.maxAttempts) {
-          logger.error('DLQ drop — max attempts', { dlq: this.opts.name, id, attempts: entry.attempts });
+          logger.error('DLQ drop — max attempts', {
+            dlq: this.opts.name,
+            id,
+            attempts: entry.attempts,
+          });
           this.entries.delete(id);
           dropped += 1;
           continue;

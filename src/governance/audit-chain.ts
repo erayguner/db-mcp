@@ -1,4 +1,13 @@
-import { createHash, createHmac, generateKeyPairSync, KeyObject, createPrivateKey, createPublicKey, sign as edSign, verify as edVerify } from 'node:crypto';
+import {
+  createHash,
+  createHmac,
+  generateKeyPairSync,
+  KeyObject,
+  createPrivateKey,
+  createPublicKey,
+  sign as edSign,
+  verify as edVerify,
+} from 'node:crypto';
 import { writeFile, readFile, appendFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -89,13 +98,10 @@ export class Ed25519Signer implements Signer {
   readonly algorithm: SignerAlgorithm = 'ed25519';
   constructor(
     private readonly privateKey: KeyObject,
-    private readonly publicKey: KeyObject,
+    private readonly publicKey: KeyObject
   ) {}
   static fromPem(privatePem: string, publicPem: string): Ed25519Signer {
-    return new Ed25519Signer(
-      createPrivateKey(privatePem),
-      createPublicKey(publicPem),
-    );
+    return new Ed25519Signer(createPrivateKey(privatePem), createPublicKey(publicPem));
   }
   static generate(): Ed25519Signer {
     const { privateKey, publicKey } = generateKeyPairSync('ed25519');
@@ -131,16 +137,27 @@ export class AuditChain<T = unknown> {
       hash: '',
     };
     entry.hash = sha256(
-      canonicalJson({ seq: entry.seq, timestamp: entry.timestamp, prevHash: entry.prevHash, payload }),
+      canonicalJson({
+        seq: entry.seq,
+        timestamp: entry.timestamp,
+        prevHash: entry.prevHash,
+        payload,
+      })
     );
     this.prevHash = entry.hash;
     this.entries.push(entry);
     return entry;
   }
 
-  get length(): number { return this.entries.length; }
-  get head(): string { return this.prevHash; }
-  snapshot(): ChainEntry<T>[] { return [...this.entries]; }
+  get length(): number {
+    return this.entries.length;
+  }
+  get head(): string {
+    return this.prevHash;
+  }
+  snapshot(): ChainEntry<T>[] {
+    return [...this.entries];
+  }
 
   /** Fail-closed verification. Throws on first break (§13.4 degraded mode). */
   static verify<T>(entries: ChainEntry<T>[]): void {
@@ -150,7 +167,12 @@ export class AuditChain<T = unknown> {
         throw new AuditChainBreakError(`chain break at seq=${entry.seq}: prevHash mismatch`);
       }
       const expected = sha256(
-        canonicalJson({ seq: entry.seq, timestamp: entry.timestamp, prevHash: entry.prevHash, payload: entry.payload }),
+        canonicalJson({
+          seq: entry.seq,
+          timestamp: entry.timestamp,
+          prevHash: entry.prevHash,
+          payload: entry.payload,
+        })
       );
       if (expected !== entry.hash) {
         throw new AuditChainBreakError(`chain break at seq=${entry.seq}: hash mismatch`);
@@ -187,15 +209,27 @@ export class AuditChain<T = unknown> {
   }
 
   /** Produce a signed daily manifest (§8.2). */
-  async writeDailyManifest(dir: string, date: string, signer: Signer, filePath: string): Promise<ChainManifest> {
+  async writeDailyManifest(
+    dir: string,
+    date: string,
+    signer: Signer,
+    filePath: string
+  ): Promise<ChainManifest> {
     const raw = existsSync(filePath) ? await readFile(filePath, 'utf8') : '';
     const lines = raw.split('\n').filter(Boolean);
-    const parsed = lines.map(l => JSON.parse(l) as ChainEntry<T>);
+    const parsed = lines.map((l) => JSON.parse(l) as ChainEntry<T>);
     const firstSeq = parsed[0]?.seq ?? 0;
     const lastSeq = parsed[parsed.length - 1]?.seq ?? 0;
     const lastHash = parsed[parsed.length - 1]?.hash ?? GENESIS_HASH;
     const fileSha256 = sha256(raw);
-    const manifestPayload = { date, fileSha256, entryCount: parsed.length, firstSeq, lastSeq, lastHash };
+    const manifestPayload = {
+      date,
+      fileSha256,
+      entryCount: parsed.length,
+      firstSeq,
+      lastSeq,
+      lastHash,
+    };
     const signature = signer.sign(canonicalJson(manifestPayload));
     const manifest: ChainManifest = { ...manifestPayload, signature, algorithm: signer.algorithm };
     await mkdir(dir, { recursive: true });
@@ -213,8 +247,12 @@ export class AuditChain<T = unknown> {
   static verifyExport<T>(bundle: SignedExport<T>, signer: Signer): boolean {
     if (bundle.algorithm !== signer.algorithm) return false;
     if (!signer.verify(canonicalJson(bundle.payload), bundle.signature)) return false;
-    try { AuditChain.verify(bundle.payload.entries); return true; }
-    catch { return false; }
+    try {
+      AuditChain.verify(bundle.payload.entries);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

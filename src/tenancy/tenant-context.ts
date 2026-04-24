@@ -27,8 +27,9 @@ export class TenantContextFactory {
   ) {}
 
   createContext(principal: AuthenticatedPrincipal): TenantContext {
-    let tenant = this.registry.resolveBySubject(principal.email)
-      || this.registry.resolveBySubject(principal.subject);
+    let tenant =
+      this.registry.resolveBySubject(principal.email) ||
+      this.registry.resolveBySubject(principal.subject);
 
     if (!tenant) {
       tenant = this.registry.get(this.defaultTenantId);

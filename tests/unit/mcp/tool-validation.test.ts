@@ -111,11 +111,7 @@ describe('Tool Validation Schemas', () => {
     });
 
     it('should reject invalid maxResults', () => {
-      const invalid = [
-        { maxResults: 0 },
-        { maxResults: -10 },
-        { maxResults: 15000 },
-      ];
+      const invalid = [{ maxResults: 0 }, { maxResults: -10 }, { maxResults: 15000 }];
 
       invalid.forEach((args) => {
         expect(() => ListDatasetsArgsSchema.parse(args)).toThrow();
@@ -361,12 +357,10 @@ describe('Tool Validation Schemas', () => {
     it('should prevent SQL injection patterns in validation', () => {
       // Note: Validation layer only checks structure, not content
       // Security middleware handles SQL injection detection
-      const suspiciousQuery = "SELECT * FROM users; DROP TABLE users;--";
+      const suspiciousQuery = 'SELECT * FROM users; DROP TABLE users;--';
 
       // Schema validation allows this (it's a valid string)
-      expect(() =>
-        QueryBigQueryArgsSchema.parse({ query: suspiciousQuery })
-      ).not.toThrow();
+      expect(() => QueryBigQueryArgsSchema.parse({ query: suspiciousQuery })).not.toThrow();
 
       // But security middleware would catch it
     });
@@ -374,9 +368,7 @@ describe('Tool Validation Schemas', () => {
     it('should handle very long dataset/table names', () => {
       const longName = 'a'.repeat(200);
 
-      expect(() =>
-        ListTablesArgsSchema.parse({ datasetId: longName })
-      ).not.toThrow(); // Schema doesn't enforce length limit
+      expect(() => ListTablesArgsSchema.parse({ datasetId: longName })).not.toThrow(); // Schema doesn't enforce length limit
 
       // Length validation happens in security middleware
     });
@@ -385,19 +377,13 @@ describe('Tool Validation Schemas', () => {
       const unicodeName = 'dataset_测试';
 
       // Should fail regex validation (non-ASCII)
-      expect(() =>
-        ListTablesArgsSchema.parse({ datasetId: unicodeName })
-      ).toThrow();
+      expect(() => ListTablesArgsSchema.parse({ datasetId: unicodeName })).toThrow();
     });
 
     it('should handle null and undefined correctly', () => {
-      expect(() =>
-        QueryBigQueryArgsSchema.parse({ query: null })
-      ).toThrow();
+      expect(() => QueryBigQueryArgsSchema.parse({ query: null })).toThrow();
 
-      expect(() =>
-        QueryBigQueryArgsSchema.parse({ query: undefined })
-      ).toThrow();
+      expect(() => QueryBigQueryArgsSchema.parse({ query: undefined })).toThrow();
     });
 
     it('should handle extra fields gracefully', () => {

@@ -217,7 +217,9 @@ export class DatasetDiscovery extends EventEmitter {
     config?: Partial<DatasetDiscoveryConfig>
   ) {
     super();
-    this.config = DatasetDiscoveryConfigSchema.parse(config || {}) as Required<DatasetDiscoveryConfig>;
+    this.config = DatasetDiscoveryConfigSchema.parse(
+      config || {}
+    ) as Required<DatasetDiscoveryConfig>;
 
     if (this.config.enableAutoDiscovery) {
       this.startAutoDiscovery();
@@ -229,10 +231,7 @@ export class DatasetDiscovery extends EventEmitter {
    */
   public async discoverDatasets(projectIds: string[]): Promise<DiscoveredDataset[]> {
     if (this.isScanning) {
-      throw new DatasetDiscoveryError(
-        'Discovery scan already in progress',
-        'SCAN_IN_PROGRESS'
-      );
+      throw new DatasetDiscoveryError('Discovery scan already in progress', 'SCAN_IN_PROGRESS');
     }
 
     this.isScanning = true;
@@ -250,7 +249,7 @@ export class DatasetDiscovery extends EventEmitter {
           const batch = projectIds.slice(i, i + this.config.maxConcurrentScans);
 
           const batchResults = await Promise.all(
-            batch.map(projectId => this.discoverProjectDatasets(client, projectId))
+            batch.map((projectId) => this.discoverProjectDatasets(client, projectId))
           );
 
           allDiscovered.push(...batchResults.flat());
@@ -336,19 +335,14 @@ export class DatasetDiscovery extends EventEmitter {
   /**
    * Enhance dataset metadata with discovery features
    */
-  private enhanceDatasetMetadata(
-    dataset: DatasetMetadata
-  ): DiscoveredDataset {
+  private enhanceDatasetMetadata(dataset: DatasetMetadata): DiscoveredDataset {
     const now = new Date();
 
     // Calculate total size
-    const totalSizeBytes = dataset.tables.reduce(
-      (sum, table) => sum + (table.numBytes || 0),
-      0
-    );
+    const totalSizeBytes = dataset.tables.reduce((sum, table) => sum + (table.numBytes || 0), 0);
 
     // Estimate monthly cost (BigQuery storage pricing: $0.02 per GB)
-    const estimatedMonthlyCost = (totalSizeBytes / (1024 ** 3)) * 0.02;
+    const estimatedMonthlyCost = (totalSizeBytes / 1024 ** 3) * 0.02;
 
     // Extract keywords for search
     const keywords = this.extractKeywords(dataset);
@@ -398,7 +392,7 @@ export class DatasetDiscovery extends EventEmitter {
     // Text search with relevance scoring
     if (query.text) {
       const scoredResults = this.performTextSearch(filtered, query.text);
-      filtered = scoredResults.map(r => r.dataset);
+      filtered = scoredResults.map((r) => r.dataset);
 
       // Create search results with highlights
       for (const result of scoredResults) {
@@ -530,10 +524,7 @@ export class DatasetDiscovery extends EventEmitter {
    */
   public async incrementalUpdate(projectIds: string[]): Promise<number> {
     if (!this.config.incrementalUpdateEnabled) {
-      throw new DatasetDiscoveryError(
-        'Incremental updates are disabled',
-        'INCREMENTAL_DISABLED'
-      );
+      throw new DatasetDiscoveryError('Incremental updates are disabled', 'INCREMENTAL_DISABLED');
     }
 
     let updatedCount = 0;
@@ -572,7 +563,12 @@ export class DatasetDiscovery extends EventEmitter {
   /**
    * Track access pattern
    */
-  public trackAccess(datasetId: string, projectId: string, userId: string, durationMs: number): void {
+  public trackAccess(
+    datasetId: string,
+    projectId: string,
+    userId: string,
+    durationMs: number
+  ): void {
     if (!this.config.trackAccessPatterns) {
       return;
     }
@@ -587,8 +583,8 @@ export class DatasetDiscovery extends EventEmitter {
       dataset.accessPattern.peakAccessTimes.push(new Date());
 
       // Update average query duration
-      const currentTotal = dataset.accessPattern.averageQueryDurationMs *
-        (dataset.accessPattern.totalAccesses - 1);
+      const currentTotal =
+        dataset.accessPattern.averageQueryDurationMs * (dataset.accessPattern.totalAccesses - 1);
       dataset.accessPattern.averageQueryDurationMs =
         (currentTotal + durationMs) / dataset.accessPattern.totalAccesses;
 
@@ -656,7 +652,7 @@ export class DatasetDiscovery extends EventEmitter {
     // Description words
     if (dataset.description) {
       const words = dataset.description.toLowerCase().split(/\W+/);
-      words.forEach(word => {
+      words.forEach((word) => {
         if (word.length > 3) {
           keywords.add(word);
         }
@@ -672,7 +668,7 @@ export class DatasetDiscovery extends EventEmitter {
     }
 
     // Table names
-    dataset.tables.forEach(table => {
+    dataset.tables.forEach((table) => {
       keywords.add(table.id.toLowerCase());
     });
 
@@ -680,18 +676,13 @@ export class DatasetDiscovery extends EventEmitter {
   }
 
   private buildSearchableText(dataset: DatasetMetadata): string {
-    const parts = [
-      dataset.id,
-      dataset.projectId,
-      dataset.location,
-      dataset.description || '',
-    ];
+    const parts = [dataset.id, dataset.projectId, dataset.location, dataset.description || ''];
 
     if (dataset.labels) {
       parts.push(JSON.stringify(dataset.labels));
     }
 
-    dataset.tables.forEach(table => {
+    dataset.tables.forEach((table) => {
       parts.push(table.id);
     });
 
@@ -706,16 +697,15 @@ export class DatasetDiscovery extends EventEmitter {
     return 'VERY_LOW';
   }
 
-  private calculatePopularityScore(
-    dataset: DatasetMetadata,
-    accessPattern: AccessPattern
-  ): number {
+  private calculatePopularityScore(dataset: DatasetMetadata, accessPattern: AccessPattern): number {
     // Weighted scoring: access count (40%), table count (20%), size (20%), recency (20%)
     const accessScore = Math.min(accessPattern.totalAccesses / 100, 1) * 40;
     const tableScore = Math.min(dataset.tableCount / 50, 1) * 20;
-    const sizeScore = Math.min(dataset.tables.reduce((s, t) => s + (t.numBytes || 0), 0) / (1024 ** 4), 1) * 20;
+    const sizeScore =
+      Math.min(dataset.tables.reduce((s, t) => s + (t.numBytes || 0), 0) / 1024 ** 4, 1) * 20;
 
-    const daysSinceAccess = (Date.now() - accessPattern.lastAccessedAt.getTime()) / (1000 * 60 * 60 * 24);
+    const daysSinceAccess =
+      (Date.now() - accessPattern.lastAccessedAt.getTime()) / (1000 * 60 * 60 * 24);
     const recencyScore = Math.max(0, 1 - daysSinceAccess / 365) * 20;
 
     return Math.round(accessScore + tableScore + sizeScore + recencyScore);
@@ -761,7 +751,7 @@ export class DatasetDiscovery extends EventEmitter {
             this.relationshipGraph.set(key2, new Set());
           }
 
-          relationships.forEach(rel => {
+          relationships.forEach((rel) => {
             this.relationshipGraph.get(key1)!.add({
               ...rel,
               datasetId: dataset2.id,
@@ -778,8 +768,10 @@ export class DatasetDiscovery extends EventEmitter {
       }
     }
 
-    this.stats.relationshipCount = Array.from(this.relationshipGraph.values())
-      .reduce((sum, rels) => sum + rels.size, 0);
+    this.stats.relationshipCount = Array.from(this.relationshipGraph.values()).reduce(
+      (sum, rels) => sum + rels.size,
+      0
+    );
 
     this.emit('relationships:built', { relationshipCount: this.stats.relationshipCount });
   }
@@ -793,25 +785,24 @@ export class DatasetDiscovery extends EventEmitter {
     // Check for shared labels
     if (dataset1.labels && dataset2.labels) {
       const sharedLabels = Object.keys(dataset1.labels).filter(
-        key => dataset2.labels![key] === dataset1.labels![key]
+        (key) => dataset2.labels![key] === dataset1.labels![key]
       );
 
       if (sharedLabels.length > 0) {
         relationships.push({
           relationshipType: 'SIMILAR',
-          strength: sharedLabels.length / Math.max(
-            Object.keys(dataset1.labels).length,
-            Object.keys(dataset2.labels).length
-          ),
+          strength:
+            sharedLabels.length /
+            Math.max(Object.keys(dataset1.labels).length, Object.keys(dataset2.labels).length),
           discoveredAt: new Date(),
         });
       }
     }
 
     // Check for table name similarities
-    const table1Names = new Set(dataset1.tables.map(t => t.id.toLowerCase()));
-    const table2Names = new Set(dataset2.tables.map(t => t.id.toLowerCase()));
-    const sharedTableNames = Array.from(table1Names).filter(name => table2Names.has(name));
+    const table1Names = new Set(dataset1.tables.map((t) => t.id.toLowerCase()));
+    const table2Names = new Set(dataset2.tables.map((t) => t.id.toLowerCase()));
+    const sharedTableNames = Array.from(table1Names).filter((name) => table2Names.has(name));
 
     if (sharedTableNames.length > 0) {
       relationships.push({
@@ -825,7 +816,7 @@ export class DatasetDiscovery extends EventEmitter {
   }
 
   private applyFilters(datasets: DiscoveredDataset[], query: SearchQuery): DiscoveredDataset[] {
-    return datasets.filter(dataset => {
+    return datasets.filter((dataset) => {
       // Label filter
       if (query.labels) {
         if (!dataset.labels) return false;
@@ -874,9 +865,22 @@ export class DatasetDiscovery extends EventEmitter {
   private performTextSearch(
     datasets: DiscoveredDataset[],
     searchText: string
-  ): Array<{ dataset: DiscoveredDataset; score: number; matchedFields: string[]; highlights: Record<string, string[]> }> {
-    const terms = searchText.toLowerCase().split(/\W+/).filter(t => t.length > 2);
-    const results: Array<{ dataset: DiscoveredDataset; score: number; matchedFields: string[]; highlights: Record<string, string[]> }> = [];
+  ): Array<{
+    dataset: DiscoveredDataset;
+    score: number;
+    matchedFields: string[];
+    highlights: Record<string, string[]>;
+  }> {
+    const terms = searchText
+      .toLowerCase()
+      .split(/\W+/)
+      .filter((t) => t.length > 2);
+    const results: Array<{
+      dataset: DiscoveredDataset;
+      score: number;
+      matchedFields: string[];
+      highlights: Record<string, string[]>;
+    }> = [];
 
     for (const dataset of datasets) {
       let score = 0;
@@ -892,9 +896,7 @@ export class DatasetDiscovery extends EventEmitter {
 
       // Search in description (medium weight)
       if (dataset.description) {
-        const matches = terms.filter(term =>
-          dataset.description!.toLowerCase().includes(term)
-        );
+        const matches = terms.filter((term) => dataset.description!.toLowerCase().includes(term));
         if (matches.length > 0) {
           score += matches.length * 5;
           matchedFields.push('description');
@@ -903,8 +905,8 @@ export class DatasetDiscovery extends EventEmitter {
       }
 
       // Search in keywords (low weight)
-      const keywordMatches = dataset.keywords.filter(keyword =>
-        terms.some(term => keyword.includes(term))
+      const keywordMatches = dataset.keywords.filter((keyword) =>
+        terms.some((term) => keyword.includes(term))
       );
       if (keywordMatches.length > 0) {
         score += keywordMatches.length * 2;
@@ -913,17 +915,17 @@ export class DatasetDiscovery extends EventEmitter {
       }
 
       // Search in table names
-      const tableMatches = dataset.tables.filter(table =>
-        terms.some(term => table.id.toLowerCase().includes(term))
+      const tableMatches = dataset.tables.filter((table) =>
+        terms.some((term) => table.id.toLowerCase().includes(term))
       );
       if (tableMatches.length > 0) {
         score += tableMatches.length * 3;
         matchedFields.push('tables');
-        highlights.tables = tableMatches.map(t => t.id);
+        highlights.tables = tableMatches.map((t) => t.id);
       }
 
       // Boost by popularity
-      score *= (1 + dataset.popularityScore / 200);
+      score *= 1 + dataset.popularityScore / 200;
 
       if (score > 0) {
         results.push({ dataset, score, matchedFields, highlights });
@@ -980,7 +982,7 @@ export class DatasetDiscovery extends EventEmitter {
       regions[dataset.location] = (regions[dataset.location] || 0) + 1;
 
       if (dataset.labels) {
-        Object.keys(dataset.labels).forEach(key => {
+        Object.keys(dataset.labels).forEach((key) => {
           labels[key] = (labels[key] || 0) + 1;
         });
       }

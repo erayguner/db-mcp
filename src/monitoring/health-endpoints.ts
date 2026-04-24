@@ -198,7 +198,7 @@ export class HealthEndpoints {
     if (!report) {
       return [];
     }
-    return report.components.map(c => c.name);
+    return report.components.map((c) => c.name);
   }
 
   /**
@@ -256,9 +256,7 @@ export class HealthEndpoints {
     for (const component of report.components) {
       const icon = this.getStatusIcon(component.status);
       const checkCount = Object.keys(component.checks).length;
-      summary.push(
-        `  ${icon} ${component.name}: ${component.status} (${checkCount} checks)`
-      );
+      summary.push(`  ${icon} ${component.name}: ${component.status} (${checkCount} checks)`);
     }
 
     if (report.metrics) {

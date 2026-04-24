@@ -16,7 +16,9 @@ export interface ToolDefinition {
 /**
  * Generate tool definitions combining input and output schemas.
  */
-export function generateToolDefinitions(getDescription: (name: string) => string): ToolDefinition[] {
+export function generateToolDefinitions(
+  getDescription: (name: string) => string
+): ToolDefinition[] {
   const entries = Object.entries(TOOL_SCHEMAS);
 
   return entries.map(([name, schema]) => {

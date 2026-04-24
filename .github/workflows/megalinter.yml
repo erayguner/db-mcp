@@ -15,7 +15,7 @@ on:
 
   # Schedule daily security scans at 2 AM UTC
   schedule:
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"
 
 # Set permissions for GITHUB_TOKEN
 permissions:
@@ -62,8 +62,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: "18"
+          cache: "npm"
 
       # Install dependencies for security scanning
       - name: Install Dependencies
@@ -246,29 +246,29 @@ jobs:
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ github.repository }}:${{ github.sha }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM'
-          vuln-type: 'os,library'
-          scanners: 'vuln,secret,config'
-          timeout: '10m'
-          trivyignores: '.trivyignore'
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+          vuln-type: "os,library"
+          scanners: "vuln,secret,config"
+          timeout: "10m"
+          trivyignores: ".trivyignore"
 
       - name: Upload Trivy Results to Security Tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: "trivy-results.sarif"
           category: trivy
 
       - name: Run Trivy in Table Format
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ github.repository }}:${{ github.sha }}
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '1'
-          trivyignores: '.trivyignore'
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          trivyignores: ".trivyignore"
           ignore-unfixed: true
 
       - name: Upload Trivy Reports

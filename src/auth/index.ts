@@ -25,17 +25,11 @@ export { WorkloadIdentityFederation } from './workload-identity.js';
 export type { WIFConfig } from './workload-identity.js';
 
 export { GoogleWorkspaceAuth } from './google-workspace.js';
-export type {
-  GoogleWorkspaceConfig,
-  WorkspaceUser,
-} from './google-workspace.js';
+export type { GoogleWorkspaceConfig, WorkspaceUser } from './google-workspace.js';
 
 // OIDC Authentication
 export { OIDCAuthenticator, OIDCAuthenticationError } from './oidc-authenticator.js';
-export type {
-  OIDCConfig,
-  AuthenticatedPrincipal,
-} from './oidc-authenticator.js';
+export type { OIDCConfig, AuthenticatedPrincipal } from './oidc-authenticator.js';
 
 // Audit Logging
 export {
@@ -44,11 +38,7 @@ export {
   AuditEventType,
   AuditSeverity,
 } from './audit-logger.js';
-export type {
-  AuditEvent,
-  AuditQueryOptions,
-  AuditStatistics,
-} from './audit-logger.js';
+export type { AuditEvent, AuditQueryOptions, AuditStatistics } from './audit-logger.js';
 
 /**
  * Authentication Factory

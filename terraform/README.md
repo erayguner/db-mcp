@@ -184,12 +184,14 @@ Cloud Run service is automatically configured with Workload Identity. No manual 
 Creates identity pools and OIDC providers for external authentication.
 
 **Resources Created**:
+
 - Workload Identity Pool
 - Google Workspace OIDC Provider
 - GitHub Actions OIDC Provider
 - Generic OIDC Provider (disabled by default)
 
 **Attribute Mapping**:
+
 - Maps external token claims to GCP IAM conditions
 - Enforces domain restrictions
 - Validates email verification
@@ -199,6 +201,7 @@ Creates identity pools and OIDC providers for external authentication.
 Manages service accounts and permissions using Workload Identity.
 
 **Resources Created**:
+
 - MCP Server service account (NO KEYS)
 - BigQuery access service account (NO KEYS)
 - Service account impersonation bindings
@@ -206,6 +209,7 @@ Manages service accounts and permissions using Workload Identity.
 - Custom IAM roles
 
 **Security**:
+
 - Zero service account keys stored
 - Principle of least privilege
 - Time-limited tokens (1 hour)
@@ -216,6 +220,7 @@ Manages service accounts and permissions using Workload Identity.
 Creates datasets with encryption and access controls.
 
 **Resources Created**:
+
 - KMS key ring and crypto keys
 - BigQuery datasets with CMEK
 - Audit logging configuration
@@ -223,6 +228,7 @@ Creates datasets with encryption and access controls.
 - Audit logs dataset (7-year retention)
 
 **Security**:
+
 - Customer-Managed Encryption Keys (CMEK)
 - Automatic key rotation (90 days)
 - Row-level security support
@@ -253,6 +259,7 @@ datasets outside the tenant scope.
 Deploys MCP server with Workload Identity.
 
 **Resources Created**:
+
 - Cloud Run service
 - Load balancer
 - SSL certificates
@@ -260,6 +267,7 @@ Deploys MCP server with Workload Identity.
 - Scaling configuration
 
 **Features**:
+
 - Automatic Workload Identity configuration
 - VPC connector integration
 - Health checks
@@ -275,6 +283,7 @@ psc_accepted_projects          = ["consumer-project-id"]  # empty = accept all
 ```
 
 When enabled:
+
 - A PSC NAT subnet is created in the VPC.
 - The Cloud Run backend is fronted by a `google_compute_service_attachment`.
 - Cloud Run ingress flips to `internal-and-cloud-load-balancing`, keeping
@@ -286,6 +295,7 @@ When enabled:
 Creates VPC and security controls.
 
 **Resources Created**:
+
 - VPC network and subnets
 - VPC connector for Cloud Run
 - Firewall rules
@@ -293,6 +303,7 @@ Creates VPC and security controls.
 - Private Service Connect
 
 **Security**:
+
 - Private IP ranges
 - Egress controls
 - Data exfiltration prevention
@@ -303,6 +314,7 @@ Creates VPC and security controls.
 Sets up logging and alerting.
 
 **Resources Created**:
+
 - Cloud Monitoring dashboards
 - Log sinks
 - Alert policies
@@ -310,6 +322,7 @@ Sets up logging and alerting.
 - SLO monitoring
 
 **Metrics**:
+
 - Request latency
 - Error rates
 - BigQuery quota usage

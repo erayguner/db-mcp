@@ -96,24 +96,25 @@ curl ${SERVICE_URL}/health/ready
 
 ### Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GOOGLE_CLOUD_PROJECT` | Yes | - | GCP Project ID |
-| `WIF_POOL_ID` | Yes | - | Workload Identity Pool ID |
-| `WIF_PROVIDER_ID` | Yes | - | WIF Provider ID |
-| `WIF_SERVICE_ACCOUNT` | Yes | - | Service account email |
-| `PORT` | No | 8080 | HTTP port |
-| `LOG_LEVEL` | No | info | Logging level |
-| `POOL_MIN_CONNECTIONS` | No | 2 | Min connection pool size |
-| `POOL_MAX_CONNECTIONS` | No | 10 | Max connection pool size |
-| `CACHE_SIZE` | No | 1000 | Cache size |
-| `CACHE_TTL_MS` | No | 3600000 | Cache TTL (1 hour) |
-| `ENABLE_TELEMETRY` | No | true | Enable OpenTelemetry |
-| `ENABLE_PERMISSION_VALIDATION` | No | true | Enable permission checks |
+| Variable                       | Required | Default | Description               |
+| ------------------------------ | -------- | ------- | ------------------------- |
+| `GOOGLE_CLOUD_PROJECT`         | Yes      | -       | GCP Project ID            |
+| `WIF_POOL_ID`                  | Yes      | -       | Workload Identity Pool ID |
+| `WIF_PROVIDER_ID`              | Yes      | -       | WIF Provider ID           |
+| `WIF_SERVICE_ACCOUNT`          | Yes      | -       | Service account email     |
+| `PORT`                         | No       | 8080    | HTTP port                 |
+| `LOG_LEVEL`                    | No       | info    | Logging level             |
+| `POOL_MIN_CONNECTIONS`         | No       | 2       | Min connection pool size  |
+| `POOL_MAX_CONNECTIONS`         | No       | 10      | Max connection pool size  |
+| `CACHE_SIZE`                   | No       | 1000    | Cache size                |
+| `CACHE_TTL_MS`                 | No       | 3600000 | Cache TTL (1 hour)        |
+| `ENABLE_TELEMETRY`             | No       | true    | Enable OpenTelemetry      |
+| `ENABLE_PERMISSION_VALIDATION` | No       | true    | Enable permission checks  |
 
 ### Resource Configuration
 
 **Production (Recommended)**:
+
 - CPU: 2 vCPU
 - Memory: 2 GiB
 - Min instances: 1
@@ -121,6 +122,7 @@ curl ${SERVICE_URL}/health/ready
 - Concurrency: 80
 
 **Development**:
+
 - CPU: 1 vCPU
 - Memory: 1 GiB
 - Min instances: 0
@@ -183,16 +185,18 @@ gcloud run services update ${SERVICE_NAME} \
 ### Auto-scaling Configuration
 
 Cloud Run automatically scales based on:
+
 - Request concurrency (default: 80)
 - CPU utilization
 - Memory usage
 
 Configure in `cloud-run.yaml`:
+
 ```yaml
 annotations:
-  autoscaling.knative.dev/target: "80"
-  autoscaling.knative.dev/minScale: "1"
-  autoscaling.knative.dev/maxScale: "10"
+  autoscaling.knative.dev/target: '80'
+  autoscaling.knative.dev/minScale: '1'
+  autoscaling.knative.dev/maxScale: '10'
 ```
 
 ## Security
@@ -200,6 +204,7 @@ annotations:
 ### IAM Permissions
 
 Service account needs:
+
 ```bash
 # BigQuery permissions
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
@@ -238,6 +243,7 @@ gcloud run services update ${SERVICE_NAME} \
 ### Common Issues
 
 **1. Service not starting**
+
 ```bash
 # Check startup logs
 gcloud logging read "resource.type=cloud_run_revision AND severity>=WARNING" \
@@ -245,6 +251,7 @@ gcloud logging read "resource.type=cloud_run_revision AND severity>=WARNING" \
 ```
 
 **2. Permission denied errors**
+
 ```bash
 # Verify service account permissions
 gcloud projects get-iam-policy ${PROJECT_ID} \
@@ -253,6 +260,7 @@ gcloud projects get-iam-policy ${PROJECT_ID} \
 ```
 
 **3. High latency**
+
 ```bash
 # Check instance count
 gcloud run services describe ${SERVICE_NAME} \
@@ -267,6 +275,7 @@ gcloud run services update ${SERVICE_NAME} \
 ```
 
 **4. Memory issues**
+
 ```bash
 # Check memory metrics
 gcloud monitoring time-series list \

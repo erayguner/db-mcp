@@ -91,7 +91,7 @@ export class StreamableHttpTransport {
 
   constructor(
     handler: (request: JsonRpcRequest) => Promise<JsonRpcResponse>,
-    config?: Partial<HttpTransportConfig>,
+    config?: Partial<HttpTransportConfig>
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.handler = handler;
@@ -290,7 +290,10 @@ export class StreamableHttpTransport {
 
     // Prometheus metrics
     app.get('/metrics', (_req: Request, res: Response) => {
-      res.json({ message: 'Metrics available via OpenTelemetry exporter', activeConnections: this?.activeConnections ?? 0 });
+      res.json({
+        message: 'Metrics available via OpenTelemetry exporter',
+        activeConnections: this?.activeConnections ?? 0,
+      });
     });
 
     // --- MCP JSON-RPC endpoint (POST) ---
@@ -350,11 +353,7 @@ export class StreamableHttpTransport {
 
       // Optional gzip compression
       const acceptsGzip = (req.headers['accept-encoding'] ?? '').includes('gzip');
-      if (
-        this.config.enableCompression &&
-        acceptsGzip &&
-        shouldCompress(serialized)
-      ) {
+      if (this.config.enableCompression && acceptsGzip && shouldCompress(serialized)) {
         const { compressed } = await compressResponse(serialized);
         res.setHeader('Content-Encoding', 'gzip');
         res.setHeader('Content-Type', 'application/json');
@@ -415,4 +414,3 @@ export class StreamableHttpTransport {
     });
   }
 }
-

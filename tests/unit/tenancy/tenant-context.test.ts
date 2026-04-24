@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { TenantContextFactory, TenantResolutionError } from '../../../src/tenancy/tenant-context.js';
+import {
+  TenantContextFactory,
+  TenantResolutionError,
+} from '../../../src/tenancy/tenant-context.js';
 import { TenantRegistry } from '../../../src/tenancy/tenant-registry.js';
 import { WriteMode } from '../../../src/tenancy/tenant-config.js';
 import { AuthenticatedPrincipal } from '../../../src/auth/oidc-authenticator.js';

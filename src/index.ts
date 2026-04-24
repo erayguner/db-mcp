@@ -182,7 +182,7 @@ export class MCPBigQueryServer {
     });
 
     // Determine transport from env
-    const transport = (process.env.MCP_TRANSPORT === 'http') ? 'http' as const : 'stdio' as const;
+    const transport = process.env.MCP_TRANSPORT === 'http' ? ('http' as const) : ('stdio' as const);
 
     // Initialize MCP Server Factory with comprehensive config
     this.serverFactory = new MCPServerFactory({
@@ -313,11 +313,7 @@ export class MCPBigQueryServer {
    */
   private initializeTelemetrySystem(): void {
     try {
-      initializeTelemetry(
-        'mcp-bigquery-server',
-        SERVER_VERSION,
-        this.env.GCP_PROJECT_ID
-      );
+      initializeTelemetry('mcp-bigquery-server', SERVER_VERSION, this.env.GCP_PROJECT_ID);
 
       logger.info('Telemetry initialized successfully');
     } catch (error) {
@@ -356,7 +352,10 @@ export class MCPBigQueryServer {
     // ==========================================
     // Call Tool Handler (Factory Pattern)
     // ==========================================
-    interface MCPGenericRequest<Params> { params: Params; userId?: string }
+    interface MCPGenericRequest<Params> {
+      params: Params;
+      userId?: string;
+    }
 
     /**
      * Safely extract userId from request object
@@ -408,22 +407,30 @@ export class MCPBigQueryServer {
           recordRequest(name, false);
           stopTimer(false);
           recordSecurityEvent(
-            validation.error?.includes('rate') ? 'rate_limited' :
-            validation.error?.includes('injection') ? 'injection_blocked' :
-            'unauthorized',
+            validation.error?.includes('rate')
+              ? 'rate_limited'
+              : validation.error?.includes('injection')
+                ? 'injection_blocked'
+                : 'unauthorized',
             name
           );
           recordErrorByCode(ErrorCode.SECURITY_VALIDATION_FAILED, name);
 
           return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                error: validation.error,
-                code: ErrorCode.SECURITY_VALIDATION_FAILED,
-                requestId,
-              }, null, 2),
-            }],
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify(
+                  {
+                    error: validation.error,
+                    code: ErrorCode.SECURITY_VALIDATION_FAILED,
+                    requestId,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
             isError: true,
           };
         }
@@ -462,15 +469,21 @@ export class MCPBigQueryServer {
           recordErrorByCode(ErrorCode.VALIDATION_ERROR, name);
 
           return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                error: 'Invalid arguments',
-                details: (error as Error).message,
-                code: ErrorCode.VALIDATION_ERROR,
-                requestId,
-              }, null, 2),
-            }],
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify(
+                  {
+                    error: 'Invalid arguments',
+                    details: (error as Error).message,
+                    code: ErrorCode.VALIDATION_ERROR,
+                    requestId,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
             isError: true,
           };
         }
@@ -565,7 +578,7 @@ export class MCPBigQueryServer {
             userId,
             tool: name,
             anomalyCount: anomalies.length,
-            types: anomalies.map(a => a.type),
+            types: anomalies.map((a) => a.type),
           });
         }
 
@@ -577,7 +590,6 @@ export class MCPBigQueryServer {
         });
 
         return result;
-
       } catch (error) {
         logger.error('Tool execution error', {
           tool: name,
@@ -591,15 +603,21 @@ export class MCPBigQueryServer {
         recordErrorByCode(ErrorCode.TOOL_EXECUTION_FAILED, name);
 
         return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              error: 'Tool execution failed',
-              details: (error as Error).message,
-              code: ErrorCode.TOOL_EXECUTION_FAILED,
-              requestId,
-            }, null, 2),
-          }],
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(
+                {
+                  error: 'Tool execution failed',
+                  details: (error as Error).message,
+                  code: ErrorCode.TOOL_EXECUTION_FAILED,
+                  requestId,
+                },
+                null,
+                2
+              ),
+            },
+          ],
           isError: true,
         };
       } finally {
@@ -620,14 +638,17 @@ export class MCPBigQueryServer {
             {
               uri: 'bigquery://datasets',
               name: 'BigQuery Dataset Catalog',
-              description: 'Discoverable catalog of all available BigQuery datasets with descriptions and metadata',
+              description:
+                'Discoverable catalog of all available BigQuery datasets with descriptions and metadata',
               mimeType: 'application/json',
             },
           ],
         };
       });
     } catch (err) {
-      logger.warn('Skipping list_resources handler registration', { error: (err as Error).message });
+      logger.warn('Skipping list_resources handler registration', {
+        error: (err as Error).message,
+      });
     }
 
     // ==========================================
@@ -650,7 +671,9 @@ export class MCPBigQueryServer {
     // ==========================================
     try {
       server.setRequestHandler(GetPromptRequestSchema, (request) => {
-        const typedReq = request as { params: { name: string; arguments?: Record<string, string> } };
+        const typedReq = request as {
+          params: { name: string; arguments?: Record<string, string> };
+        };
         const { name, arguments: args } = typedReq.params;
 
         logger.info('Handling get_prompt request', { name, hasArgs: !!args });
@@ -661,10 +684,12 @@ export class MCPBigQueryServer {
         // Map to SDK-expected format: { description, messages: [{role, content}] }
         return {
           description: result.description,
-          messages: result.messages.map((m: { role: string; content: { type: string; text: string } }) => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-          })),
+          messages: result.messages.map(
+            (m: { role: string; content: { type: string; text: string } }) => ({
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+            })
+          ),
         };
       });
     } catch (err) {
@@ -676,138 +701,144 @@ export class MCPBigQueryServer {
     // ==========================================
     try {
       server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-       const typedReq = request as MCPGenericRequest<{ uri: string }>;
-       const { uri } = typedReq.params;
+        const typedReq = request as MCPGenericRequest<{ uri: string }>;
+        const { uri } = typedReq.params;
 
-       logger.info('Handling read_resource request', { uri });
-       recordProtocolMethod('read_resource');
+        logger.info('Handling read_resource request', { uri });
+        recordProtocolMethod('read_resource');
 
-       // Ensure BigQuery is initialized
-       if (!this.bigQueryClient) {
-         await this.initializeBigQuery();
-       }
+        // Ensure BigQuery is initialized
+        if (!this.bigQueryClient) {
+          await this.initializeBigQuery();
+        }
 
-       const projectId = this.env.GCP_PROJECT_ID;
-       const now = new Date().toISOString();
+        const projectId = this.env.GCP_PROJECT_ID;
+        const now = new Date().toISOString();
 
-       // bigquery://datasets — full catalog
-       if (uri === 'bigquery://datasets') {
-         const datasets = await this.bigQueryClient!.listDatasets();
+        // bigquery://datasets — full catalog
+        if (uri === 'bigquery://datasets') {
+          const datasets = await this.bigQueryClient!.listDatasets();
 
-         const response = {
-           datasets: datasets.map(ds => ({
-             id: ds.id,
-             projectId: ds.projectId,
-             location: ds.location,
-             description: ds.description,
-             creationTime: ds.createdAt.toISOString(),
-             lastModifiedTime: ds.modifiedAt.toISOString(),
-           })),
-           provenance: {
-             source: 'bigquery',
-             projectId,
-             retrievedAt: now,
-             freshness: 'real-time',
-             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}`,
-           },
-         };
+          const response = {
+            datasets: datasets.map((ds) => ({
+              id: ds.id,
+              projectId: ds.projectId,
+              location: ds.location,
+              description: ds.description,
+              creationTime: ds.createdAt.toISOString(),
+              lastModifiedTime: ds.modifiedAt.toISOString(),
+            })),
+            provenance: {
+              source: 'bigquery',
+              projectId,
+              retrievedAt: now,
+              freshness: 'real-time',
+              consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}`,
+            },
+          };
 
-         return {
-           contents: [{
-             uri,
-             mimeType: 'application/json',
-             text: JSON.stringify(response, null, 2),
-           }],
-         };
-       }
+          return {
+            contents: [
+              {
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(response, null, 2),
+              },
+            ],
+          };
+        }
 
-       // bigquery://datasets/{datasetId}/tables/{tableId} — table detail (check before dataset)
-       const tableMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)\/tables\/([^/]+)$/);
-       if (tableMatch) {
-         const [, datasetId, tableId] = tableMatch;
-         const table = await this.bigQueryClient!.getTable(datasetId, tableId);
+        // bigquery://datasets/{datasetId}/tables/{tableId} — table detail (check before dataset)
+        const tableMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)\/tables\/([^/]+)$/);
+        if (tableMatch) {
+          const [, datasetId, tableId] = tableMatch;
+          const table = await this.bigQueryClient!.getTable(datasetId, tableId);
 
-         const schemaContext = Array.isArray(table.schema)
-           ? {
-               columns: (table.schema as Array<Record<string, unknown>>).map(f => ({
-                 name: typeof f.name === 'string' ? f.name : '',
-                 type: typeof f.type === 'string' ? f.type : 'UNKNOWN',
-                 description: typeof f.description === 'string' ? f.description : undefined,
-                 mode: typeof f.mode === 'string' ? f.mode : 'NULLABLE',
-               })),
-               tableDescription: table.description,
-             }
-           : undefined;
+          const schemaContext = Array.isArray(table.schema)
+            ? {
+                columns: (table.schema as Array<Record<string, unknown>>).map((f) => ({
+                  name: typeof f.name === 'string' ? f.name : '',
+                  type: typeof f.type === 'string' ? f.type : 'UNKNOWN',
+                  description: typeof f.description === 'string' ? f.description : undefined,
+                  mode: typeof f.mode === 'string' ? f.mode : 'NULLABLE',
+                })),
+                tableDescription: table.description,
+              }
+            : undefined;
 
-         const response = {
-           datasetId,
-           tableId,
-           schema: table.schema,
-           metadata: {
-             type: table.type,
-             creationTime: table.createdAt.toISOString(),
-             lastModifiedTime: table.modifiedAt.toISOString(),
-             numRows: table.numRows,
-             numBytes: table.numBytes,
-             description: table.description,
-           },
-           schemaContext,
-           provenance: {
-             source: 'bigquery',
-             projectId,
-             datasetId,
-             tableId,
-             retrievedAt: now,
-             freshness: 'real-time',
-             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
-           },
-         };
+          const response = {
+            datasetId,
+            tableId,
+            schema: table.schema,
+            metadata: {
+              type: table.type,
+              creationTime: table.createdAt.toISOString(),
+              lastModifiedTime: table.modifiedAt.toISOString(),
+              numRows: table.numRows,
+              numBytes: table.numBytes,
+              description: table.description,
+            },
+            schemaContext,
+            provenance: {
+              source: 'bigquery',
+              projectId,
+              datasetId,
+              tableId,
+              retrievedAt: now,
+              freshness: 'real-time',
+              consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
+            },
+          };
 
-         return {
-           contents: [{
-             uri,
-             mimeType: 'application/json',
-             text: JSON.stringify(response, null, 2),
-           }],
-         };
-       }
+          return {
+            contents: [
+              {
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(response, null, 2),
+              },
+            ],
+          };
+        }
 
-       // bigquery://datasets/{datasetId} — dataset detail with table listing
-       const datasetMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)$/);
-       if (datasetMatch) {
-         const [, datasetId] = datasetMatch;
-         const tables = await this.bigQueryClient!.listTables(datasetId);
+        // bigquery://datasets/{datasetId} — dataset detail with table listing
+        const datasetMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)$/);
+        if (datasetMatch) {
+          const [, datasetId] = datasetMatch;
+          const tables = await this.bigQueryClient!.listTables(datasetId);
 
-         const response = {
-           datasetId,
-           tables: tables.map(t => ({
-             id: t.id,
-             type: t.type,
-             numRows: t.numRows,
-             numBytes: t.numBytes,
-             description: t.description,
-             creationTime: t.createdAt.toISOString(),
-           })),
-           provenance: {
-             source: 'bigquery',
-             projectId,
-             datasetId,
-             retrievedAt: now,
-             freshness: 'real-time',
-             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&page=dataset`,
-           },
-         };
+          const response = {
+            datasetId,
+            tables: tables.map((t) => ({
+              id: t.id,
+              type: t.type,
+              numRows: t.numRows,
+              numBytes: t.numBytes,
+              description: t.description,
+              creationTime: t.createdAt.toISOString(),
+            })),
+            provenance: {
+              source: 'bigquery',
+              projectId,
+              datasetId,
+              retrievedAt: now,
+              freshness: 'real-time',
+              consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&page=dataset`,
+            },
+          };
 
-         return {
-           contents: [{
-             uri,
-             mimeType: 'application/json',
-             text: JSON.stringify(response, null, 2),
-           }],
-         };
-       }
+          return {
+            contents: [
+              {
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(response, null, 2),
+              },
+            ],
+          };
+        }
 
-       throw new Error(`Unknown resource: ${uri}`);
+        throw new Error(`Unknown resource: ${uri}`);
       });
     } catch (err) {
       logger.warn('Skipping read_resource handler registration', { error: (err as Error).message });
@@ -854,7 +885,6 @@ export class MCPBigQueryServer {
         state: this.serverFactory.getState(),
         metadata: this.serverFactory.getMetadata(),
       });
-
     } catch (error) {
       logger.error('Failed to start server', { error });
       recordException(error as Error);
@@ -888,16 +918,11 @@ export class MCPBigQueryServer {
       this.anomalyDetector.destroy();
 
       logger.info('Server shutdown complete');
-
     } catch (error) {
       logger.error('Error during shutdown', { error });
       recordException(error as Error);
 
-      throw new MCPApplicationError(
-        'Shutdown failed',
-        ErrorCode.SHUTDOWN_ERROR,
-        error
-      );
+      throw new MCPApplicationError('Shutdown failed', ErrorCode.SHUTDOWN_ERROR, error);
     }
   }
 
@@ -959,20 +984,21 @@ async function main() {
     // Log health status
     const health = server.getHealthStatus();
     logger.info('Server health check', health);
-
   } catch (error) {
     logger.error('Fatal error during server startup', { error });
 
     // Attempt cleanup if server was created
     if (server) {
       await server.shutdown('fatal_error').catch((shutdownError: unknown) => {
-        const err = shutdownError instanceof Error ? shutdownError : new Error(String(shutdownError));
+        const err =
+          shutdownError instanceof Error ? shutdownError : new Error(String(shutdownError));
         logger.error('Error during emergency shutdown', { error: err });
       });
     }
 
     // Only exit the process if not running under tests
-    const isTestEnv = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
+    const isTestEnv =
+      process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
     if (!isTestEnv) {
       process.exit(1);
     }
@@ -980,7 +1006,8 @@ async function main() {
 }
 
 // Run the server only outside of test environments
-const isTestEnv = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
+const isTestEnv =
+  process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
 if (!isTestEnv) {
   main().catch((error: unknown) => {
     const err = error instanceof Error ? error : new Error(String(error));

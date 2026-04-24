@@ -8,19 +8,25 @@ jest.mock('../../src/mcp/server-factory', () => {
   return {
     ...original,
     MCPServerFactory: class MockFactory extends original.MCPServerFactory {
-      constructor(config: any) { super(config); }
+      constructor(config: any) {
+        super(config);
+      }
       getServer() {
         return {
           setRequestHandler: (schema: any, handler: Function) => {
             // Map known method names from schema title/shape heuristics
-            const methodName = (schema as any).properties?.method || schema.method || schema.title || 'unknown';
+            const methodName =
+              (schema as any).properties?.method || schema.method || schema.title || 'unknown';
             // Fallback: use first key or symbol from schema object if necessary
-            registeredHandlers[schema?.methodName || schema?.name || schema?.title || schema] = handler;
-          }
+            registeredHandlers[schema?.methodName || schema?.name || schema?.title || schema] =
+              handler;
+          },
         };
       }
-      async start() { /* skip real connect */ }
-    }
+      async start() {
+        /* skip real connect */
+      }
+    },
   };
 });
 
@@ -34,7 +40,9 @@ describe('Tool listing', () => {
   it('list_tools handler returns tools including execute_query', async () => {
     const server = new MCPBigQueryServer();
     await server.start();
-    const handlerEntry = Object.entries(registeredHandlers).find(([k]) => String(k).includes('ListTools') || String(k).includes('tools'));
+    const handlerEntry = Object.entries(registeredHandlers).find(
+      ([k]) => String(k).includes('ListTools') || String(k).includes('tools')
+    );
     if (handlerEntry) {
       const [, handler] = handlerEntry;
       const result = await handler();

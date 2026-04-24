@@ -57,7 +57,7 @@ export function initializeMetrics(serviceName: string, serviceVersion: string, p
 
     // Create Prometheus exporter (pull via /metrics endpoint)
     prometheusExporter = new PrometheusExporter(
-      { preventServerStart: true }, // We mount the endpoint on our own Express app
+      { preventServerStart: true } // We mount the endpoint on our own Express app
     );
 
     // Initialize meter provider with both readers
@@ -163,7 +163,7 @@ export function recordToolCall(
   tool: string,
   outcome: 'allow' | 'block' | 'error',
   durationMs: number,
-  tenantId?: string,
+  tenantId?: string
 ) {
   if (!instruments) return;
   const attrs: Record<string, string> = { tool, outcome };

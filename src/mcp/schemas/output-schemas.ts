@@ -17,12 +17,14 @@ export const ProvenanceSchema = z.object({
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 
 export const SchemaContextSchema = z.object({
-  columns: z.array(z.object({
-    name: z.string(),
-    type: z.string(),
-    description: z.string().optional(),
-    mode: z.string(),
-  })),
+  columns: z.array(
+    z.object({
+      name: z.string(),
+      type: z.string(),
+      description: z.string().optional(),
+      mode: z.string(),
+    })
+  ),
   tableDescription: z.string().optional(),
   datasetDescription: z.string().optional(),
 });
@@ -43,29 +45,33 @@ export const QueryBigQueryOutputSchema = z.object({
 
 export const ListDatasetsOutputSchema = z.object({
   count: z.number().int().nonnegative(),
-  datasets: z.array(z.object({
-    id: z.string(),
-    projectId: z.string(),
-    location: z.string(),
-    creationTime: z.string(),
-    lastModifiedTime: z.string(),
-    description: z.string().optional(),
-  })),
+  datasets: z.array(
+    z.object({
+      id: z.string(),
+      projectId: z.string(),
+      location: z.string(),
+      creationTime: z.string(),
+      lastModifiedTime: z.string(),
+      description: z.string().optional(),
+    })
+  ),
   provenance: ProvenanceSchema.optional(),
 });
 
 export const ListTablesOutputSchema = z.object({
   datasetId: z.string(),
   count: z.number().int().nonnegative(),
-  tables: z.array(z.object({
-    id: z.string(),
-    tableId: z.string(),
-    type: z.string(),
-    creationTime: z.string(),
-    numRows: z.number().int().nonnegative().optional(),
-    numBytes: z.number().int().nonnegative().optional(),
-    description: z.string().optional(),
-  })),
+  tables: z.array(
+    z.object({
+      id: z.string(),
+      tableId: z.string(),
+      type: z.string(),
+      creationTime: z.string(),
+      numRows: z.number().int().nonnegative().optional(),
+      numBytes: z.number().int().nonnegative().optional(),
+      description: z.string().optional(),
+    })
+  ),
   provenance: ProvenanceSchema.optional(),
 });
 
@@ -73,14 +79,16 @@ export const GetTableSchemaOutputSchema = z.object({
   datasetId: z.string(),
   tableId: z.string(),
   schema: z.array(z.object({}).passthrough()),
-  metadata: z.object({
-    type: z.string(),
-    creationTime: z.string(),
-    lastModifiedTime: z.string(),
-    numRows: z.number().int().nonnegative().optional(),
-    numBytes: z.number().int().nonnegative().optional(),
-    description: z.string().optional(),
-  }).optional(),
+  metadata: z
+    .object({
+      type: z.string(),
+      creationTime: z.string(),
+      lastModifiedTime: z.string(),
+      numRows: z.number().int().nonnegative().optional(),
+      numBytes: z.number().int().nonnegative().optional(),
+      description: z.string().optional(),
+    })
+    .optional(),
   provenance: ProvenanceSchema.optional(),
 });
 

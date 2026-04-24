@@ -2,7 +2,8 @@
 
 ## Overview
 
-The BigQuery MCP Server is designed for horizontal scalability to handle thousands of concurrent requests while maintaining low latency and high reliability.
+The BigQuery MCP Server is designed for horizontal scalability to handle thousands of concurrent requests while
+maintaining low latency and high reliability.
 
 ## Scaling Dimensions
 
@@ -27,12 +28,14 @@ The BigQuery MCP Server is designed for horizontal scalability to handle thousan
 ```
 
 **Characteristics:**
+
 - Stateless instances (no local state)
 - Shared nothing architecture
 - Auto-scaling based on CPU/memory/requests
 - Scale from 1 to 100+ instances
 
 **Auto-Scaling Configuration:**
+
 ```yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -46,41 +49,41 @@ spec:
   minReplicas: 2
   maxReplicas: 50
   metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-  - type: Pods
-    pods:
-      metric:
-        name: requests_per_second
-      target:
-        type: AverageValue
-        averageValue: "100"
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: requests_per_second
+        target:
+          type: AverageValue
+          averageValue: '100'
   behavior:
     scaleDown:
       stabilizationWindowSeconds: 300
       policies:
-      - type: Percent
-        value: 50
-        periodSeconds: 60
+        - type: Percent
+          value: 50
+          periodSeconds: 60
     scaleUp:
       stabilizationWindowSeconds: 0
       policies:
-      - type: Percent
-        value: 100
-        periodSeconds: 30
-      - type: Pods
-        value: 4
-        periodSeconds: 30
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 4
+          periodSeconds: 30
       selectPolicy: Max
 ```
 
@@ -98,6 +101,7 @@ Small Instance          Medium Instance        Large Instance
 ```
 
 **Resource Recommendations:**
+
 - **Development**: 0.5 vCPU, 512MB RAM
 - **Staging**: 1 vCPU, 1GB RAM
 - **Production (low)**: 1 vCPU, 2GB RAM
@@ -141,8 +145,8 @@ Request
 interface CacheConfig {
   l1: {
     enabled: boolean;
-    maxSize: number;      // bytes
-    ttl: number;          // seconds
+    maxSize: number; // bytes
+    ttl: number; // seconds
     algorithm: 'LRU' | 'LFU';
   };
   l2: {
@@ -165,7 +169,7 @@ class MultiLevelCache {
         max: config.l1.maxSize,
         ttl: config.l1.ttl * 1000,
         updateAgeOnGet: true,
-        updateAgeOnHas: true
+        updateAgeOnHas: true,
       });
     }
 
@@ -176,7 +180,7 @@ class MultiLevelCache {
         port: config.l2.port,
         retry_strategy: (options) => {
           return Math.min(options.attempt * 100, 3000);
-        }
+        },
       });
     }
   }
@@ -221,11 +225,7 @@ class MultiLevelCache {
 
     // Set in L2 cache
     if (this.config.l2.enabled && this.l2Cache) {
-      await this.l2Cache.setex(
-        this.prefixKey(key),
-        ttl || this.config.l2.ttl,
-        JSON.stringify(value)
-      );
+      await this.l2Cache.setex(this.prefixKey(key), ttl || this.config.l2.ttl, JSON.stringify(value));
     }
   }
 
@@ -277,15 +277,15 @@ const cacheKeys = {
   schema: (datasetId: string, tableId: string) => `schema:${datasetId}.${tableId}`,
 
   // Query results: query hash (optional, careful with memory)
-  queryResult: (queryHash: string) => `query:${queryHash}`
+  queryResult: (queryHash: string) => `query:${queryHash}`,
 };
 
 // Cache TTLs by resource type
 const cacheTTLs = {
-  datasets: 900,    // 15 minutes
-  tables: 900,      // 15 minutes
-  schema: 1800,     // 30 minutes
-  queryResult: 300  // 5 minutes (if enabled)
+  datasets: 900, // 15 minutes
+  tables: 900, // 15 minutes
+  schema: 1800, // 30 minutes
+  queryResult: 300, // 5 minutes (if enabled)
 };
 ```
 
@@ -302,7 +302,7 @@ class BigQueryConnectionPool {
     minConnections: 2,
     maxConnections: 10,
     idleTimeoutMs: 30000,
-    acquireTimeoutMs: 5000
+    acquireTimeoutMs: 5000,
   };
 
   constructor() {
@@ -349,7 +349,7 @@ class BigQueryConnectionPool {
       projectId: process.env.GCP_PROJECT_ID,
       credentials: this.getCredentials(),
       maxRetries: 3,
-      autoRetry: true
+      autoRetry: true,
     });
   }
 
@@ -435,7 +435,7 @@ class TokenBucket {
 
     const tokensNeeded = this.capacity - this.tokens;
     const secondsNeeded = tokensNeeded / this.refillRate;
-    return Date.now() + (secondsNeeded * 1000);
+    return Date.now() + secondsNeeded * 1000;
   }
 }
 
@@ -443,10 +443,10 @@ class RateLimiter {
   private buckets = new Map<string, TokenBucket>();
 
   private readonly limits = {
-    globalQPS: 100,           // 100 queries/sec globally
-    perClientQPM: 60,         // 60 queries/min per client
-    perClientBurst: 10,       // 10 burst capacity
-    maxConcurrent: 1000       // 1000 concurrent queries
+    globalQPS: 100, // 100 queries/sec globally
+    perClientQPM: 60, // 60 queries/min per client
+    perClientBurst: 10, // 10 burst capacity
+    maxConcurrent: 1000, // 1000 concurrent queries
   };
 
   async checkLimit(clientId: string): Promise<RateLimitResult> {
@@ -456,7 +456,7 @@ class RateLimiter {
       return {
         allowed: false,
         reason: 'Global rate limit exceeded',
-        retryAfter: Math.ceil((globalBucket.getResetTime() - Date.now()) / 1000)
+        retryAfter: Math.ceil((globalBucket.getResetTime() - Date.now()) / 1000),
       };
     }
 
@@ -466,7 +466,7 @@ class RateLimiter {
       return {
         allowed: false,
         reason: 'Client rate limit exceeded',
-        retryAfter: Math.ceil((clientBucket.getResetTime() - Date.now()) / 1000)
+        retryAfter: Math.ceil((clientBucket.getResetTime() - Date.now()) / 1000),
       };
     }
 
@@ -475,10 +475,7 @@ class RateLimiter {
 
   private getGlobalBucket(): TokenBucket {
     if (!this.buckets.has('global')) {
-      this.buckets.set('global', new TokenBucket(
-        this.limits.globalQPS,
-        this.limits.globalQPS
-      ));
+      this.buckets.set('global', new TokenBucket(this.limits.globalQPS, this.limits.globalQPS));
     }
     return this.buckets.get('global')!;
   }
@@ -486,10 +483,13 @@ class RateLimiter {
   private getClientBucket(clientId: string): TokenBucket {
     const key = `client:${clientId}`;
     if (!this.buckets.has(key)) {
-      this.buckets.set(key, new TokenBucket(
-        this.limits.perClientBurst,
-        this.limits.perClientQPM / 60 // per second
-      ));
+      this.buckets.set(
+        key,
+        new TokenBucket(
+          this.limits.perClientBurst,
+          this.limits.perClientQPM / 60 // per second
+        )
+      );
     }
     return this.buckets.get(key)!;
   }
@@ -506,33 +506,33 @@ import http from 'k6/http';
 
 export const options = {
   stages: [
-    { duration: '2m', target: 100 },   // Ramp up to 100 users
-    { duration: '5m', target: 100 },   // Stay at 100 users
-    { duration: '2m', target: 200 },   // Ramp up to 200 users
-    { duration: '5m', target: 200 },   // Stay at 200 users
-    { duration: '2m', target: 0 }      // Ramp down to 0 users
+    { duration: '2m', target: 100 }, // Ramp up to 100 users
+    { duration: '5m', target: 100 }, // Stay at 100 users
+    { duration: '2m', target: 200 }, // Ramp up to 200 users
+    { duration: '5m', target: 200 }, // Stay at 200 users
+    { duration: '2m', target: 0 }, // Ramp down to 0 users
   ],
   thresholds: {
     http_req_duration: ['p(95)<2000'], // 95% of requests < 2s
-    http_req_failed: ['rate<0.01'],    // <1% failure rate
-  }
+    http_req_failed: ['rate<0.01'], // <1% failure rate
+  },
 };
 
-export default function() {
+export default function () {
   const url = 'http://localhost:8080/query';
 
   const payload = JSON.stringify({
     tool: 'query_bigquery',
     arguments: {
-      query: 'SELECT * FROM `project.dataset.table` LIMIT 100'
-    }
+      query: 'SELECT * FROM `project.dataset.table` LIMIT 100',
+    },
   });
 
   const params = {
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${__ENV.AUTH_TOKEN}`
-    }
+      Authorization: `Bearer ${__ENV.AUTH_TOKEN}`,
+    },
   };
 
   const response = http.post(url, payload, params);
@@ -540,7 +540,7 @@ export default function() {
   check(response, {
     'status is 200': (r) => r.status === 200,
     'response time < 2000ms': (r) => r.timings.duration < 2000,
-    'has result': (r) => JSON.parse(r.body).result !== undefined
+    'has result': (r) => JSON.parse(r.body).result !== undefined,
   });
 
   sleep(1);
@@ -582,14 +582,14 @@ export default function() {
 ```typescript
 const bigQueryQuotas = {
   // API Quotas
-  queriesPerDay: 100000,           // Per project
-  queriesPerSecond: 100,           // Per project
-  concurrentQueries: 100,          // Per user
+  queriesPerDay: 100000, // Per project
+  queriesPerSecond: 100, // Per project
+  concurrentQueries: 100, // Per user
 
   // Query Limits
-  maxQuerySize: 1024 * 1024,       // 1 MB
+  maxQuerySize: 1024 * 1024, // 1 MB
   maxResultSize: 10 * 1024 * 1024, // 10 GB
-  maxExecutionTime: 6 * 3600,      // 6 hours
+  maxExecutionTime: 6 * 3600, // 6 hours
 
   // Interactive Query Quotas
   interactiveQueriesPerDay: 100000,
@@ -601,7 +601,7 @@ const bigQueryQuotas = {
   // Rate Limits
   tableDataListPerSecond: 100,
   jobsInsertPerSecond: 100,
-  jobsGetPerSecond: 1000
+  jobsGetPerSecond: 1000,
 };
 
 class QuotaManager {
@@ -614,7 +614,7 @@ class QuotaManager {
         operation,
         usage,
         limit,
-        percent: (usage / limit) * 100
+        percent: (usage / limit) * 100,
       });
     }
 
@@ -624,7 +624,7 @@ class QuotaManager {
         reason: 'Quota exceeded',
         usage,
         limit,
-        resetTime: this.getQuotaResetTime(operation)
+        resetTime: this.getQuotaResetTime(operation),
       };
     }
 
@@ -632,7 +632,7 @@ class QuotaManager {
       allowed: true,
       usage,
       limit,
-      remaining: limit - usage
+      remaining: limit - usage,
     };
   }
 }
@@ -698,7 +698,8 @@ class QuotaManager {
 
 Created comprehensive ADR documents in memory with the following key decisions:
 
-1. **Component Architecture**: Layered architecture with clear separation between MCP protocol, business logic, and BigQuery client
+1. **Component Architecture**: Layered architecture with clear separation between MCP protocol, business logic, and
+   BigQuery client
 2. **Security**: Workload Identity Federation for keyless authentication, IAM-based authorization
 3. **Data Flow**: Request validation → Authentication → Authorization → Query execution → Response formatting
 4. **Error Handling**: Retry with exponential backoff, circuit breaker pattern, graceful degradation

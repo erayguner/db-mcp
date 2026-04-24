@@ -8,45 +8,60 @@ export enum WriteMode {
   ALLOWED = 'allowed',
 }
 
-export const TenantConfigSchema = z
-  .object({
-    id: z
-      .string()
-      .min(1)
-      .regex(/^[a-z0-9-]+$/, 'Tenant ID must be lowercase alphanumeric with hyphens'),
-    name: z.string().min(1),
-    projectId: z.string().min(1),
-    allowedDatasets: z
-      .array(z.string())
-      .min(1, 'At least one dataset must be allowed (use "*" for all)'),
-    deniedDatasets: z.array(z.string()).default([]),
-    writeMode: z.nativeEnum(WriteMode).default(WriteMode.BLOCKED),
-    maxBytesPerQuery: z.string().regex(/^\d+$/, 'maxBytesPerQuery must be a numeric string').optional(),
-    rateLimits: z
-      .object({
-        requestsPerMinute: z.number().min(1).default(100),
-        queriesPerHour: z.number().min(1).default(1000),
-      })
-      .default({}),
-    oidcSubjectPattern: z
-      .string()
-      .refine(
-        (s) => { try { new RegExp(s); return true; } catch { return false; } },
-        { message: 'oidcSubjectPattern must be a valid regular expression' }
-      )
-      .optional(),
-    allowedTools: z.array(z.string()).optional(),
-    columnMasking: z.object({
+export const TenantConfigSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9-]+$/, 'Tenant ID must be lowercase alphanumeric with hyphens'),
+  name: z.string().min(1),
+  projectId: z.string().min(1),
+  allowedDatasets: z
+    .array(z.string())
+    .min(1, 'At least one dataset must be allowed (use "*" for all)'),
+  deniedDatasets: z.array(z.string()).default([]),
+  writeMode: z.nativeEnum(WriteMode).default(WriteMode.BLOCKED),
+  maxBytesPerQuery: z
+    .string()
+    .regex(/^\d+$/, 'maxBytesPerQuery must be a numeric string')
+    .optional(),
+  rateLimits: z
+    .object({
+      requestsPerMinute: z.number().min(1).default(100),
+      queriesPerHour: z.number().min(1).default(1000),
+    })
+    .default({}),
+  oidcSubjectPattern: z
+    .string()
+    .refine(
+      (s) => {
+        try {
+          new RegExp(s);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: 'oidcSubjectPattern must be a valid regular expression' }
+    )
+    .optional(),
+  allowedTools: z.array(z.string()).optional(),
+  columnMasking: z
+    .object({
       enabled: z.boolean().default(false),
-      rules: z.array(z.object({
-        datasetPattern: z.string(),
-        tablePattern: z.string(),
-        columnPattern: z.string(),
-        maskType: z.enum(['redact', 'hash', 'partial', 'nullify']).default('redact'),
-        description: z.string().optional(),
-      })).default([]),
-    }).default({ enabled: false, rules: [] }),
-  });
+      rules: z
+        .array(
+          z.object({
+            datasetPattern: z.string(),
+            tablePattern: z.string(),
+            columnPattern: z.string(),
+            maskType: z.enum(['redact', 'hash', 'partial', 'nullify']).default('redact'),
+            description: z.string().optional(),
+          })
+        )
+        .default([]),
+    })
+    .default({ enabled: false, rules: [] }),
+});
 
 export type TenantConfig = z.infer<typeof TenantConfigSchema>;
 

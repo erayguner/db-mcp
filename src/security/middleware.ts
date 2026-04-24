@@ -32,34 +32,38 @@ export const SecurityConfigSchema = z.object({
 
   // Prompt injection detection
   promptInjectionDetection: z.boolean().default(true),
-  suspiciousPatterns: z.array(z.string()).default([
-    'ignore previous instructions',
-    'disregard above',
-    'forget everything',
-    'new instructions:',
-    'system:',
-    'admin:',
-    'override',
-    'bypass security',
-    'DROP TABLE',
-    'DELETE FROM',
-    'TRUNCATE',
-    'ALTER TABLE',
-    'CREATE USER',
-    'GRANT ALL',
-  ]),
+  suspiciousPatterns: z
+    .array(z.string())
+    .default([
+      'ignore previous instructions',
+      'disregard above',
+      'forget everything',
+      'new instructions:',
+      'system:',
+      'admin:',
+      'override',
+      'bypass security',
+      'DROP TABLE',
+      'DELETE FROM',
+      'TRUNCATE',
+      'ALTER TABLE',
+      'CREATE USER',
+      'GRANT ALL',
+    ]),
 
   // Data exposure prevention
-  sensitiveDataPatterns: z.array(z.string()).default([
-    'password',
-    'secret',
-    'api_key',
-    'token',
-    'private_key',
-    'credit_card',
-    'ssn',
-    'social_security',
-  ]),
+  sensitiveDataPatterns: z
+    .array(z.string())
+    .default([
+      'password',
+      'secret',
+      'api_key',
+      'token',
+      'private_key',
+      'credit_card',
+      'ssn',
+      'social_security',
+    ]),
 
   // Tool validation
   toolValidationEnabled: z.boolean().default(true),
@@ -102,7 +106,10 @@ export class RateLimiter {
   /**
    * Check if request should be rate limited
    */
-  checkRateLimit(identifier: string, maxRequests?: number): { allowed: boolean; remaining: number } {
+  checkRateLimit(
+    identifier: string,
+    maxRequests?: number
+  ): { allowed: boolean; remaining: number } {
     if (!this.config.rateLimitEnabled) {
       return { allowed: true, remaining: this.config.rateLimitMaxRequests };
     }
@@ -344,10 +351,17 @@ export class SensitiveDataDetector {
 
   // Patterns for detecting sensitive values regardless of field name
   private static readonly VALUE_PATTERNS: Array<{ name: string; regex: RegExp }> = [
-    { name: 'credit_card', regex: /\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b/ },
+    {
+      name: 'credit_card',
+      regex:
+        /\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b/,
+    },
     { name: 'ssn', regex: /\b\d{3}-\d{2}-\d{4}\b/ },
     { name: 'bearer_token', regex: /\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b/ },
-    { name: 'api_key_value', regex: /\b(?:AIza|sk-|pk_live_|pk_test_|rk_live_|rk_test_)[A-Za-z0-9_-]{10,}\b/ },
+    {
+      name: 'api_key_value',
+      regex: /\b(?:AIza|sk-|pk_live_|pk_test_|rk_live_|rk_test_)[A-Za-z0-9_-]{10,}\b/,
+    },
   ];
 
   /**
@@ -415,7 +429,7 @@ export class SensitiveDataDetector {
 
     if (Array.isArray(data)) {
       const redacted = (data as unknown[]).slice();
-      return redacted.map(item => this.redactSensitiveData(item));
+      return redacted.map((item) => this.redactSensitiveData(item));
     }
 
     const redacted: Record<string, unknown> = { ...(data as Record<string, unknown>) };
@@ -567,11 +581,12 @@ export class SecurityEventLog {
     }
 
     // Log to Cloud Logging
-    const logMethod = event.severity === 'critical' || event.severity === 'high'
-      ? logger.error
-      : event.severity === 'medium'
-      ? logger.warn
-      : logger.info;
+    const logMethod =
+      event.severity === 'critical' || event.severity === 'high'
+        ? logger.error
+        : event.severity === 'medium'
+          ? logger.warn
+          : logger.info;
 
     logMethod('Security event', {
       securityEvent: true,
@@ -663,11 +678,11 @@ export class SecurityMiddleware {
   /**
    * Validate MCP request (main entry point)
    */
-  validateRequest(params: {
-    toolName: string;
-    userId?: string;
-    arguments?: unknown;
-  }): { allowed: boolean; error?: string; warnings?: string[] } {
+  validateRequest(params: { toolName: string; userId?: string; arguments?: unknown }): {
+    allowed: boolean;
+    error?: string;
+    warnings?: string[];
+  } {
     const warnings: string[] = [];
 
     try {
@@ -707,9 +722,14 @@ export class SecurityMiddleware {
       }
 
       // Input validation based on tool type
-      const args = params.arguments as { query?: string; datasetId?: string; tableId?: string } | undefined;
+      const args = params.arguments as
+        | { query?: string; datasetId?: string; tableId?: string }
+        | undefined;
 
-      if ((params.toolName === 'query_bigquery' || params.toolName === 'execute_query') && args?.query) {
+      if (
+        (params.toolName === 'query_bigquery' || params.toolName === 'execute_query') &&
+        args?.query
+      ) {
         const queryValidation = this.inputValidator.validateQuery(args.query);
         if (!queryValidation.valid) {
           this.auditLogger.logEvent({
