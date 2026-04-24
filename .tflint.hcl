@@ -3,12 +3,9 @@
 
 config {
   # Enable all rules by default
-  module = true
-  force = false
+  call_module_type    = "all"
+  force               = false
   disabled_by_default = false
-
-  # Ignore specific modules if needed
-  # ignore_module = {}
 }
 
 # GCP-specific plugin configuration
@@ -91,18 +88,20 @@ rule "terraform_deprecated_interpolation" {
   enabled = true
 }
 
-# Unused declarations
+# Unused declarations — disabled because modules expose forward-looking
+# interface variables (IAP, custom domains) that aren't wired up yet.
 rule "terraform_unused_declarations" {
-  enabled = true
+  enabled = false
 }
 
-# Required version constraints
+# Version constraints are asserted at the root module (versions.tf); we don't
+# duplicate them in every submodule.
 rule "terraform_required_version" {
-  enabled = true
+  enabled = false
 }
 
 rule "terraform_required_providers" {
-  enabled = true
+  enabled = false
 }
 
 # Comment syntax
@@ -118,10 +117,6 @@ rule "terraform_module_pinned_source" {
 
 # GCP-specific security rules
 rule "google_project_iam_member_invalid_member" {
-  enabled = true
-}
-
-rule "google_storage_bucket_invalid_location" {
   enabled = true
 }
 

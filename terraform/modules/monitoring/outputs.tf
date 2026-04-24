@@ -6,11 +6,13 @@ output "notification_channel_email_id" {
 output "notification_channel_slack_id" {
   description = "Slack notification channel ID"
   value       = var.slack_webhook_url != "" ? google_monitoring_notification_channel.slack[0].id : null
+  sensitive   = true
 }
 
 output "notification_channel_pagerduty_id" {
   description = "PagerDuty notification channel ID"
   value       = var.pagerduty_service_key != "" ? google_monitoring_notification_channel.pagerduty[0].id : null
+  sensitive   = true
 }
 
 output "alert_policy_ids" {

@@ -68,16 +68,16 @@ rules:
     min-spaces-after: 1
     max-spaces-after: 1
 
-  # Document start/end
-  document-start:
-    present: true
+  # Document start/end — not required; many GH Actions files don't use ---
+  document-start: disable
 
   document-end:
     present: false
 
-  # Empty values
+  # Empty values — allowed in block mappings
+  # (common in `workflow_dispatch:` and `ignored:` stubs)
   empty-values:
-    forbid-in-block-mappings: true
+    forbid-in-block-mappings: false
     forbid-in-flow-mappings: true
 
   # Hyphens
@@ -97,5 +97,5 @@ rules:
 
   # Truthy values - allow yes/no, true/false, on/off
   truthy:
-    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    allowed-values: ["true", "false", "yes", "no", "on", "off"]
     check-keys: false

@@ -58,7 +58,7 @@ DISABLE:
   - POWERSHELL
   - R
   - SALESFORCE
-  - SQL  # Disable generic SQL (we use BigQuery-specific)
+  - SQL # Disable generic SQL (we use BigQuery-specific)
   - HTML
   - CSS
   - ENV
@@ -245,7 +245,6 @@ FILTER_REGEX_INCLUDE: |-
 FORMATTERS_DISABLE_ERRORS: true
 
 # File-based reporters
-FILEIO_REPORTER: true
 TEXT_REPORTER: true
 JSON_REPORTER: true
 SARIF_REPORTER: true
@@ -267,7 +266,7 @@ REPORT_OUTPUT_FOLDER: megalinter-reports
 # Caching handled natively in MegaLinter v8
 
 # Validate only changed files in PRs
-VALIDATE_ALL_CODEBASE: false  # Override in CI for main branch pushes
+VALIDATE_ALL_CODEBASE: false # Override in CI for main branch pushes
 
 # Skip files that haven't changed
 SKIP_CLI_LINT_MODES:

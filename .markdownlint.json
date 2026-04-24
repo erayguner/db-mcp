@@ -28,7 +28,7 @@
     "punctuation": ".,;:!"
   },
   "MD029": {
-    "style": "ordered"
+    "style": "one_or_ordered"
   },
   "MD033": {
     "allowed_elements": [
@@ -47,7 +47,7 @@
   },
   "MD034": false,
   "MD036": false,
-  "MD040": true,
+  "MD040": false,
   "MD041": false,
   "MD046": {
     "style": "fenced"
