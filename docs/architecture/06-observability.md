@@ -333,6 +333,20 @@ const tokenLifetime = meter.createHistogram('auth.token.lifetime', {
 tokenLifetime.record(3600, {
   token_type: 'service_account'
 });
+
+// Tenant-scoped tool metrics (GEAP-style topology view)
+const toolCallCounter = meter.createCounter('mcp.tool.calls.total', {
+  description: 'Total MCP tool calls, labeled by tool and tenant',
+  unit: '1'
+});
+const toolCallLatency = meter.createHistogram('mcp.tool.call.duration', {
+  description: 'End-to-end MCP tool call latency',
+  unit: 'ms'
+});
+
+// recordToolCall(tool, outcome, durationMs, tenantId) emits both.
+toolCallCounter.add(1, { tool: 'query_bigquery', outcome: 'allow', tenant_id: 'tenant-a' });
+toolCallLatency.record(124, { tool: 'query_bigquery', outcome: 'allow', tenant_id: 'tenant-a' });
 ```
 
 ### Metric Dashboards

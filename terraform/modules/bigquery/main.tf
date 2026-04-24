@@ -94,6 +94,44 @@ resource "google_bigquery_dataset_iam_member" "service_account_user" {
   member     = "serviceAccount:${var.service_account}"
 }
 
+# Tenant-scoped IAM bindings with IAM Conditions.
+# Flattens the tenant_dataset_bindings map so each (tenant, dataset) pair
+# gets its own conditional binding restricted to that single dataset resource.
+locals {
+  tenant_dataset_pairs = merge([
+    for tenant_id, cfg in var.tenant_dataset_bindings : {
+      for ds in cfg.datasets : "${tenant_id}:${ds}" => {
+        tenant_id         = tenant_id
+        dataset           = ds
+        principal         = cfg.principal
+        role              = cfg.role
+        condition_title   = cfg.condition_title
+        condition_expires = cfg.condition_expires
+      }
+    }
+  ]...)
+}
+
+resource "google_bigquery_dataset_iam_member" "tenant_scoped" {
+  for_each = local.tenant_dataset_pairs
+
+  project    = var.project_id
+  dataset_id = "${each.value.dataset}_${var.environment}"
+  role       = each.value.role
+  member     = each.value.principal
+
+  condition {
+    title       = each.value.condition_title
+    description = "Tenant ${each.value.tenant_id} scoped to dataset ${each.value.dataset}"
+    expression = join(" && ", compact([
+      "resource.name == \"projects/${var.project_id}/datasets/${each.value.dataset}_${var.environment}\"",
+      each.value.condition_expires != "" ? "request.time < timestamp(\"${each.value.condition_expires}\")" : "",
+    ]))
+  }
+
+  depends_on = [google_bigquery_dataset.datasets]
+}
+
 # Audit Logging Configuration
 resource "google_bigquery_dataset_access" "audit_logs" {
   for_each = var.enable_audit_logging ? google_bigquery_dataset.datasets : {}

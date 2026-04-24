@@ -266,6 +266,20 @@ resource "google_access_context_manager_service_perimeter" "mcp_perimeter" {
   }
 }
 
+# Private Service Connect — NAT subnet used by the PSC service attachment.
+# The matching service attachment is created in the cloud-run module so it can
+# reference the load balancer's forwarding rule.
+resource "google_compute_subnetwork" "psc_nat" {
+  count = var.enable_private_service_connect ? 1 : 0
+
+  name          = "mcp-bigquery-psc-nat-${var.environment}"
+  project       = var.project_id
+  region        = var.region
+  network       = google_compute_network.mcp_vpc.id
+  ip_cidr_range = var.psc_nat_subnet_cidr
+  purpose       = "PRIVATE_SERVICE_CONNECT"
+}
+
 # Cloud NAT for outbound connectivity (if needed)
 resource "google_compute_router" "mcp_router" {
   name    = "mcp-bigquery-router-${var.environment}"

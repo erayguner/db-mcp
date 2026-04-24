@@ -26,6 +26,8 @@ This document describes the enterprise security architecture implemented for the
 **Components:**
 - `/src/security/permission-validator.ts` - IAM permission validation
 - `/src/auth/audit-logger.ts` - Security audit logging
+- `/src/tenancy/dataset-policy.ts` - Application-layer tenant allowlist
+- `terraform/modules/bigquery/main.tf` - IAM Conditions on dataset bindings
 
 **Features:**
 - ✅ Pre-query permission checks
@@ -34,6 +36,28 @@ This document describes the enterprise security architecture implemented for the
 - ✅ Permission caching (5-minute TTL)
 - ✅ Batch permission validation
 - ✅ Comprehensive audit trail
+
+**Defense in depth — tenant dataset access:**
+
+1. YAML allowlist (`src/config/tenants.yaml`) evaluated by `DatasetPolicy` at the MCP layer.
+2. IAM Condition on each `google_bigquery_dataset_iam_member` binding, pinning
+   the tenant principal to `resource.name == "projects/.../datasets/{ds}_{env}"`.
+   Configured via `tenant_dataset_bindings` in Terraform.
+
+A misconfigured app still cannot reach datasets outside the tenant scope because
+Google IAM rejects the request before BigQuery ever runs the query.
+
+### Content Safety Layer
+
+**Components:**
+- `/src/security/model-armor.ts` - Model Armor pre-flight screening provider
+
+**Features:**
+- ✅ Screens user-supplied SQL/NL prompts before policy evaluation
+- ✅ Calls Google Cloud Model Armor's `sanitizeUserPrompt` REST endpoint via ADC
+- ✅ Heuristic fallback when upstream fails (returns `degraded: true`)
+- ✅ No-op by default; enabled by setting `MODEL_ARMOR_TEMPLATE=projects/{p}/locations/{l}/templates/{t}`
+- ✅ Blocks short-circuit with `MODEL_ARMOR_BLOCKED` error code before BigQuery work
 
 ### 3. Audit & Compliance Layer
 

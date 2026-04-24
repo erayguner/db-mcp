@@ -35,3 +35,19 @@ variable "enable_audit_logging" {
   type        = bool
   default     = true
 }
+
+# Tenant-scoped IAM bindings with IAM Conditions.
+# Each entry creates a conditional IAM member binding on the specified datasets,
+# providing defense-in-depth behind the application-layer YAML allowlist.
+# Principals are typically Workload Identity principalSet URIs keyed by tenant.
+variable "tenant_dataset_bindings" {
+  description = "Per-tenant BigQuery dataset IAM bindings with IAM Conditions"
+  type = map(object({
+    principal         = string
+    role              = string
+    datasets          = list(string)
+    condition_title   = optional(string, "tenant-dataset-scope")
+    condition_expires = optional(string, "")
+  }))
+  default = {}
+}

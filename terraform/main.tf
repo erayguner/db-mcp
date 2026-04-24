@@ -64,10 +64,11 @@ module "iam" {
 module "bigquery" {
   source = "./modules/bigquery"
 
-  project_id      = var.project_id
-  datasets        = var.bigquery_datasets
-  service_account = module.iam.mcp_service_account_email
-  environment     = var.environment
+  project_id              = var.project_id
+  datasets                = var.bigquery_datasets
+  service_account         = module.iam.mcp_service_account_email
+  environment             = var.environment
+  tenant_dataset_bindings = var.tenant_dataset_bindings
 
   depends_on = [module.iam]
 }
@@ -76,13 +77,15 @@ module "bigquery" {
 module "networking" {
   source = "./modules/networking"
 
-  project_id                  = var.project_id
-  region                      = var.region
-  environment                 = var.environment
-  vpc_cidr                    = var.vpc_cidr
-  enable_vpc_service_controls = var.enable_vpc_service_controls
-  enable_cloud_armor          = var.enable_cloud_armor
-  allowed_ip_ranges           = var.allowed_ip_ranges
+  project_id                     = var.project_id
+  region                         = var.region
+  environment                    = var.environment
+  vpc_cidr                       = var.vpc_cidr
+  enable_vpc_service_controls    = var.enable_vpc_service_controls
+  enable_cloud_armor             = var.enable_cloud_armor
+  allowed_ip_ranges              = var.allowed_ip_ranges
+  enable_private_service_connect = var.enable_private_service_connect
+  psc_nat_subnet_cidr            = var.psc_nat_subnet_cidr
 
   depends_on = [google_project_service.required_apis]
 }
@@ -102,6 +105,12 @@ module "cloud_run" {
   max_instances         = var.mcp_server_max_instances
   vpc_connector_id      = module.networking.vpc_connector_id
   cloud_armor_policy_id = module.networking.cloud_armor_policy_id
+
+  # PSC private ingress (optional)
+  enable_private_service_connect = var.enable_private_service_connect
+  psc_nat_subnet_id              = module.networking.psc_nat_subnet_id
+  psc_accepted_projects          = var.psc_accepted_projects
+  ingress_mode                   = var.enable_private_service_connect ? "internal-and-cloud-load-balancing" : "all"
 
   depends_on = [module.iam, module.networking]
 }

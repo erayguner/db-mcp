@@ -42,3 +42,8 @@ output "security_logs_sink_name" {
   description = "Cloud Logging sink name for security logs"
   value       = google_logging_project_sink.mcp_security_logs.name
 }
+
+output "psc_service_attachment_id" {
+  description = "PSC service attachment ID (null when PSC disabled)"
+  value       = length(google_compute_service_attachment.mcp_psc) > 0 ? google_compute_service_attachment.mcp_psc[0].id : null
+}

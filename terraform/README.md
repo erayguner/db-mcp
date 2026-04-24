@@ -8,6 +8,8 @@ Complete Terraform infrastructure for deploying a GCP BigQuery MCP Server with *
 - **Google Workspace Integration**: OIDC-based user authentication
 - **GitHub Actions CI/CD**: Automated deployments with OIDC
 - **Customer-Managed Encryption**: CMEK for BigQuery datasets
+- **IAM Conditions**: Per-tenant dataset bindings as defense-in-depth
+- **Private Service Connect**: Optional private ingress to Cloud Run
 - **Comprehensive Audit Logging**: 7-year retention for compliance
 - **VPC Service Controls**: Data exfiltration prevention
 - **Multi-Environment Support**: Dev, Staging, Production
@@ -225,6 +227,26 @@ Creates datasets with encryption and access controls.
 - Automatic key rotation (90 days)
 - Row-level security support
 - Comprehensive audit logging
+- Optional per-tenant IAM Conditions via `tenant_dataset_bindings`
+
+**Tenant IAM Conditions (defense-in-depth):**
+
+```hcl
+tenant_dataset_bindings = {
+  "tenant-a" = {
+    principal         = "principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/mcp/attribute.tenant/tenant-a"
+    role              = "roles/bigquery.dataViewer"
+    datasets          = ["analytics", "warehouse"]
+    condition_expires = "2027-01-01T00:00:00Z"  # optional time-bound access
+  }
+}
+```
+
+Each entry creates a `google_bigquery_dataset_iam_member` with an IAM Condition
+pinning the binding to `resource.name == "projects/{p}/datasets/{ds}_{env}"`.
+This is evaluated by IAM in addition to the application-layer YAML allowlist
+in `src/config/tenants.yaml`, so a misconfigured app still cannot access
+datasets outside the tenant scope.
 
 ### Cloud Run Module
 
@@ -242,6 +264,22 @@ Deploys MCP server with Workload Identity.
 - VPC connector integration
 - Health checks
 - Autoscaling (1-10 instances)
+- Optional Private Service Connect service attachment
+
+**Private Service Connect (optional private ingress):**
+
+```hcl
+enable_private_service_connect = true
+psc_nat_subnet_cidr            = "10.0.1.0/24"   # disjoint from vpc_cidr
+psc_accepted_projects          = ["consumer-project-id"]  # empty = accept all
+```
+
+When enabled:
+- A PSC NAT subnet is created in the VPC.
+- The Cloud Run backend is fronted by a `google_compute_service_attachment`.
+- Cloud Run ingress flips to `internal-and-cloud-load-balancing`, keeping
+  tenant traffic off the public internet.
+- Requires Cloud Armor + SSL certificate (so the internal HTTPS LB is present).
 
 ### Networking Module
 

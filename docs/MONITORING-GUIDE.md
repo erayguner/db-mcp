@@ -146,13 +146,19 @@ terraform apply -target=module.monitoring
 ### OpenTelemetry Metrics
 
 **Custom Application Metrics**:
-- `mcp.requests.total` - Total requests by tool
+- `mcp.requests.total` - Total requests by `tool`, `success`, `tenant_id`
 - `mcp.errors.total` - Errors by type
 - `mcp.bigquery.query.duration` - Query latency histogram
 - `mcp.bigquery.bytes.processed` - Bytes processed
 - `mcp.auth.attempts.total` - Auth attempts
 - `mcp.auth.failures.total` - Auth failures
 - `mcp.connections.active` - Active connections
+- `mcp.tool.calls.total` - Tool calls by `tool`, `outcome` (allow/block/error), `tenant_id`
+- `mcp.tool.call.duration` - End-to-end tool call latency by `tool`, `outcome`, `tenant_id`
+
+> **Cardinality note:** `tenant_id` is only attached when a tenant context
+> is resolved. Slice dashboards by `tenant_id` to build GEAP-style topology
+> views of which tenants drive load, latency, or block rates.
 
 ### Cloud Run Metrics (Automatic)
 
@@ -253,6 +259,8 @@ const processQuery = traced('process_bigquery_query', async (query: string) => {
 
 **Custom Attributes**:
 - `mcp.tool` - MCP tool name
+- `tool.name` / `tool.request_id` - Tool invocation identifiers
+- `tenant.id` - Resolved tenant identifier (when tenant context is present)
 - `bigquery.dataset` - Dataset ID
 - `bigquery.table` - Table ID
 - `bigquery.bytes` - Bytes processed

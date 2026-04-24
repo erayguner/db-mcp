@@ -22,6 +22,7 @@ export {
   initializeMetrics,
   getMetrics,
   recordRequest,
+  recordToolCall,
   recordError,
   recordQueryLatency,
   recordBigQueryBytes,

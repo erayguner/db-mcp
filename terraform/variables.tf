@@ -57,6 +57,19 @@ variable "bigquery_datasets" {
   default = {}
 }
 
+# Tenant IAM Conditions (defense-in-depth for YAML allowlist)
+variable "tenant_dataset_bindings" {
+  description = "Per-tenant BigQuery dataset IAM bindings, enforced via IAM Conditions"
+  type = map(object({
+    principal         = string
+    role              = string
+    datasets          = list(string)
+    condition_title   = optional(string, "tenant-dataset-scope")
+    condition_expires = optional(string, "")
+  }))
+  default = {}
+}
+
 # Networking
 variable "vpc_cidr" {
   description = "CIDR block for VPC"
@@ -68,6 +81,27 @@ variable "enable_cloud_armor" {
   description = "Enable Cloud Armor WAF and DDoS protection"
   type        = bool
   default     = true
+}
+
+# Private Service Connect (PSC) — optional private ingress alternative
+# to public Cloud Run. Enterprise consumers attach to the PSC service
+# attachment instead of traversing the public internet.
+variable "enable_private_service_connect" {
+  description = "Expose the MCP server via a PSC service attachment (requires Cloud Armor + SSL cert)"
+  type        = bool
+  default     = false
+}
+
+variable "psc_nat_subnet_cidr" {
+  description = "CIDR for the PSC NAT subnet (disjoint from vpc_cidr)"
+  type        = string
+  default     = "10.0.1.0/24"
+}
+
+variable "psc_accepted_projects" {
+  description = "Consumer GCP project IDs allowed to connect via PSC (empty = accept all)"
+  type        = list(string)
+  default     = []
 }
 
 variable "access_policy_name" {
