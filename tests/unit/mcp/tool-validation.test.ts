@@ -22,7 +22,7 @@ describe('Tool Validation Schemas', () => {
       };
 
       const result = QueryBigQueryArgsSchema.parse(valid);
-      expect(result).toEqual(valid);
+      expect(result).toEqual({ ...valid, confirmCost: false });
     });
 
     it('should apply default values', () => {

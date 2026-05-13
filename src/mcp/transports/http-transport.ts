@@ -14,6 +14,13 @@ import {
   JSON_RPC_ERRORS,
 } from '../middleware/batch-handler.js';
 import { shouldCompress, compressResponse } from '../middleware/compression.js';
+import {
+  OAuthMetadataConfig,
+  buildAuthorizationServerMetadata,
+  buildProtectedResourceMetadata,
+  buildWwwAuthenticateHeader,
+  loadOAuthMetadataConfig,
+} from '../../auth/oauth-metadata.js';
 
 /**
  * Zod schema for HTTP transport configuration — used by tests and validation.
@@ -25,6 +32,14 @@ export const HttpTransportConfigSchema = z.object({
   corsOrigins: z.array(z.string()).default([]),
   enableCompression: z.boolean().default(true),
   maxRequestBodyBytes: z.number().int().positive().default(1_048_576),
+  /**
+   * When `true`, GET /mcp returns 405 instead of opening an SSE stream.
+   * Required by Gemini Enterprise custom MCP connectors, which only support
+   * Streamable HTTP and explicitly reject SSE.
+   */
+  strictStreamableHttp: z.boolean().default(false),
+  /** Optional OAuth 2.0 discovery configuration. */
+  oauthMetadata: z.unknown().optional(),
 });
 
 /**
@@ -36,6 +51,8 @@ export interface HttpTransportConfig {
   corsOrigins: string[];
   enableCompression: boolean;
   maxRequestBodyBytes: number;
+  strictStreamableHttp: boolean;
+  oauthMetadata: OAuthMetadataConfig | null;
 }
 
 /** Default configuration values. */
@@ -45,6 +62,8 @@ const DEFAULT_CONFIG: HttpTransportConfig = {
   corsOrigins: [],
   enableCompression: true,
   maxRequestBodyBytes: 1_048_576, // 1 MiB
+  strictStreamableHttp: process.env.MCP_TRANSPORT_STRICT === 'streamable',
+  oauthMetadata: loadOAuthMetadataConfig(),
 };
 
 /**
@@ -293,18 +312,99 @@ export class StreamableHttpTransport {
       res.json({ message: 'Metrics available via OpenTelemetry exporter', activeConnections: this?.activeConnections ?? 0 });
     });
 
+    // --- OAuth 2.0 discovery (RFC 8414 + RFC 9728) ---
+    this.registerOAuthDiscoveryRoutes(app);
+
     // --- MCP JSON-RPC endpoint (POST) ---
     app.post('/mcp', (req: Request, res: Response) => {
       void this.handleJsonRpcPost(req, res);
     });
 
-    // --- MCP SSE stream (GET) ---
+    // --- MCP SSE stream (GET) — disabled in strict Streamable HTTP mode ---
     app.get('/mcp', (req: Request, res: Response) => {
+      if (this.config.strictStreamableHttp) {
+        res.setHeader('Allow', 'POST');
+        res.status(405).json({
+          error: 'method_not_allowed',
+          error_description:
+            'SSE is disabled; this server runs in strict Streamable HTTP mode. Use POST /mcp.',
+        });
+        return;
+      }
       this.handleSseConnect(req, res);
     });
 
+    const endpoints = ['/health', '/readiness', '/metrics', 'POST /mcp'];
+    if (this.config.oauthMetadata) {
+      endpoints.push(
+        'GET /.well-known/oauth-authorization-server',
+        'GET /.well-known/oauth-protected-resource',
+      );
+    }
+    if (this.config.strictStreamableHttp) {
+      endpoints.push('GET /mcp (405 — strict mode)');
+    } else {
+      endpoints.push('GET /mcp (SSE)');
+    }
+
     logger.info('HTTP transport routes registered', {
-      endpoints: ['/health', '/readiness', '/metrics', 'POST /mcp', 'GET /mcp'],
+      endpoints,
+      strictStreamableHttp: this.config.strictStreamableHttp,
+      oauthDiscovery: !!this.config.oauthMetadata,
+    });
+  }
+
+  /**
+   * Register OAuth 2.0 discovery endpoints when metadata is configured.
+   *
+   * - `/.well-known/oauth-authorization-server` (RFC 8414)
+   * - `/.well-known/oauth-protected-resource`   (RFC 9728)
+   *
+   * Required by MCP 2025-06-18 auth flow and by Gemini Enterprise custom MCP
+   * connector registration.
+   */
+  private registerOAuthDiscoveryRoutes(app: express.Application): void {
+    const cfg = this.config.oauthMetadata;
+    if (!cfg) {
+      logger.info('OAuth discovery endpoints not mounted (no OAUTH_* env vars set)');
+      return;
+    }
+
+    app.get('/.well-known/oauth-authorization-server', (_req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.json(buildAuthorizationServerMetadata(cfg));
+    });
+
+    app.get('/.well-known/oauth-protected-resource', (_req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.json(buildProtectedResourceMetadata(cfg));
+    });
+  }
+
+  /**
+   * Emit an RFC 6750 / MCP 2025-06-18-compliant 401 response.
+   *
+   * Sets `WWW-Authenticate: Bearer ... resource_metadata="..."` so MCP clients
+   * can discover the bound authorization server.
+   */
+  public sendUnauthorized(
+    res: Response,
+    opts: { error?: string; errorDescription?: string } = {},
+  ): void {
+    const cfg = this.config.oauthMetadata;
+    const resourceMetadataUrl = cfg
+      ? `${cfg.resourceUrl.replace(/\/$/, '')}/.well-known/oauth-protected-resource`
+      : '';
+    const header = buildWwwAuthenticateHeader(resourceMetadataUrl, {
+      realm: 'mcp',
+      error: opts.error ?? 'invalid_token',
+      errorDescription: opts.errorDescription,
+    });
+    res.setHeader('WWW-Authenticate', header);
+    res.status(401).json({
+      error: opts.error ?? 'invalid_token',
+      error_description: opts.errorDescription ?? 'Authentication required',
+      resource_metadata: resourceMetadataUrl || undefined,
     });
   }
 

@@ -15,7 +15,10 @@ Enterprise-grade MCP (Model Context Protocol) server for Google Cloud Platform B
 
 - **Zero Service Account Keys** - 100% Workload Identity Federation
 - **Google Workspace Integration** - OIDC user authentication
-- **MCP Protocol Compliant** - Follows official MCP SDK best practices
+- **MCP Protocol Compliant** - Follows official MCP SDK best practices (2025-06-18 spec)
+- **Gemini Enterprise Ready** - OAuth 2.0 discovery (RFC 8414/9728), strict Streamable HTTP transport
+- **Resource Templates** - RFC 6570 URI templates for dataset/table/schema/sample/job/INFORMATION_SCHEMA
+- **Cost Elicitation Gate** - Per-query dry-run guardrail that surfaces high-cost confirmations to clients
 - **Multi-tenant** - YAML allowlist + IAM Conditions on BigQuery datasets
 - **Security Middleware** - Rate limiting, prompt injection detection, data redaction
 - **Model Armor Pre-flight** - Optional content-safety screening before tool execution
@@ -163,6 +166,8 @@ BigQuery API
 | Document | Description |
 |----------|-------------|
 | [Usage Guide](docs/USAGE-GUIDE.md) | Complete guide for local dev, testing, and production |
+| [Gemini Enterprise Deployment](docs/GEMINI-ENTERPRISE-DEPLOYMENT.md) | Runbook for registering as a Gemini Enterprise custom MCP connector |
+| [MCP Compliance](docs/MCP-COMPLIANCE.md) | MCP 2025-06-18 spec compliance matrix and gap implementations |
 | [Architecture](docs/architecture/) | System design and component documentation |
 | [Security](docs/SECURITY.md) | Security middleware and best practices |
 | [WIF Guide](docs/wif-architecture.md) | Workload Identity Federation details |

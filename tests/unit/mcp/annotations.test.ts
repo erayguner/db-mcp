@@ -34,13 +34,26 @@ describe('Tool Annotations', () => {
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
+      costHintTier: 'low',
     });
   });
 
-  it('all tools have openWorldHint set to false', () => {
-    const tools = ['query_bigquery', 'execute_query', 'list_datasets', 'list_tables', 'get_table_schema'];
+  it('catalog-only tools have openWorldHint set to false', () => {
+    const tools = ['list_datasets', 'list_tables', 'get_table_schema'];
     for (const tool of tools) {
       expect(getToolAnnotations(tool).openWorldHint).toBe(false);
+    }
+  });
+
+  it('query-execution tools have openWorldHint true (reach BigQuery)', () => {
+    for (const tool of ['query_bigquery', 'execute_query']) {
+      expect(getToolAnnotations(tool).openWorldHint).toBe(true);
+    }
+  });
+
+  it('query-execution tools are tagged costHintTier=high', () => {
+    for (const tool of ['query_bigquery', 'execute_query']) {
+      expect(getToolAnnotations(tool).costHintTier).toBe('high');
     }
   });
 

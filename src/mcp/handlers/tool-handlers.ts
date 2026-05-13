@@ -11,6 +11,10 @@ import {
   ModelArmorProvider,
   NoopModelArmorProvider,
 } from '../../security/model-armor.js';
+import {
+  loadCostElicitationConfig,
+  estimateQueryCostUsd,
+} from '../tools/annotations.js';
 
 /** Safely coerce an unknown schema field value to string */
 function fieldStr(value: unknown, fallback: string): string {
@@ -211,7 +215,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
   async execute(args: unknown): Promise<ToolResponse> {
     try {
       const validated = validateToolArgs('query_bigquery', args);
-      const { query, dryRun, maxResults, timeoutMs, useLegacySql, location } = validated;
+      const { query, dryRun, maxResults, timeoutMs, useLegacySql, location, confirmCost } = validated;
 
       // Model Armor pre-flight — screen the query text before any policy or
       // BigQuery work. Blocking verdicts short-circuit with a structured error
@@ -272,6 +276,73 @@ export class QueryBigQueryHandler extends BaseToolHandler {
           totalBytesProcessed: dryRunResult.totalBytesProcessed,
           estimatedCostUSD: dryRunResult.estimatedCostUSD,
         });
+      }
+
+      // Cost-elicitation gate. When enabled, run a dry-run first; if estimated
+      // bytes exceed the threshold and the caller hasn't already confirmed,
+      // return a structured `requires_confirmation` response. MCP clients
+      // surface this as a user-facing prompt (Gemini Enterprise, Claude, etc.).
+      const costCfg = loadCostElicitationConfig();
+      if (costCfg.enabled && !confirmCost) {
+        try {
+          const estimate = await this.context.bigQueryClient.dryRun(query, {
+            useLegacySql,
+            location,
+          });
+          const estimatedBytes = Number.parseInt(String(estimate.totalBytesProcessed ?? '0'), 10) || 0;
+          if (estimatedBytes > costCfg.thresholdBytes) {
+            const estimatedCostUSD =
+              estimate.estimatedCostUSD ??
+              estimateQueryCostUsd(estimatedBytes, costCfg.usdPerTiB);
+            logger.info('Query exceeds cost-elicitation threshold; requesting confirmation', {
+              tenant: this.context.tenantContext?.tenantId,
+              requestId: this.context.requestId,
+              totalBytesProcessed: estimatedBytes,
+              thresholdBytes: costCfg.thresholdBytes,
+              estimatedCostUSD,
+            });
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(
+                    {
+                      status: 'requires_confirmation',
+                      reason: 'cost_threshold_exceeded',
+                      message:
+                        `This query is estimated to scan ${estimatedBytes.toLocaleString()} bytes ` +
+                        `(~$${estimatedCostUSD.toFixed(4)} USD), exceeding the ${costCfg.thresholdBytes.toLocaleString()}-byte threshold. ` +
+                        'Re-invoke the tool with `confirmCost: true` to proceed.',
+                      estimate: {
+                        totalBytesProcessed: estimatedBytes,
+                        estimatedCostUSD,
+                        thresholdBytes: costCfg.thresholdBytes,
+                        usdPerTiB: costCfg.usdPerTiB,
+                      },
+                    },
+                    null,
+                    2,
+                  ),
+                },
+              ],
+              isError: false,
+              _meta: {
+                requiresConfirmation: true,
+                elicitation: {
+                  kind: 'cost_acknowledgement',
+                  proceedArgs: { confirmCost: true },
+                },
+              },
+            };
+          }
+        } catch (estErr) {
+          // A failed dry-run is not fatal — fall through to execution and let
+          // BigQuery report the real error. We log so operators can spot it.
+          logger.warn('Cost elicitation dry-run failed; proceeding without estimate', {
+            error: (estErr as Error).message,
+            requestId: this.context.requestId,
+          });
+        }
       }
 
       // Execute actual query

@@ -11,6 +11,12 @@ This directory contains documentation for the MCP BigQuery Server - an enterpris
 ### [USAGE-GUIDE.md](./USAGE-GUIDE.md)
 Complete usage guide covering local development, testing, and production deployment. **Start here** if you want to use the server.
 
+### [GEMINI-ENTERPRISE-DEPLOYMENT.md](./GEMINI-ENTERPRISE-DEPLOYMENT.md)
+Runbook for registering this server as a custom MCP connector in Gemini Enterprise. Covers OAuth 2.0 discovery, strict Streamable HTTP, the Vertex AI Search redirect URI, and the cost-elicitation gate.
+
+### [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md)
+MCP 2025-06-18 spec compliance matrix, gap implementations, and the native feature catalogue (tools, resources, resource templates, prompts, elicitation).
+
 ---
 
 ## Architecture

@@ -17,10 +17,16 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import {
+  BIGQUERY_RESOURCE_TEMPLATES,
+  URI_MATCHERS,
+  ALLOWED_INFORMATION_SCHEMA_VIEWS,
+} from './mcp/resources/templates.js';
 import { getEnvironment } from './config/environment.js';
 import { BigQueryClient } from './bigquery/client.js';
 import { logger } from './utils/logger.js';
@@ -631,6 +637,19 @@ export class MCPBigQueryServer {
     }
 
     // ==========================================
+    // List Resource Templates Handler (MCP 2025-06-18)
+    // ==========================================
+    try {
+      server.setRequestHandler(ListResourceTemplatesRequestSchema, () => {
+        logger.debug('Handling list_resource_templates request');
+        recordProtocolMethod('list_resource_templates');
+        return { resourceTemplates: BIGQUERY_RESOURCE_TEMPLATES };
+      });
+    } catch (err) {
+      logger.warn('Skipping list_resource_templates handler registration', { error: (err as Error).message });
+    }
+
+    // ==========================================
     // List Prompts Handler
     // ==========================================
     try {
@@ -718,6 +737,132 @@ export class MCPBigQueryServer {
              mimeType: 'application/json',
              text: JSON.stringify(response, null, 2),
            }],
+         };
+       }
+
+       // bigquery://datasets/{datasetId}/tables/{tableId}/schema — schema only
+       const schemaMatch = uri.match(URI_MATCHERS.schema);
+       if (schemaMatch) {
+         const [, datasetId, tableId] = schemaMatch;
+         const table = await this.bigQueryClient!.getTable(datasetId, tableId);
+         const columns = Array.isArray(table.schema)
+           ? (table.schema as Array<Record<string, unknown>>).map(f => ({
+               name: typeof f.name === 'string' ? f.name : '',
+               type: typeof f.type === 'string' ? f.type : 'UNKNOWN',
+               mode: typeof f.mode === 'string' ? f.mode : 'NULLABLE',
+               description: typeof f.description === 'string' ? f.description : undefined,
+             }))
+           : [];
+         const response = {
+           datasetId,
+           tableId,
+           columns,
+           tableDescription: table.description,
+           provenance: {
+             source: 'bigquery',
+             projectId,
+             datasetId,
+             tableId,
+             retrievedAt: now,
+             freshness: 'real-time',
+             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
+           },
+         };
+         return {
+           contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) }],
+         };
+       }
+
+       // bigquery://datasets/{datasetId}/tables/{tableId}/sample — preview rows
+       const sampleMatch = uri.match(URI_MATCHERS.sample);
+       if (sampleMatch) {
+         const [, datasetId, tableId] = sampleMatch;
+         // Validate identifiers per BigQuery rules to prevent SQL injection.
+         if (!/^[A-Za-z0-9_]+$/.test(datasetId) || !/^[A-Za-z0-9_]+$/.test(tableId)) {
+           throw new Error(`Invalid dataset/table identifier in URI: ${uri}`);
+         }
+         const sampleSql = `SELECT * FROM \`${projectId}.${datasetId}.${tableId}\` LIMIT 10`;
+         const result = await this.bigQueryClient!.query({ query: sampleSql });
+         const response = {
+           datasetId,
+           tableId,
+           rows: result.rows,
+           rowCount: Array.isArray(result.rows) ? result.rows.length : 0,
+           provenance: {
+             source: 'bigquery',
+             projectId,
+             datasetId,
+             tableId,
+             retrievedAt: now,
+             freshness: 'real-time',
+             note: 'Up to 10 rows; honors tenant column-masking policies if applied at query time.',
+             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
+           },
+         };
+         return {
+           contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) }],
+         };
+       }
+
+       // bigquery://jobs/{jobId} — query job result handle
+       const jobMatch = uri.match(URI_MATCHERS.job);
+       if (jobMatch) {
+         const [, jobId] = jobMatch;
+         if (!/^[A-Za-z0-9_\-:.]+$/.test(jobId)) {
+           throw new Error(`Invalid job id in URI: ${uri}`);
+         }
+         // Defer to the BigQuery client; if it lacks a getJob helper, surface a clear error.
+         const client = this.bigQueryClient as unknown as {
+           getJob?: (id: string) => Promise<unknown>;
+         };
+         if (typeof client.getJob !== 'function') {
+           throw new Error('Job resource requires BigQueryClient.getJob() — not implemented in this build');
+         }
+         const job = await client.getJob(jobId);
+         const response = {
+           jobId,
+           job,
+           provenance: {
+             source: 'bigquery',
+             projectId,
+             jobId,
+             retrievedAt: now,
+             freshness: 'real-time',
+             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&j=bq:${encodeURIComponent(jobId)}&page=queryresults`,
+           },
+         };
+         return {
+           contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) }],
+         };
+       }
+
+       // bigquery://datasets/{datasetId}/information_schema/{view} — catalog browse
+       const isMatch = uri.match(URI_MATCHERS.informationSchema);
+       if (isMatch) {
+         const [, datasetId, view] = isMatch;
+         if (!/^[A-Za-z0-9_]+$/.test(datasetId)) {
+           throw new Error(`Invalid dataset identifier in URI: ${uri}`);
+         }
+         if (!ALLOWED_INFORMATION_SCHEMA_VIEWS.has(view)) {
+           throw new Error(`Unsupported INFORMATION_SCHEMA view: ${view}`);
+         }
+         const sql = `SELECT * FROM \`${projectId}.${datasetId}.INFORMATION_SCHEMA.${view}\` LIMIT 1000`;
+         const result = await this.bigQueryClient!.query({ query: sql });
+         const response = {
+           datasetId,
+           view,
+           rows: result.rows,
+           provenance: {
+             source: 'bigquery.information_schema',
+             projectId,
+             datasetId,
+             view,
+             retrievedAt: now,
+             freshness: 'real-time',
+           },
+         };
+         return {
+           contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) }],
          };
        }
 

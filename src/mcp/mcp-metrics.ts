@@ -14,7 +14,7 @@ import { logger } from '../utils/logger.js';
  * - Server uptime
  */
 
-export type McpMethod = 'call_tool' | 'list_tools' | 'list_resources' | 'read_resource' | 'list_prompts' | 'get_prompt';
+export type McpMethod = 'call_tool' | 'list_tools' | 'list_resources' | 'list_resource_templates' | 'read_resource' | 'list_prompts' | 'get_prompt';
 export type SecurityEvent = 'rate_limited' | 'injection_blocked' | 'unauthorized' | 'tool_blocked';
 
 interface McpMetricInstruments {

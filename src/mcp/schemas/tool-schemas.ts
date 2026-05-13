@@ -39,6 +39,10 @@ export const QueryBigQueryArgsSchema = z.object({
   location: z.string()
     .optional()
     .describe('Geographic location where the query should run'),
+  confirmCost: z.boolean()
+    .optional()
+    .default(false)
+    .describe('Acknowledge the estimated cost shown by a prior requires_confirmation response. When false, queries above the elicitation threshold return a confirmation prompt instead of executing.'),
 });
 
 export type QueryBigQueryArgs = z.infer<typeof QueryBigQueryArgsSchema>;
