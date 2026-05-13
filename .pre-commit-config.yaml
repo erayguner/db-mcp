@@ -1,0 +1,70 @@
+# pre-commit hooks for db-mcp
+#
+# Install:  pip install pre-commit && pre-commit install
+# Run all:  pre-commit run --all-files
+# Skip:     SKIP=eslint git commit -m "..."  (env-var-driven skip)
+#
+# Heavy lint passes (markdown, YAML, Terraform, Dockerfile) live in MegaLinter
+# CI — keep this config fast so it doesn't slow local commits.
+
+repos:
+  # -----------------------------------------------------------------
+  # Built-in safety hooks
+  # -----------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(.*\.md|.*\.snap)$
+      - id: end-of-file-fixer
+        exclude: ^(.*\.snap|package-lock\.json)$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: check-json
+        exclude: ^(tsconfig\.json|\.vscode/.*\.json)$  # allow JSON-with-comments
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # -----------------------------------------------------------------
+  # Secret scanning — backstop for the "never commit .env" rule
+  # -----------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  # -----------------------------------------------------------------
+  # Local hooks — run the project's own tools so versions stay aligned
+  # with package.json instead of pinning a duplicate in pre-commit.
+  # -----------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (src)
+        entry: npx eslint
+        language: system
+        types_or: [ts, tsx, javascript, jsx]
+        files: ^src/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: true
+
+      - id: prettier
+        name: prettier --check
+        entry: npx prettier --check
+        language: system
+        types_or: [ts, tsx, javascript, jsx, json, yaml, markdown]
+        # Honour .prettierignore — pre-commit also passes filenames through.
+        pass_filenames: true
+
+      - id: typecheck
+        name: tsc --noEmit
+        entry: npx tsc --noEmit
+        language: system
+        files: \.(ts|tsx)$
+        pass_filenames: false  # tsc reads tsconfig and scans the whole project
+        stages: [pre-push]      # heavy — only run on push, not every commit
