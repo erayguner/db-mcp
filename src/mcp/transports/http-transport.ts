@@ -515,4 +515,3 @@ export class StreamableHttpTransport {
     });
   }
 }
-
