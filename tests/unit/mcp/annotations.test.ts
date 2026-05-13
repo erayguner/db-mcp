@@ -1,8 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import {
-  readOnlyAnnotations,
-  getToolAnnotations,
-} from '../../../src/mcp/tools/annotations.js';
+import { readOnlyAnnotations, getToolAnnotations } from '../../../src/mcp/tools/annotations.js';
 
 describe('Tool Annotations', () => {
   it('returns read-only annotations for query_bigquery', () => {

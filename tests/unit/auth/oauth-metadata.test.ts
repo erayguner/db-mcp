@@ -76,7 +76,9 @@ describe('oauth-metadata', () => {
       expect(md.authorization_endpoint).toBe(SAMPLE_CFG.authorizationEndpoint);
       expect(md.token_endpoint).toBe(SAMPLE_CFG.tokenEndpoint);
       expect(md.response_types_supported).toContain('code');
-      expect(md.grant_types_supported).toEqual(expect.arrayContaining(['authorization_code', 'refresh_token']));
+      expect(md.grant_types_supported).toEqual(
+        expect.arrayContaining(['authorization_code', 'refresh_token'])
+      );
       expect(md.code_challenge_methods_supported).toContain('S256');
     });
 
@@ -86,7 +88,11 @@ describe('oauth-metadata', () => {
     });
 
     it('omits optional fields when not set', () => {
-      const md = buildAuthorizationServerMetadata({ ...SAMPLE_CFG, jwksUri: undefined, registrationEndpoint: undefined });
+      const md = buildAuthorizationServerMetadata({
+        ...SAMPLE_CFG,
+        jwksUri: undefined,
+        registrationEndpoint: undefined,
+      });
       expect(md.jwks_uri).toBeUndefined();
       expect(md.registration_endpoint).toBeUndefined();
     });
@@ -104,16 +110,21 @@ describe('oauth-metadata', () => {
 
   describe('buildWwwAuthenticateHeader', () => {
     it('includes Bearer scheme and resource_metadata', () => {
-      const h = buildWwwAuthenticateHeader('https://mcp.example.com/.well-known/oauth-protected-resource', {
-        realm: 'mcp',
-        error: 'invalid_token',
-        errorDescription: 'Token expired',
-      });
+      const h = buildWwwAuthenticateHeader(
+        'https://mcp.example.com/.well-known/oauth-protected-resource',
+        {
+          realm: 'mcp',
+          error: 'invalid_token',
+          errorDescription: 'Token expired',
+        }
+      );
       expect(h).toMatch(/^Bearer /);
       expect(h).toContain('realm="mcp"');
       expect(h).toContain('error="invalid_token"');
       expect(h).toContain('error_description="Token expired"');
-      expect(h).toContain('resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"');
+      expect(h).toContain(
+        'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"'
+      );
     });
 
     it('escapes quotes in parameter values', () => {

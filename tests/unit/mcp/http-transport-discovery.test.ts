@@ -49,7 +49,7 @@ describe('StreamableHttpTransport — discovery + strict mode', () => {
       const res = await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'GET' });
       expect(res.status).toBe(405);
       expect(res.headers.get('Allow')).toBe('POST');
-      const body = await res.json() as { error: string };
+      const body = (await res.json()) as { error: string };
       expect(body.error).toBe('method_not_allowed');
     });
 
@@ -61,7 +61,7 @@ describe('StreamableHttpTransport — discovery + strict mode', () => {
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
       });
       expect(res.status).toBe(200);
-      const body = await res.json() as { result: { ok: boolean } };
+      const body = (await res.json()) as { result: { ok: boolean } };
       expect(body.result.ok).toBe(true);
     });
   });
@@ -94,7 +94,11 @@ describe('StreamableHttpTransport — discovery + strict mode', () => {
       expect(res.headers.get('Content-Type')).toContain('text/event-stream');
       controller.abort();
       // Drain to release the socket
-      try { await res.body?.cancel(); } catch { /* ignore */ }
+      try {
+        await res.body?.cancel();
+      } catch {
+        /* ignore */
+      }
     });
   });
 
@@ -128,7 +132,7 @@ describe('StreamableHttpTransport — discovery + strict mode', () => {
       const port = getPort(transport);
       const res = await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`);
       expect(res.status).toBe(200);
-      const body = await res.json() as Record<string, unknown>;
+      const body = (await res.json()) as Record<string, unknown>;
       expect(body.issuer).toBe('https://accounts.google.com');
       expect(body.token_endpoint).toBe('https://oauth2.googleapis.com/token');
       expect(body.code_challenge_methods_supported).toContain('S256');
@@ -139,7 +143,7 @@ describe('StreamableHttpTransport — discovery + strict mode', () => {
       const port = getPort(transport);
       const res = await fetch(`http://127.0.0.1:${port}/.well-known/oauth-protected-resource`);
       expect(res.status).toBe(200);
-      const body = await res.json() as Record<string, unknown>;
+      const body = (await res.json()) as Record<string, unknown>;
       expect(body.resource).toBe('https://mcp.example.com');
       expect(body.authorization_servers).toEqual(['https://accounts.google.com']);
     });

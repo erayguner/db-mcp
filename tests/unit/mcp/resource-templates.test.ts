@@ -16,7 +16,7 @@ describe('BigQuery resource templates', () => {
         'bigquery://datasets/{datasetId}/tables/{tableId}/sample',
         'bigquery://jobs/{jobId}',
         'bigquery://datasets/{datasetId}/information_schema/{view}',
-      ]),
+      ])
     );
   });
 
@@ -50,7 +50,9 @@ describe('BigQuery resource templates', () => {
     });
 
     it('matches INFORMATION_SCHEMA URIs', () => {
-      const m = 'bigquery://datasets/sales/information_schema/TABLES'.match(URI_MATCHERS.informationSchema);
+      const m = 'bigquery://datasets/sales/information_schema/TABLES'.match(
+        URI_MATCHERS.informationSchema
+      );
       expect(m).not.toBeNull();
       expect(m![1]).toBe('sales');
       expect(m![2]).toBe('TABLES');

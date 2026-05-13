@@ -101,7 +101,7 @@ describe('QueryBigQueryHandler — cost elicitation gate', () => {
     const meta = response._meta as Record<string, unknown> | undefined;
     expect(meta?.requiresConfirmation).toBe(true);
     expect((meta?.elicitation as Record<string, unknown>).kind).toBe('cost_acknowledgement');
-    const body = JSON.parse((response.content[0].text as string));
+    const body = JSON.parse(response.content[0].text as string);
     expect(body.status).toBe('requires_confirmation');
     expect(body.reason).toBe('cost_threshold_exceeded');
     expect(body.estimate.totalBytesProcessed).toBe(50000);

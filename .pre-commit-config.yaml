@@ -24,7 +24,7 @@ repos:
       - id: check-case-conflict
       - id: check-symlinks
       - id: check-json
-        exclude: ^(tsconfig\.json|\.vscode/.*\.json)$  # allow JSON-with-comments
+        exclude: ^(tsconfig\.json|\.vscode/.*\.json)$ # allow JSON-with-comments
       - id: check-yaml
         args: [--allow-multiple-documents]
       - id: detect-private-key
@@ -66,5 +66,5 @@ repos:
         entry: npx tsc --noEmit
         language: system
         files: \.(ts|tsx)$
-        pass_filenames: false  # tsc reads tsconfig and scans the whole project
-        stages: [pre-push]      # heavy — only run on push, not every commit
+        pass_filenames: false # tsc reads tsconfig and scans the whole project
+        stages: [pre-push] # heavy — only run on push, not every commit

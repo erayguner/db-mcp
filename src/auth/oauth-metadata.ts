@@ -58,7 +58,12 @@ export type OAuthMetadataConfig = z.infer<typeof OAuthMetadataConfigSchema>;
  * - `OAUTH_RESOURCE_AUDIENCE` (defaults to `OAUTH_RESOURCE_URL`).
  */
 export function loadOAuthMetadataConfig(): OAuthMetadataConfig | null {
-  const required = ['OAUTH_RESOURCE_URL', 'OAUTH_ISSUER', 'OAUTH_AUTHORIZATION_ENDPOINT', 'OAUTH_TOKEN_ENDPOINT'];
+  const required = [
+    'OAUTH_RESOURCE_URL',
+    'OAUTH_ISSUER',
+    'OAUTH_AUTHORIZATION_ENDPOINT',
+    'OAUTH_TOKEN_ENDPOINT',
+  ];
   const missing = required.filter((k) => !process.env[k]);
   if (missing.length > 0) {
     return null;
@@ -78,7 +83,9 @@ export function loadOAuthMetadataConfig(): OAuthMetadataConfig | null {
 }
 
 /** RFC 8414 — Authorization Server Metadata document. */
-export function buildAuthorizationServerMetadata(cfg: OAuthMetadataConfig): Record<string, unknown> {
+export function buildAuthorizationServerMetadata(
+  cfg: OAuthMetadataConfig
+): Record<string, unknown> {
   return {
     issuer: cfg.authorizationServerIssuer,
     authorization_endpoint: cfg.authorizationEndpoint,
@@ -118,15 +125,13 @@ export function buildProtectedResourceMetadata(cfg: OAuthMetadataConfig): Record
  */
 export function buildWwwAuthenticateHeader(
   resourceMetadataUrl: string,
-  opts: { realm?: string; error?: string; errorDescription?: string } = {},
+  opts: { realm?: string; error?: string; errorDescription?: string } = {}
 ): string {
   const params: Array<[string, string]> = [];
   if (opts.realm) params.push(['realm', opts.realm]);
   if (opts.error) params.push(['error', opts.error]);
   if (opts.errorDescription) params.push(['error_description', opts.errorDescription]);
   params.push(['resource_metadata', resourceMetadataUrl]);
-  const formatted = params
-    .map(([k, v]) => `${k}="${v.replace(/"/g, '\\"')}"`)
-    .join(', ');
+  const formatted = params.map(([k, v]) => `${k}="${v.replace(/"/g, '\\"')}"`).join(', ');
   return `Bearer ${formatted}`;
 }

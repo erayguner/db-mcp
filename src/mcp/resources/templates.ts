@@ -19,8 +19,7 @@ export const BIGQUERY_RESOURCE_TEMPLATES: BigQueryResourceTemplate[] = [
   {
     uriTemplate: 'bigquery://datasets/{datasetId}',
     name: 'Dataset detail',
-    description:
-      'Dataset metadata plus a listing of contained tables. Use for catalog browsing.',
+    description: 'Dataset metadata plus a listing of contained tables. Use for catalog browsing.',
     mimeType: 'application/json',
   },
   {
@@ -51,8 +50,7 @@ export const BIGQUERY_RESOURCE_TEMPLATES: BigQueryResourceTemplate[] = [
     mimeType: 'application/json',
   },
   {
-    uriTemplate:
-      'bigquery://datasets/{datasetId}/information_schema/{view}',
+    uriTemplate: 'bigquery://datasets/{datasetId}/information_schema/{view}',
     name: 'INFORMATION_SCHEMA view',
     description:
       'Native BigQuery INFORMATION_SCHEMA view for a dataset (e.g. TABLES, COLUMNS, VIEWS). Read-only catalog browse.',
