@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { Server as HttpServer } from 'http';
@@ -373,12 +374,19 @@ export class StreamableHttpTransport {
       return;
     }
 
-    app.get('/.well-known/oauth-authorization-server', (_req: Request, res: Response) => {
+    const oauthDiscoveryLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 100,
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+
+    app.get('/.well-known/oauth-authorization-server', oauthDiscoveryLimiter, (_req: Request, res: Response) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.json(buildAuthorizationServerMetadata(cfg));
     });
 
-    app.get('/.well-known/oauth-protected-resource', (_req: Request, res: Response) => {
+    app.get('/.well-known/oauth-protected-resource', oauthDiscoveryLimiter, (_req: Request, res: Response) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.json(buildProtectedResourceMetadata(cfg));
     });
