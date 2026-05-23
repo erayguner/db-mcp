@@ -48,7 +48,7 @@ export class GoogleWorkspaceAuth {
       });
 
       const payload = ticket.getPayload();
-      
+
       if (!payload) {
         throw new Error('Invalid token payload');
       }
@@ -104,10 +104,8 @@ export class GoogleWorkspaceAuth {
    */
   private hasAllowedGroup(userGroups: string[]): boolean {
     if (!this.config.allowedGroups) return true;
-    
-    return this.config.allowedGroups.some(allowedGroup =>
-      userGroups.includes(allowedGroup)
-    );
+
+    return this.config.allowedGroups.some((allowedGroup) => userGroups.includes(allowedGroup));
   }
 
   /**

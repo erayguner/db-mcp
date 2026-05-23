@@ -104,7 +104,7 @@ export class QueryOptimizer {
     this.config = {
       autoAddLimit: config?.autoAddLimit ?? true,
       maxAutoLimit: config?.maxAutoLimit ?? 1000,
-      costThresholdUSD: config?.costThresholdUSD ?? 0.50,
+      costThresholdUSD: config?.costThresholdUSD ?? 0.5,
       enableQueryRewrite: config?.enableQueryRewrite ?? true,
       enablePartitionPruning: config?.enablePartitionPruning ?? true,
     };
@@ -359,7 +359,8 @@ export class QueryOptimizer {
       return {
         type: 'partition',
         severity: 'warning',
-        message: 'Query references date/timestamp columns but has no date filter. Consider filtering by date to reduce scanned data.',
+        message:
+          'Query references date/timestamp columns but has no date filter. Consider filtering by date to reduce scanned data.',
         estimatedSavings: 70,
       };
     }

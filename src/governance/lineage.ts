@@ -27,7 +27,10 @@ export interface LineageSourceRef {
  * last_modified_time + num_rows. Caller passes BQ metadata; this avoids
  * coupling the governance layer to @google-cloud/bigquery.
  */
-export function bigQueryTableVersion(meta: { lastModifiedTime?: string | number | Date; numRows?: string | number }): string {
+export function bigQueryTableVersion(meta: {
+  lastModifiedTime?: string | number | Date;
+  numRows?: string | number;
+}): string {
   const t = meta.lastModifiedTime ? new Date(meta.lastModifiedTime).toISOString() : 'unknown';
   const n = String(meta.numRows ?? 'unknown');
   return sha1(`${t}|${n}`).slice(0, 16);
@@ -37,7 +40,11 @@ export function promptTemplateVersion(contents: string): string {
   return sha1(contents).slice(0, 16);
 }
 
-export function makeSourceRef(type: LineageSourceType, identifier: string, version: string): LineageSourceRef {
+export function makeSourceRef(
+  type: LineageSourceType,
+  identifier: string,
+  version: string
+): LineageSourceRef {
   return { type, identifier, version };
 }
 

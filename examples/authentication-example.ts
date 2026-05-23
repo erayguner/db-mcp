@@ -149,7 +149,7 @@ export async function credentialManagement() {
     const cleanup = credManager.enableAutoRefresh(1800);
 
     // Simulate some work
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Cleanup
     cleanup();
@@ -205,10 +205,7 @@ export async function permissionValidation(principal: string) {
     ]);
 
     batchResults.forEach((res, i) => {
-      console.log(
-        `   Dataset ${i + 1}:`,
-        res.allowed ? '✅ Allowed' : '❌ Denied'
-      );
+      console.log(`   Dataset ${i + 1}:`, res.allowed ? '✅ Allowed' : '❌ Denied');
     });
 
     // Cache statistics
@@ -349,7 +346,7 @@ export async function completeAuthFlow(config: AuthConfig) {
     // 4. Execute query (simulated)
     console.log('\nStep 4: Executing query...');
     console.log('   SELECT * FROM my_dataset.my_table LIMIT 10');
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     console.log('   ✅ Query executed successfully');
 
     // 5. Review audit trail
@@ -390,7 +387,8 @@ export async function runAllExamples() {
     projectId: process.env.GCP_PROJECT_ID || 'my-project',
     poolId: process.env.WORKLOAD_IDENTITY_POOL_ID || 'my-pool',
     providerId: process.env.WORKLOAD_IDENTITY_PROVIDER_ID || 'my-provider',
-    serviceAccountEmail: process.env.MCP_SERVICE_ACCOUNT_EMAIL || 'mcp@my-project.iam.gserviceaccount.com',
+    serviceAccountEmail:
+      process.env.MCP_SERVICE_ACCOUNT_EMAIL || 'mcp@my-project.iam.gserviceaccount.com',
     oidcToken: process.env.OIDC_TOKEN || 'dummy-token-for-testing',
   };
 

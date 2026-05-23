@@ -16,7 +16,7 @@ Federation** authentication. Provides secure, keyless access to BigQuery through
 
 - **Zero Service Account Keys** - 100% Workload Identity Federation
 - **Google Workspace Integration** - OIDC user authentication
-- **MCP Protocol Compliant** - Follows official MCP SDK best practices (2025-06-18 spec)
+- **MCP Protocol Compliant** - Follows official MCP SDK best practices (2025-11-25 spec)
 - **Gemini Enterprise Ready** - OAuth 2.0 discovery (RFC 8414/9728), strict Streamable HTTP transport
 - **Resource Templates** - RFC 6570 URI templates for dataset/table/schema/sample/job/INFORMATION_SCHEMA
 - **Cost Elicitation Gate** - Per-query dry-run guardrail that surfaces high-cost confirmations to clients
@@ -25,7 +25,8 @@ Federation** authentication. Provides secure, keyless access to BigQuery through
 - **Model Armor Pre-flight** - Optional content-safety screening before tool execution
 - **Private Service Connect** - Optional private ingress for enterprise consumers
 - **Customer-Managed Encryption** - CMEK for BigQuery datasets
-- **Comprehensive Audit Logging** - 7-year retention for compliance
+- **Comprehensive Audit Logging** - 2555-day (7-year) retention via Cloud Logging log bucket with linked BigQuery
+  dataset for compliance
 - **Terraform Infrastructure** - Complete IaC for reproducible deployments
 - **Cloud Run Deployment** - Serverless, auto-scaling architecture
 - **OpenTelemetry** - Distributed tracing and per-tenant metrics
@@ -107,19 +108,18 @@ npm run typecheck
 
 ### Production Deployment
 
-```bash
-# Build Docker image
-docker build -t mcp-bigquery-server .
+All production infrastructure — including the Cloud Run service — is managed by Terraform. Container images are stored
+in Artifact Registry (`europe-west2-docker.pkg.dev`). Direct `gcloud run deploy` commands are not used in production.
 
-# Deploy infrastructure with Terraform
+```bash
+# Build and push container image to Artifact Registry
+docker build -t europe-west2-docker.pkg.dev/YOUR_PROJECT/db-mcp/mcp-bigquery-server:latest .
+docker push europe-west2-docker.pkg.dev/YOUR_PROJECT/db-mcp/mcp-bigquery-server:latest
+
+# Deploy infrastructure with Terraform (provisions Cloud Run + all supporting resources)
 cd terraform
 terraform init
 terraform apply
-
-# Deploy to Cloud Run
-gcloud run deploy mcp-bigquery-server \
-  --image gcr.io/YOUR_PROJECT/mcp-bigquery-server \
-  --region us-central1
 ```
 
 ## MCP Tools
@@ -171,7 +171,7 @@ BigQuery API
 | -------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | [Usage Guide](docs/USAGE-GUIDE.md)                                   | Complete guide for local dev, testing, and production               |
 | [Gemini Enterprise Deployment](docs/GEMINI-ENTERPRISE-DEPLOYMENT.md) | Runbook for registering as a Gemini Enterprise custom MCP connector |
-| [MCP Compliance](docs/MCP-COMPLIANCE.md)                             | MCP 2025-06-18 spec compliance matrix and gap implementations       |
+| [MCP Compliance](docs/MCP-COMPLIANCE.md)                             | MCP 2025-11-25 spec compliance matrix and gap implementations       |
 | [Architecture](docs/architecture/)                                   | System design and component documentation                           |
 | [Security](docs/SECURITY.md)                                         | Security middleware and best practices                              |
 | [WIF Guide](docs/wif-architecture.md)                                | Workload Identity Federation details                                |
@@ -225,7 +225,7 @@ GitHub Actions workflow automatically:
   `mcp.tool.call.duration`
 - **Cloud Logging**: Structured JSON logs
 - **Cloud Trace**: Distributed tracing via OpenTelemetry with `tenant.id` span attribute
-- **Audit Logs**: 7-year retention in BigQuery
+- **Audit Logs**: 2555-day retention in Cloud Logging log bucket, linked to BigQuery for long-term analysis
 - **Alerts**: Email/Slack notifications
 
 ## Compliance

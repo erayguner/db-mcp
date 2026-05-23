@@ -176,7 +176,7 @@ export function validateToolArgs<T extends ToolName>(
 }
 
 /**
- * Get tool schema as JSON Schema for MCP tool definition.
+ * Get tool schema as JSON Schema 2020-12 for MCP tool definition.
  * Uses zod-to-json-schema for accurate conversion.
  */
 export function getToolInputSchema(toolName: ToolName): JsonSchema {
@@ -186,5 +186,10 @@ export function getToolInputSchema(toolName: ToolName): JsonSchema {
     throw new Error(`Unknown tool: ${toolName}`);
   }
 
-  return zodToJsonSchema(schema, { target: 'jsonSchema7' }) as JsonSchema;
+  const base = zodToJsonSchema(schema, {
+    target: 'jsonSchema2019-09',
+    $refStrategy: 'none',
+  }) as JsonSchema;
+  base['$schema'] = 'https://json-schema.org/draft/2020-12/schema';
+  return base;
 }

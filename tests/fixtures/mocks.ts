@@ -22,14 +22,16 @@ export function createMockBigQueryClient() {
 
   const mockTable = {
     id: 'test-table',
-    getMetadata: jest.fn().mockResolvedValue([{
-      schema: {
-        fields: [
-          { name: 'id', type: 'STRING' },
-          { name: 'name', type: 'STRING' },
-        ],
+    getMetadata: jest.fn().mockResolvedValue([
+      {
+        schema: {
+          fields: [
+            { name: 'id', type: 'STRING' },
+            { name: 'name', type: 'STRING' },
+          ],
+        },
       },
-    }]),
+    ]),
   };
 
   const mockDataset = {

@@ -54,7 +54,7 @@ async function basicMultiProjectSetup() {
   // List all projects
   const projects = manager.listProjects();
   console.log(`Initialized ${projects.length} projects:`);
-  projects.forEach(p => {
+  projects.forEach((p) => {
     console.log(`  - ${p.displayName} (${p.projectId}) [${p.priority}]`);
   });
 
@@ -75,7 +75,7 @@ async function projectDiscoveryExample(manager: MultiProjectManager) {
   console.log('Discovering projects...');
   const discoveries = await manager.discoverProjects();
 
-  discoveries.forEach(result => {
+  discoveries.forEach((result) => {
     console.log(`\nProject: ${result.projectId}`);
     console.log(`  Accessible: ${result.accessible}`);
     console.log(`  Datasets: ${result.datasets.length}`);
@@ -88,11 +88,10 @@ async function projectDiscoveryExample(manager: MultiProjectManager) {
 
   // Validate permissions
   try {
-    const validation = await manager.validatePermission(
-      'analytics-prod',
-      'query_execution',
-      ['bigquery.jobs.create', 'bigquery.datasets.get']
-    );
+    const validation = await manager.validatePermission('analytics-prod', 'query_execution', [
+      'bigquery.jobs.create',
+      'bigquery.datasets.get',
+    ]);
 
     console.log('\nPermission validation:');
     console.log(`  Has access: ${validation.hasAccess}`);
@@ -150,7 +149,7 @@ function projectFilteringExample(manager: MultiProjectManager) {
 
   // Filter by priority
   const highPriority = manager.listProjects({ priority: 'high' });
-  console.log(`High priority projects: ${highPriority.map(p => p.displayName).join(', ')}`);
+  console.log(`High priority projects: ${highPriority.map((p) => p.displayName).join(', ')}`);
 
   // Filter by enabled status
   const enabled = manager.listProjects({ enabled: true });
@@ -201,7 +200,9 @@ function quotaManagementExample(manager: MultiProjectManager) {
     console.log(`\n  ${projectId}:`);
     console.log(`    Access count: ${pm.accessCount}`);
     console.log(`    Cache hit rate: ${pm.cacheStats.datasets.hitRate.toFixed(2)}`);
-    console.log(`    Pool utilization: ${pm.poolMetrics.activeConnections}/${pm.poolMetrics.totalConnections}`);
+    console.log(
+      `    Pool utilization: ${pm.poolMetrics.activeConnections}/${pm.poolMetrics.totalConnections}`
+    );
   });
 }
 
@@ -233,7 +234,7 @@ async function dynamicProjectManagementExample(manager: MultiProjectManager) {
   const dataEngProjects = manager.listProjects({
     hasLabel: { team: 'data-engineering' },
   });
-  console.log(`Data engineering projects: ${dataEngProjects.map(p => p.displayName).join(', ')}`);
+  console.log(`Data engineering projects: ${dataEngProjects.map((p) => p.displayName).join(', ')}`);
 
   // Disable project
   console.log('\nDisabling test project...');
@@ -278,7 +279,9 @@ function eventDrivenMonitoringExample(manager: MultiProjectManager) {
   });
 
   manager.on('cross-project:query:completed', ({ successCount, projectIds }) => {
-    console.log(`✅ Cross-project query completed: ${successCount}/${projectIds.length} successful`);
+    console.log(
+      `✅ Cross-project query completed: ${successCount}/${projectIds.length} successful`
+    );
   });
 
   // Discovery events
@@ -371,7 +374,6 @@ async function main() {
 
     // Example 8: Health and shutdown
     await healthAndShutdownExample(manager);
-
   } catch (error) {
     console.error('Error in examples:', error);
     process.exit(1);

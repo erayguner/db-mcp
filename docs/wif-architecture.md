@@ -1,25 +1,26 @@
 # Workload Identity Federation Architecture
 
-**Version**: 2.0.0
-**Last Updated**: 2025-10-26
-**Status**: REDESIGNED FOR ZERO-KEY AUTHENTICATION
+**Version**: 2.0.0 **Last Updated**: 2025-10-26 **Status**: REDESIGNED FOR ZERO-KEY AUTHENTICATION
 
 ---
 
 ## Executive Summary
 
-This document defines the **Workload Identity Federation (WIF)** architecture for the BigQuery MCP Server, replacing all service account key-based authentication with keyless, short-lived credentials. This redesign eliminates the security risks of long-lived service account keys while providing seamless authentication across multiple deployment environments.
+This document defines the **Workload Identity Federation (WIF)** architecture for the BigQuery MCP Server, replacing all
+service account key-based authentication with keyless, short-lived credentials. This redesign eliminates the security
+risks of long-lived service account keys while providing seamless authentication across multiple deployment
+environments.
 
 ### Key Architectural Changes
 
-| Aspect | Previous Architecture | WIF Architecture |
-|--------|----------------------|------------------|
-| **Authentication** | Service account JSON keys | Workload Identity Federation |
-| **Credential Lifetime** | Indefinite (until rotated) | 1 hour maximum |
-| **Key Storage** | File system, environment vars | No keys stored |
-| **Rotation** | Manual (90-day policy) | Automatic (hourly) |
-| **Cross-Platform** | Separate keys per platform | Unified identity pool |
-| **Security Risk** | High (key exposure) | Minimal (ephemeral tokens) |
+| Aspect                  | Previous Architecture         | WIF Architecture             |
+| ----------------------- | ----------------------------- | ---------------------------- |
+| **Authentication**      | Service account JSON keys     | Workload Identity Federation |
+| **Credential Lifetime** | Indefinite (until rotated)    | 1 hour maximum               |
+| **Key Storage**         | File system, environment vars | No keys stored               |
+| **Rotation**            | Manual (90-day policy)        | Automatic (hourly)           |
+| **Cross-Platform**      | Separate keys per platform    | Unified identity pool        |
+| **Security Risk**       | High (key exposure)           | Minimal (ephemeral tokens)   |
 
 ---
 
@@ -27,7 +28,8 @@ This document defines the **Workload Identity Federation (WIF)** architecture fo
 
 ### 1.1 What is Workload Identity Federation?
 
-Workload Identity Federation allows applications running outside GCP to access Google Cloud resources **without service account keys** by:
+Workload Identity Federation allows applications running outside GCP to access Google Cloud resources **without service
+account keys** by:
 
 1. **External Identity Provider** (Google Workspace OIDC, GitHub Actions, AWS IAM)
 2. **Identity Pool** (WIF trust configuration)
@@ -143,7 +145,7 @@ providers:
     # Attribute mapping
     attribute_mapping:
       google.subject: assertion.sub
-      google.groups: assertion.hd  # Google Workspace domain
+      google.groups: assertion.hd # Google Workspace domain
       attribute.email: assertion.email
       attribute.email_verified: assertion.email_verified
 
@@ -209,7 +211,7 @@ service_accounts:
       - principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/bigquery-mcp-pool/attribute.repository/your-org/bigquery-mcp-server
 
     # Token lifetime
-    token_lifetime: 3600  # 1 hour
+    token_lifetime: 3600 # 1 hour
 
   staging:
     email: mcp-server-staging@PROJECT.iam.gserviceaccount.com
@@ -231,7 +233,7 @@ service_accounts:
     email: mcp-server-prod@PROJECT.iam.gserviceaccount.com
     description: Production environment service account (WIF-based)
     roles:
-      - roles/bigquery.dataViewer  # Read-only in production
+      - roles/bigquery.dataViewer # Read-only in production
       - roles/bigquery.jobUser
     dataset_access:
       - project: PROJECT_ID
@@ -248,7 +250,7 @@ service_accounts:
 
     # Require approval for production access
     require_approval: true
-    approval_timeout: 300  # 5 minutes
+    approval_timeout: 300 # 5 minutes
 ```
 
 ---
@@ -271,58 +273,58 @@ service_accounts:
 
 interface GoogleWorkspaceAuthFlow {
   // Step 1: User authentication
-  userEmail: string;          // user@your-company.com
-  workspaceDomain: string;    // your-company.com
-  oidcProvider: string;       // https://accounts.google.com
+  userEmail: string; // user@your-company.com
+  workspaceDomain: string; // your-company.com
+  oidcProvider: string; // https://accounts.google.com
 
   // Step 2: OIDC token from Google
   idToken: {
-    iss: "https://accounts.google.com";
-    sub: "110169484474386276334";  // Google user ID
-    email: "user@your-company.com";
+    iss: 'https://accounts.google.com';
+    sub: '110169484474386276334'; // Google user ID
+    email: 'user@your-company.com';
     email_verified: true;
-    hd: "your-company.com";  // Hosted domain
-    aud: string;  // WIF pool audience
+    hd: 'your-company.com'; // Hosted domain
+    aud: string; // WIF pool audience
     exp: number;
     iat: number;
   };
 
   // Step 3: WIF token exchange
   wifTokenExchange: {
-    endpoint: "https://sts.googleapis.com/v1/token";
+    endpoint: 'https://sts.googleapis.com/v1/token';
     request: {
-      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange";
-      audience: "//iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/bigquery-mcp-pool/providers/google-workspace-oidc";
-      subject_token_type: "urn:ietf:params:oauth:token-type:jwt";
-      subject_token: string;  // OIDC ID token
-      requested_token_type: "urn:ietf:params:oauth:token-type:access_token";
-      scope: "https://www.googleapis.com/auth/cloud-platform";
+      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange';
+      audience: '//iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/bigquery-mcp-pool/providers/google-workspace-oidc';
+      subject_token_type: 'urn:ietf:params:oauth:token-type:jwt';
+      subject_token: string; // OIDC ID token
+      requested_token_type: 'urn:ietf:params:oauth:token-type:access_token';
+      scope: 'https://www.googleapis.com/auth/cloud-platform';
     };
     response: {
-      access_token: string;  // Federated token
-      issued_token_type: "urn:ietf:params:oauth:token-type:access_token";
-      token_type: "Bearer";
+      access_token: string; // Federated token
+      issued_token_type: 'urn:ietf:params:oauth:token-type:access_token';
+      token_type: 'Bearer';
       expires_in: 3600;
     };
   };
 
   // Step 4: Service account impersonation
   impersonation: {
-    endpoint: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/mcp-server-dev@PROJECT.iam.gserviceaccount.com:generateAccessToken";
+    endpoint: 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/mcp-server-dev@PROJECT.iam.gserviceaccount.com:generateAccessToken';
     request: {
-      scope: ["https://www.googleapis.com/auth/bigquery"];
-      lifetime: "3600s";
+      scope: ['https://www.googleapis.com/auth/bigquery'];
+      lifetime: '3600s';
     };
     response: {
-      accessToken: string;  // Service account token
-      expireTime: string;   // RFC3339 timestamp
+      accessToken: string; // Service account token
+      expireTime: string; // RFC3339 timestamp
     };
   };
 
   // Step 5: BigQuery API access
   bigQueryAccess: {
     authorization: `Bearer ${impersonation.response.accessToken}`;
-    tokenExpiry: 3600;  // seconds
+    tokenExpiry: 3600; // seconds
     autoRefresh: true;
   };
 }
@@ -331,8 +333,8 @@ interface GoogleWorkspaceAuthFlow {
 **Implementation Example**:
 
 ```typescript
-import {GoogleAuth} from 'google-auth-library';
-import {BigQuery} from '@google-cloud/bigquery';
+import { GoogleAuth } from 'google-auth-library';
+import { BigQuery } from '@google-cloud/bigquery';
 
 class WorkspaceWIFAuth {
   private auth: GoogleAuth;
@@ -355,12 +357,12 @@ class WorkspaceWIFAuth {
         token_url: 'https://sts.googleapis.com/v1/token',
         service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${serviceAccountEmail}:generateAccessToken`,
         credential_source: {
-          file: '/path/to/oidc-token.txt',  // Path to OIDC token file
+          file: '/path/to/oidc-token.txt', // Path to OIDC token file
           format: {
-            type: 'text'
-          }
-        }
-      }
+            type: 'text',
+          },
+        },
+      },
     });
   }
 
@@ -370,7 +372,7 @@ class WorkspaceWIFAuth {
 
     return new BigQuery({
       projectId: 'your-project',
-      authClient: client
+      authClient: client,
     });
   }
 
@@ -379,7 +381,7 @@ class WorkspaceWIFAuth {
 
     const [rows] = await bigquery.query({
       query: sql,
-      location: 'EU'
+      location: 'EU',
     });
 
     return rows;
@@ -455,24 +457,24 @@ jobs:
 interface GitHubActionsAuthFlow {
   // Step 1: GitHub OIDC token request
   githubOidcToken: {
-    endpoint: "https://token.actions.githubusercontent.com";
+    endpoint: 'https://token.actions.githubusercontent.com';
     headers: {
-      "Authorization": "Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN";
+      Authorization: 'Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN';
     };
     response: {
-      value: string;  // OIDC JWT token
+      value: string; // OIDC JWT token
     };
   };
 
   // Token claims
   tokenClaims: {
-    iss: "https://token.actions.githubusercontent.com";
-    sub: "repo:your-org/bigquery-mcp-server:ref:refs/heads/main";
-    aud: string;  // WIF pool audience
-    repository: "your-org/bigquery-mcp-server";
-    repository_owner: "your-org";
-    workflow: "BigQuery Integration Tests";
-    ref: "refs/heads/main";
+    iss: 'https://token.actions.githubusercontent.com';
+    sub: 'repo:your-org/bigquery-mcp-server:ref:refs/heads/main';
+    aud: string; // WIF pool audience
+    repository: 'your-org/bigquery-mcp-server';
+    repository_owner: 'your-org';
+    workflow: 'BigQuery Integration Tests';
+    ref: 'refs/heads/main';
     sha: string;
     job_workflow_ref: string;
   };
@@ -502,16 +504,16 @@ interface GitHubActionsAuthFlow {
 interface CloudRunAuthFlow {
   // Option 1: Direct service account attachment (RECOMMENDED)
   directAttachment: {
-    serviceAccount: "mcp-server-prod@PROJECT.iam.gserviceaccount.com";
+    serviceAccount: 'mcp-server-prod@PROJECT.iam.gserviceaccount.com';
     // Cloud Run automatically provides credentials
-    credentialSource: "GCE_METADATA_SERVER";
+    credentialSource: 'GCE_METADATA_SERVER';
     // No WIF needed - native GCP workload
   };
 
   // Option 2: WIF-based (for multi-cloud scenarios)
   wifBased: {
-    metadataServer: "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity";
-    audience: string;  // WIF pool audience
+    metadataServer: 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity';
+    audience: string; // WIF pool audience
     // Rest follows standard WIF flow
   };
 }
@@ -519,43 +521,43 @@ interface CloudRunAuthFlow {
 // Cloud Run deployment configuration
 const cloudRunConfig = {
   service: {
-    apiVersion: "serving.knative.dev/v1",
-    kind: "Service",
+    apiVersion: 'serving.knative.dev/v1',
+    kind: 'Service',
     metadata: {
-      name: "bigquery-mcp-server",
+      name: 'bigquery-mcp-server',
       annotations: {
         // Workload Identity configuration
-        "run.googleapis.com/launch-stage": "BETA",
-        "iam.gke.io/gcp-service-account": "mcp-server-prod@PROJECT.iam.gserviceaccount.com"
-      }
+        'run.googleapis.com/launch-stage': 'BETA',
+        'iam.gke.io/gcp-service-account': 'mcp-server-prod@PROJECT.iam.gserviceaccount.com',
+      },
     },
     spec: {
       template: {
         metadata: {
           annotations: {
             // Service account attachment
-            "run.googleapis.com/service-account": "mcp-server-prod@PROJECT.iam.gserviceaccount.com"
-          }
+            'run.googleapis.com/service-account': 'mcp-server-prod@PROJECT.iam.gserviceaccount.com',
+          },
         },
         spec: {
           containers: [
             {
-              image: "gcr.io/PROJECT/bigquery-mcp-server:latest",
+              image: 'gcr.io/PROJECT/bigquery-mcp-server:latest',
               env: [
                 {
-                  name: "GOOGLE_CLOUD_PROJECT",
-                  value: "your-project"
+                  name: 'GOOGLE_CLOUD_PROJECT',
+                  value: 'your-project',
                 },
                 // No GOOGLE_APPLICATION_CREDENTIALS needed!
                 // Cloud Run provides credentials automatically
-              ]
-            }
+              ],
+            },
           ],
-          serviceAccountName: "mcp-server-prod@PROJECT.iam.gserviceaccount.com"
-        }
-      }
-    }
-  }
+          serviceAccountName: 'mcp-server-prod@PROJECT.iam.gserviceaccount.com',
+        },
+      },
+    },
+  },
 };
 
 // TypeScript implementation
@@ -566,7 +568,7 @@ class CloudRunWIFAuth {
     // Cloud Run automatically provides credentials
     // via metadata server - no configuration needed!
     this.bigquery = new BigQuery({
-      projectId: process.env.GOOGLE_CLOUD_PROJECT
+      projectId: process.env.GOOGLE_CLOUD_PROJECT,
       // No credentials parameter needed!
     });
   }
@@ -574,7 +576,7 @@ class CloudRunWIFAuth {
   async executeQuery(sql: string): Promise<any[]> {
     const [rows] = await this.bigquery.query({
       query: sql,
-      location: 'EU'
+      location: 'EU',
     });
 
     return rows;
@@ -612,7 +614,7 @@ interface WIFAuthConfig {
   serviceAccount: {
     email: string;
     scopes: string[];
-    lifetime: number;  // Token lifetime in seconds (max 3600)
+    lifetime: number; // Token lifetime in seconds (max 3600)
   };
 
   // Credential source
@@ -633,7 +635,7 @@ interface WIFAuthConfig {
 
   // Token refresh configuration
   refresh: {
-    bufferSeconds: number;  // Refresh before expiry (default: 300)
+    bufferSeconds: number; // Refresh before expiry (default: 300)
     maxRetries: number;
     retryDelayMs: number;
   };
@@ -648,7 +650,7 @@ class WIFAuthenticationManager {
 
   constructor(private config: WIFAuthConfig) {
     this.authClient = new GoogleAuth({
-      credentials: this.buildExternalAccountCredentials()
+      credentials: this.buildExternalAccountCredentials(),
     });
 
     // Start token refresh loop
@@ -659,7 +661,7 @@ class WIFAuthenticationManager {
    * Build external account credentials configuration
    */
   private buildExternalAccountCredentials(): any {
-    const {identityPool, serviceAccount, credentialSource} = this.config;
+    const { identityPool, serviceAccount, credentialSource } = this.config;
 
     return {
       type: 'external_account',
@@ -677,11 +679,11 @@ class WIFAuthenticationManager {
       service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${serviceAccount.email}:generateAccessToken`,
 
       service_account_impersonation: {
-        token_lifetime_seconds: serviceAccount.lifetime
+        token_lifetime_seconds: serviceAccount.lifetime,
       },
 
       // Credential source
-      credential_source: credentialSource
+      credential_source: credentialSource,
     };
   }
 
@@ -693,7 +695,7 @@ class WIFAuthenticationManager {
 
     return new BigQuery({
       projectId,
-      authClient: client
+      authClient: client,
     });
   }
 
@@ -730,16 +732,16 @@ class WIFAuthenticationManager {
     while (retries < this.config.refresh.maxRetries) {
       try {
         const client = await this.authClient.getClient();
-        const {token, expiry_date} = await client.getAccessToken();
+        const { token, expiry_date } = await client.getAccessToken();
 
         this.currentToken = {
           accessToken: token!,
-          expiry: new Date(expiry_date!)
+          expiry: new Date(expiry_date!),
         };
 
         console.log('[WIF] Token refreshed successfully', {
           expiry: this.currentToken.expiry,
-          serviceAccount: this.config.serviceAccount.email
+          serviceAccount: this.config.serviceAccount.email,
         });
 
         return;
@@ -747,13 +749,11 @@ class WIFAuthenticationManager {
         retries++;
         console.error('[WIF] Token refresh failed', {
           attempt: retries,
-          error: error.message
+          error: error.message,
         });
 
         if (retries < this.config.refresh.maxRetries) {
-          await new Promise(resolve =>
-            setTimeout(resolve, this.config.refresh.retryDelayMs * retries)
-          );
+          await new Promise((resolve) => setTimeout(resolve, this.config.refresh.retryDelayMs * retries));
         }
       }
     }
@@ -796,12 +796,10 @@ class WIFAuthenticationManager {
       await client.getAccessToken();
 
       // Test BigQuery access
-      const bigquery = await this.getBigQueryClient(
-        this.config.identityPool.projectNumber
-      );
-      await bigquery.getDatasets({maxResults: 1});
+      const bigquery = await this.getBigQueryClient(this.config.identityPool.projectNumber);
+      await bigquery.getDatasets({ maxResults: 1 });
 
-      return {valid: true, errors, warnings};
+      return { valid: true, errors, warnings };
     } catch (error: any) {
       if (error.code === 'ENOENT') {
         errors.push('Credential source file not found');
@@ -813,7 +811,7 @@ class WIFAuthenticationManager {
         errors.push(error.message);
       }
 
-      return {valid: false, errors, warnings};
+      return { valid: false, errors, warnings };
     }
   }
 }
@@ -867,30 +865,26 @@ class WIFConnectionManager {
   private async validateClient(client: BigQuery): Promise<boolean> {
     try {
       // Test query to validate credentials
-      await client.getDatasets({maxResults: 1});
+      await client.getDatasets({ maxResults: 1 });
       return true;
     } catch (error: any) {
       if (error.code === 401 || error.code === 403) {
-        return false;  // Token expired or invalid
+        return false; // Token expired or invalid
       }
-      throw error;  // Other error, re-throw
+      throw error; // Other error, re-throw
     }
   }
 
   /**
    * Execute query with automatic token refresh
    */
-  async executeQuery(
-    projectId: string,
-    query: string,
-    options?: QueryOptions
-  ): Promise<any[]> {
+  async executeQuery(projectId: string, query: string, options?: QueryOptions): Promise<any[]> {
     const client = await this.getClient(projectId);
 
     try {
       const [rows] = await client.query({
         query,
-        ...options
+        ...options,
       });
 
       return rows;
@@ -904,7 +898,7 @@ class WIFConnectionManager {
 
         const [rows] = await freshClient.query({
           query,
-          ...options
+          ...options,
         });
 
         return rows;
@@ -931,8 +925,8 @@ class WIFConnectionManager {
           message: 'WIF authentication failed',
           details: {
             errors: validation.errors,
-            warnings: validation.warnings
-          }
+            warnings: validation.warnings,
+          },
         };
       }
 
@@ -942,14 +936,14 @@ class WIFConnectionManager {
         details: {
           serviceAccount: this.wifConfig.serviceAccount.email,
           tokenLifetime: this.wifConfig.serviceAccount.lifetime,
-          warnings: validation.warnings
-        }
+          warnings: validation.warnings,
+        },
       };
     } catch (error: any) {
       return {
         healthy: false,
         message: 'WIF health check failed',
-        details: {error: error.message}
+        details: { error: error.message },
       };
     }
   }
@@ -972,9 +966,7 @@ class WIFConnectionManager {
     },
     "service_account": {
       "email": "mcp-server-dev@PROJECT.iam.gserviceaccount.com",
-      "scopes": [
-        "https://www.googleapis.com/auth/bigquery"
-      ],
+      "scopes": ["https://www.googleapis.com/auth/bigquery"],
       "lifetime": 3600
     },
     "credential_source": {
@@ -992,11 +984,7 @@ class WIFConnectionManager {
   },
   "bigquery": {
     "default_project": "dev-project",
-    "allowed_datasets": [
-      "dev_analytics",
-      "dev_logs",
-      "dev_testing"
-    ],
+    "allowed_datasets": ["dev_analytics", "dev_logs", "dev_testing"],
     "read_only": false
   }
 }
@@ -1014,9 +1002,7 @@ class WIFConnectionManager {
     },
     "service_account": {
       "email": "mcp-server-staging@PROJECT.iam.gserviceaccount.com",
-      "scopes": [
-        "https://www.googleapis.com/auth/bigquery"
-      ],
+      "scopes": ["https://www.googleapis.com/auth/bigquery"],
       "lifetime": 3600
     },
     "credential_source": {
@@ -1031,10 +1017,7 @@ class WIFConnectionManager {
   },
   "bigquery": {
     "default_project": "staging-project",
-    "allowed_datasets": [
-      "staging_analytics",
-      "staging_integration_tests"
-    ],
+    "allowed_datasets": ["staging_analytics", "staging_integration_tests"],
     "read_only": false
   }
 }
@@ -1052,9 +1035,7 @@ class WIFConnectionManager {
     },
     "service_account": {
       "email": "mcp-server-prod@PROJECT.iam.gserviceaccount.com",
-      "scopes": [
-        "https://www.googleapis.com/auth/bigquery.readonly"
-      ],
+      "scopes": ["https://www.googleapis.com/auth/bigquery.readonly"],
       "lifetime": 3600
     },
     "credential_source": {
@@ -1072,10 +1053,7 @@ class WIFConnectionManager {
   },
   "bigquery": {
     "default_project": "prod-project",
-    "allowed_datasets": [
-      "prod_analytics",
-      "prod_metrics"
-    ],
+    "allowed_datasets": ["prod_analytics", "prod_metrics"],
     "read_only": true
   }
 }
@@ -1095,7 +1073,7 @@ class WIFConnectionManager {
   members:
     - principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/bigquery-mcp-pool/attribute.email_verified/true
   condition:
-    title: "dev-access-workspace-users"
+    title: 'dev-access-workspace-users'
     expression: |
       assertion.email_verified == true &&
       assertion.hd == "your-company.com" &&
@@ -1106,7 +1084,7 @@ class WIFConnectionManager {
   members:
     - principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/bigquery-mcp-pool/attribute.repository/your-org/bigquery-mcp-server
   condition:
-    title: "staging-access-cicd"
+    title: 'staging-access-cicd'
     expression: |
       assertion.repository_owner == "your-org" &&
       assertion.repository == "your-org/bigquery-mcp-server" &&
@@ -1117,7 +1095,7 @@ class WIFConnectionManager {
   members:
     - principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/bigquery-mcp-pool/attribute.groups/bigquery-admins@your-company.com
   condition:
-    title: "prod-access-admin-group"
+    title: 'prod-access-admin-group'
     expression: |
       assertion.email_verified == true &&
       assertion.hd == "your-company.com" &&
@@ -1304,11 +1282,7 @@ class HybridAuthenticationManager {
   private keyBasedAuth: GoogleAuth | null = null;
   private mode: 'wif' | 'key' | 'auto';
 
-  constructor(config: {
-    wifConfig?: WIFAuthConfig;
-    keyFilePath?: string;
-    mode?: 'wif' | 'key' | 'auto';
-  }) {
+  constructor(config: { wifConfig?: WIFAuthConfig; keyFilePath?: string; mode?: 'wif' | 'key' | 'auto' }) {
     this.mode = config.mode || 'auto';
 
     // Initialize WIF if configured
@@ -1319,7 +1293,7 @@ class HybridAuthenticationManager {
     // Initialize key-based auth if configured
     if (config.keyFilePath) {
       this.keyBasedAuth = new GoogleAuth({
-        keyFilename: config.keyFilePath
+        keyFilename: config.keyFilePath,
       });
     }
   }
@@ -1335,7 +1309,7 @@ class HybridAuthenticationManager {
 
           if (this.keyBasedAuth) {
             const client = await this.keyBasedAuth.getClient();
-            return new BigQuery({projectId, authClient: client});
+            return new BigQuery({ projectId, authClient: client });
           }
 
           throw error;
@@ -1345,7 +1319,7 @@ class HybridAuthenticationManager {
       if (this.keyBasedAuth) {
         console.warn('[Hybrid] Using legacy key-based authentication');
         const client = await this.keyBasedAuth.getClient();
-        return new BigQuery({projectId, authClient: client});
+        return new BigQuery({ projectId, authClient: client });
       }
 
       throw new Error('No authentication method configured');
@@ -1365,7 +1339,7 @@ class HybridAuthenticationManager {
         throw new Error('Key-based authentication not configured');
       }
       const client = await this.keyBasedAuth.getClient();
-      return new BigQuery({projectId, authClient: client});
+      return new BigQuery({ projectId, authClient: client });
     }
 
     throw new Error(`Invalid authentication mode: ${this.mode}`);
@@ -1376,12 +1350,18 @@ class HybridAuthenticationManager {
 const auth = new HybridAuthenticationManager({
   wifConfig: {
     // New WIF configuration
-    identityPool: {/*...*/},
-    serviceAccount: {/*...*/},
-    credentialSource: {/*...*/}
+    identityPool: {
+      /*...*/
+    },
+    serviceAccount: {
+      /*...*/
+    },
+    credentialSource: {
+      /*...*/
+    },
   },
   keyFilePath: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-  mode: 'auto'  // Prefer WIF, fall back to keys
+  mode: 'auto', // Prefer WIF, fall back to keys
 });
 ```
 
@@ -1495,16 +1475,16 @@ interface WIFMetrics {
 
 class WIFMonitoring {
   private metrics: WIFMetrics = {
-    tokenExchanges: {total: 0, successful: 0, failed: 0, avgLatencyMs: 0},
-    tokenRefreshes: {total: 0, successful: 0, failed: 0, avgLatencyMs: 0},
-    impersonations: {total: 0, successful: 0, failed: 0, byServiceAccount: {}},
+    tokenExchanges: { total: 0, successful: 0, failed: 0, avgLatencyMs: 0 },
+    tokenRefreshes: { total: 0, successful: 0, failed: 0, avgLatencyMs: 0 },
+    impersonations: { total: 0, successful: 0, failed: 0, byServiceAccount: {} },
     errors: {
       invalidToken: 0,
       permissionDenied: 0,
       quotaExceeded: 0,
       networkError: 0,
-      other: 0
-    }
+      other: 0,
+    },
   };
 
   /**
@@ -1526,7 +1506,7 @@ class WIFMonitoring {
    * Export metrics to Cloud Monitoring
    */
   async exportToCloudMonitoring(): Promise<void> {
-    const {Monitoring} = await import('@google-cloud/monitoring');
+    const { Monitoring } = await import('@google-cloud/monitoring');
     const client = new Monitoring.MetricServiceClient();
 
     const projectId = process.env.GOOGLE_CLOUD_PROJECT!;
@@ -1547,12 +1527,12 @@ class WIFMonitoring {
         'wif.googleapis.com/token_refresh_latency',
         this.metrics.tokenRefreshes.avgLatencyMs,
         'Token refresh latency (ms)'
-      )
+      ),
     ];
 
     await client.createTimeSeries({
       name: projectPath,
-      timeSeries: timeSeriesData
+      timeSeries: timeSeriesData,
     });
   }
 
@@ -1563,21 +1543,21 @@ class WIFMonitoring {
     // Alert on high token exchange failure rate
     const alertPolicy = {
       displayName: 'WIF Token Exchange Failure Rate',
-      conditions: [{
-        displayName: 'Token exchange failures > 10%',
-        conditionThreshold: {
-          filter: 'metric.type="wif.googleapis.com/token_exchange_errors"',
-          comparison: 'COMPARISON_GT',
-          thresholdValue: 0.1,
-          duration: {seconds: 300}
-        }
-      }],
-      notificationChannels: [
-        'projects/PROJECT/notificationChannels/EMAIL_CHANNEL'
+      conditions: [
+        {
+          displayName: 'Token exchange failures > 10%',
+          conditionThreshold: {
+            filter: 'metric.type="wif.googleapis.com/token_exchange_errors"',
+            comparison: 'COMPARISON_GT',
+            thresholdValue: 0.1,
+            duration: { seconds: 300 },
+          },
+        },
       ],
+      notificationChannels: ['projects/PROJECT/notificationChannels/EMAIL_CHANNEL'],
       alertStrategy: {
-        autoClose: {seconds: 3600}
-      }
+        autoClose: { seconds: 3600 },
+      },
     };
 
     // Create alert policy via Cloud Monitoring API
@@ -1612,7 +1592,7 @@ class WIFTroubleshooter {
         issue: 'Workload Identity Pool not found',
         cause: error.message,
         resolution: 'Run migration-phase1.sh to create WIF infrastructure',
-        severity: 'critical'
+        severity: 'critical',
       });
     }
 
@@ -1624,7 +1604,7 @@ class WIFTroubleshooter {
         issue: 'Service account lacks required permissions',
         cause: error.message,
         resolution: 'Grant roles/bigquery.dataViewer and roles/bigquery.jobUser',
-        severity: 'critical'
+        severity: 'critical',
       });
     }
 
@@ -1636,7 +1616,7 @@ class WIFTroubleshooter {
         issue: 'Service account impersonation not configured',
         cause: error.message,
         resolution: 'Grant roles/iam.workloadIdentityUser to WIF principals',
-        severity: 'critical'
+        severity: 'critical',
       });
     }
 
@@ -1648,7 +1628,7 @@ class WIFTroubleshooter {
         issue: 'Token exchange failing',
         cause: error.message,
         resolution: 'Verify external token is valid and attribute conditions match',
-        severity: 'critical'
+        severity: 'critical',
       });
     }
 
@@ -1660,7 +1640,7 @@ class WIFTroubleshooter {
         issue: 'Credential source unavailable',
         cause: error.message,
         resolution: 'Check credential source file/URL/environment variable',
-        severity: 'critical'
+        severity: 'critical',
       });
     }
 
@@ -1668,11 +1648,11 @@ class WIFTroubleshooter {
   }
 
   async verifyWIFPool(): Promise<void> {
-    const {execSync} = await import('child_process');
+    const { execSync } = await import('child_process');
 
     const result = execSync(
       `gcloud iam workload-identity-pools describe bigquery-mcp-pool --location=global --format=json`,
-      {encoding: 'utf-8'}
+      { encoding: 'utf-8' }
     );
 
     const pool = JSON.parse(result);
@@ -1683,26 +1663,26 @@ class WIFTroubleshooter {
   }
 
   async verifyServiceAccountPermissions(): Promise<void> {
-    const {BigQuery} = await import('@google-cloud/bigquery');
+    const { BigQuery } = await import('@google-cloud/bigquery');
     const bigquery = new BigQuery();
 
     // Test BigQuery access
-    await bigquery.getDatasets({maxResults: 1});
+    await bigquery.getDatasets({ maxResults: 1 });
   }
 
   async verifyImpersonationBindings(): Promise<void> {
-    const {execSync} = await import('child_process');
+    const { execSync } = await import('child_process');
 
     const saEmail = 'mcp-server-dev@PROJECT.iam.gserviceaccount.com';
-    const result = execSync(
-      `gcloud iam service-accounts get-iam-policy ${saEmail} --format=json`,
-      {encoding: 'utf-8'}
-    );
+    const result = execSync(`gcloud iam service-accounts get-iam-policy ${saEmail} --format=json`, {
+      encoding: 'utf-8',
+    });
 
     const policy = JSON.parse(result);
-    const hasWIFBinding = policy.bindings?.some((b: any) =>
-      b.role === 'roles/iam.workloadIdentityUser' &&
-      b.members?.some((m: string) => m.includes('workloadIdentityPools'))
+    const hasWIFBinding = policy.bindings?.some(
+      (b: any) =>
+        b.role === 'roles/iam.workloadIdentityUser' &&
+        b.members?.some((m: string) => m.includes('workloadIdentityPools'))
     );
 
     if (!hasWIFBinding) {
@@ -1716,23 +1696,23 @@ class WIFTroubleshooter {
       identityPool: {
         projectNumber: 'PROJECT_NUMBER',
         poolId: 'bigquery-mcp-pool',
-        providerId: 'google-workspace-oidc'
+        providerId: 'google-workspace-oidc',
       },
       serviceAccount: {
         email: 'mcp-server-dev@PROJECT.iam.gserviceaccount.com',
         scopes: ['https://www.googleapis.com/auth/bigquery'],
-        lifetime: 3600
+        lifetime: 3600,
       },
       credentialSource: {
         type: 'file',
         file: '/var/run/secrets/google/oidc-token.txt',
-        format: {type: 'text'}
+        format: { type: 'text' },
       },
       refresh: {
         bufferSeconds: 300,
         maxRetries: 3,
-        retryDelayMs: 1000
-      }
+        retryDelayMs: 1000,
+      },
     });
 
     await auth.getAccessToken();
@@ -1759,19 +1739,18 @@ class WIFTroubleshooter {
 
 ### ADR-006: Adopt Workload Identity Federation
 
-**Status**: APPROVED
-**Date**: 2025-10-26
-**Deciders**: Security Team, Platform Team, BigQuery MCP Team
+**Status**: APPROVED **Date**: 2025-10-26 **Deciders**: Security Team, Platform Team, BigQuery MCP Team
 
 **Context**:
+
 - Current architecture relies on service account JSON keys
 - Keys have indefinite lifetime (security risk)
 - Keys stored in environment variables and files (exposure risk)
 - Manual key rotation required (operational burden)
 - No centralized identity management
 
-**Decision**:
-Migrate to Workload Identity Federation for all authentication:
+**Decision**: Migrate to Workload Identity Federation for all authentication:
+
 1. Replace all service account keys with WIF token exchange
 2. Implement short-lived credentials (1-hour max)
 3. Use attribute-based access control (ABAC)
@@ -1779,6 +1758,7 @@ Migrate to Workload Identity Federation for all authentication:
 5. Zero-key storage (ephemeral tokens only)
 
 **Rationale**:
+
 - **Security**: Eliminates long-lived credential exposure
 - **Automation**: Automatic credential rotation (hourly)
 - **Compliance**: Meets zero-trust architecture requirements
@@ -1786,6 +1766,7 @@ Migrate to Workload Identity Federation for all authentication:
 - **Auditability**: Centralized access control and logging
 
 **Consequences**:
+
 - **Positive**:
   - Reduced security risk (no key exposure)
   - Automated credential management
@@ -1806,6 +1787,7 @@ Migrate to Workload Identity Federation for all authentication:
   - Token caching to minimize latency impact
 
 **Implementation Plan**:
+
 1. Week 1: WIF infrastructure setup
 2. Weeks 2-3: Parallel operation (WIF + keys)
 3. Week 4: WIF-only, disable all keys
@@ -1819,18 +1801,16 @@ Migrate to Workload Identity Federation for all authentication:
 
 This Workload Identity Federation architecture provides:
 
-✅ **Zero-Key Authentication**: No service account keys stored anywhere
-✅ **Short-Lived Credentials**: 1-hour maximum token lifetime
-✅ **Automatic Rotation**: Tokens refresh automatically
-✅ **Multi-Environment Support**: Dev, staging, production with separate identities
-✅ **Attribute-Based Access**: Fine-grained access control via ABAC
-✅ **Multi-Platform Support**: Google Workspace, GitHub Actions, Cloud Run
-✅ **Zero-Trust Security**: Identity verification at every layer
-✅ **Comprehensive Monitoring**: Token metrics and alerting
+✅ **Zero-Key Authentication**: No service account keys stored anywhere ✅ **Short-Lived Credentials**: 1-hour maximum
+token lifetime ✅ **Automatic Rotation**: Tokens refresh automatically ✅ **Multi-Environment Support**: Dev, staging,
+production with separate identities ✅ **Attribute-Based Access**: Fine-grained access control via ABAC ✅
+**Multi-Platform Support**: Google Workspace, GitHub Actions, Cloud Run ✅ **Zero-Trust Security**: Identity
+verification at every layer ✅ **Comprehensive Monitoring**: Token metrics and alerting
 
 ### 10.2 Implementation Checklist
 
 **Phase 1: Infrastructure (Week 1)**
+
 - [ ] Create Workload Identity Pool
 - [ ] Configure Google Workspace OIDC provider
 - [ ] Configure GitHub Actions OIDC provider
@@ -1839,6 +1819,7 @@ This Workload Identity Federation architecture provides:
 - [ ] Configure attribute conditions for ABAC
 
 **Phase 2: Application Updates (Weeks 2-3)**
+
 - [ ] Implement WIFAuthenticationManager class
 - [ ] Update ConnectionManager for WIF support
 - [ ] Add hybrid authentication support (WIF + keys)
@@ -1847,6 +1828,7 @@ This Workload Identity Federation architecture provides:
 - [ ] Implement monitoring and metrics
 
 **Phase 3: Testing (Week 3)**
+
 - [ ] Test Google Workspace authentication flow
 - [ ] Test GitHub Actions CI/CD flow
 - [ ] Test Cloud Run deployment
@@ -1855,6 +1837,7 @@ This Workload Identity Federation architecture provides:
 - [ ] Security audit of WIF configuration
 
 **Phase 4: Migration (Week 4)**
+
 - [ ] Deploy WIF-enabled code to development
 - [ ] Migrate staging environment to WIF
 - [ ] Migrate production environment to WIF
@@ -1863,6 +1846,7 @@ This Workload Identity Federation architecture provides:
 - [ ] Update documentation
 
 **Phase 5: Operations (Week 5+)**
+
 - [ ] Monitor WIF metrics in Cloud Monitoring
 - [ ] Set up alerting for token failures
 - [ ] Document troubleshooting procedures
@@ -1873,18 +1857,21 @@ This Workload Identity Federation architecture provides:
 ### 10.3 Success Metrics
 
 **Security Metrics**:
+
 - 0 service account keys in use
 - 100% of authentication via WIF
 - Token lifetime ≤ 1 hour
 - 0 credential exposure incidents
 
 **Performance Metrics**:
+
 - Token exchange latency < 200ms (p95)
 - Token refresh success rate > 99.9%
 - Authentication availability > 99.95%
 - Zero failed queries due to expired tokens
 
 **Operational Metrics**:
+
 - Migration completion time ≤ 4 weeks
 - Zero downtime during migration
 - Team WIF proficiency (survey) > 80%

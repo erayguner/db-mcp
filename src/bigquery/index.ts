@@ -9,12 +9,15 @@
  * - DatasetDiscovery for dataset search and discovery
  */
 
-export { BigQueryClient, BigQueryClientConfig, BigQueryClientConfigSchema, QueryResult, QueryOptions, BigQueryClientError } from './client.js';
 export {
-  QueryCache,
-  QueryCacheConfig,
-  CacheStats
-} from './query-cache.js';
+  BigQueryClient,
+  BigQueryClientConfig,
+  BigQueryClientConfigSchema,
+  QueryResult,
+  QueryOptions,
+  BigQueryClientError,
+} from './client.js';
+export { QueryCache, QueryCacheConfig, CacheStats } from './query-cache.js';
 export {
   QueryOptimizer,
   QueryOptimizerConfig,
@@ -22,14 +25,14 @@ export {
   CostEstimate,
   QueryPlan,
   QueryStage,
-  OptimizationSuggestion
+  OptimizationSuggestion,
 } from './query-optimizer.js';
 export {
   QueryMetricsTracker,
   QueryMetricsConfig,
   QueryMetrics,
   QueryStats,
-  UsagePattern
+  UsagePattern,
 } from './query-metrics.js';
 export {
   DatasetDiscovery,
@@ -45,10 +48,21 @@ export {
   GraphNode,
   GraphEdge,
   DatasetCluster,
-  DatasetDiscoveryError
+  DatasetDiscoveryError,
 } from './dataset-discovery.js';
-export { ConnectionPool, ConnectionPoolConfig, PoolMetrics, ConnectionPoolError } from './connection-pool.js';
-export { DatasetManager, DatasetManagerConfig, DatasetMetadata, TableMetadata, DatasetManagerError } from './dataset-manager.js';
+export {
+  ConnectionPool,
+  ConnectionPoolConfig,
+  PoolMetrics,
+  ConnectionPoolError,
+} from './connection-pool.js';
+export {
+  DatasetManager,
+  DatasetManagerConfig,
+  DatasetMetadata,
+  TableMetadata,
+  DatasetManagerError,
+} from './dataset-manager.js';
 export {
   MultiProjectManager,
   MultiProjectManagerConfig,

@@ -6,7 +6,7 @@ describe.skip('QueryMetricsTracker', () => {
   beforeEach(() => {
     tracker = new QueryMetricsTracker({
       slowQueryThresholdMs: 1000,
-      expensiveCostThresholdUSD: 0.10,
+      expensiveCostThresholdUSD: 0.1,
       retentionPeriodMs: 60000,
     });
   });
@@ -212,7 +212,9 @@ describe.skip('QueryMetricsTracker', () => {
       const topQueries = tracker.getTopQueries('duration', 2);
 
       expect(topQueries.length).toBeGreaterThan(0);
-      expect(topQueries[0].duration).toBeGreaterThanOrEqual(topQueries[topQueries.length - 1].duration!);
+      expect(topQueries[0].duration).toBeGreaterThanOrEqual(
+        topQueries[topQueries.length - 1].duration!
+      );
     });
 
     it('should get top queries by cost', () => {
@@ -226,7 +228,9 @@ describe.skip('QueryMetricsTracker', () => {
       const topQueries = tracker.getTopQueries('bytes', 2);
 
       expect(topQueries.length).toBeGreaterThan(0);
-      expect(topQueries[0].bytesProcessed).toBeGreaterThanOrEqual(topQueries[topQueries.length - 1].bytesProcessed);
+      expect(topQueries[0].bytesProcessed).toBeGreaterThanOrEqual(
+        topQueries[topQueries.length - 1].bytesProcessed
+      );
     });
   });
 
@@ -262,9 +266,7 @@ describe.skip('QueryMetricsTracker', () => {
 
       const report = tracker.generateReport();
 
-      const errorRecommendation = report.recommendations.find(r =>
-        r.includes('error rate')
-      );
+      const errorRecommendation = report.recommendations.find((r) => r.includes('error rate'));
       expect(errorRecommendation).toBeDefined();
     });
 
@@ -280,9 +282,7 @@ describe.skip('QueryMetricsTracker', () => {
 
       const report = tracker.generateReport();
 
-      const cacheRecommendation = report.recommendations.find(r =>
-        r.includes('cache hit rate')
-      );
+      const cacheRecommendation = report.recommendations.find((r) => r.includes('cache hit rate'));
       expect(cacheRecommendation).toBeDefined();
     });
   });
@@ -297,7 +297,7 @@ describe.skip('QueryMetricsTracker', () => {
       shortRetentionTracker.endQuery('old', { success: true });
 
       // Wait for retention period to expire
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       const removed = shortRetentionTracker.cleanup();
 

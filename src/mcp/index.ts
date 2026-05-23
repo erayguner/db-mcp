@@ -8,8 +8,17 @@
  * - Comprehensive error handling and monitoring
  */
 
-export { MCPServerFactory, ServerFactoryConfig, ServerState, ServerFactoryError } from './server-factory.js';
-export { BigQueryClientFactory, BigQueryClientFactoryConfig, ClientFactoryError } from './bigquery-client-factory.js';
+export {
+  MCPServerFactory,
+  ServerFactoryConfig,
+  ServerState,
+  ServerFactoryError,
+} from './server-factory.js';
+export {
+  BigQueryClientFactory,
+  BigQueryClientFactoryConfig,
+  ClientFactoryError,
+} from './bigquery-client-factory.js';
 
 export {
   BaseToolHandler,

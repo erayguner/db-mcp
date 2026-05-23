@@ -57,7 +57,7 @@ export function initializeMetrics(serviceName: string, serviceVersion: string, p
 
     // Create Prometheus exporter (pull via /metrics endpoint)
     prometheusExporter = new PrometheusExporter(
-      { preventServerStart: true }, // We mount the endpoint on our own Express app
+      { preventServerStart: true } // We mount the endpoint on our own Express app
     );
 
     // Initialize meter provider with both readers
@@ -163,7 +163,7 @@ export function recordToolCall(
   tool: string,
   outcome: 'allow' | 'block' | 'error',
   durationMs: number,
-  tenantId?: string,
+  tenantId?: string
 ) {
   if (!instruments) return;
   const attrs: Record<string, string> = { tool, outcome };
@@ -186,25 +186,74 @@ export function recordError(errorType: string, tool?: string) {
 }
 
 /**
- * Record BigQuery query latency
+ * Record BigQuery query latency with tenant and dataset context.
+ *
+ * @param duration    Duration in milliseconds.
+ * @param queryType   Query type label (e.g. 'select', 'dry_run').
+ * @param success     Whether the query completed without error.
+ * @param tenantId    Tenant identifier (multi-tenant dimension).
+ * @param dataset     BigQuery dataset identifier.
  */
-export function recordQueryLatency(duration: number, queryType: string, success: boolean) {
+export function recordQueryLatency(
+  duration: number,
+  queryType: string,
+  success: boolean,
+  tenantId?: string,
+  dataset?: string
+) {
   if (instruments) {
-    instruments.queryLatency.record(duration, {
+    const attrs: Record<string, string> = {
       queryType,
       success: success.toString(),
-    });
+    };
+    if (tenantId) attrs.tenant_id = tenantId;
+    if (dataset) attrs.dataset = dataset;
+    instruments.queryLatency.record(duration, attrs);
   }
 }
 
 /**
- * Record BigQuery bytes processed
+ * Record BigQuery bytes processed with tenant and dataset context.
+ *
+ * @param bytes      Number of bytes processed.
+ * @param operation  Operation label (e.g. 'query', 'dry_run').
+ * @param tenantId   Tenant identifier (multi-tenant dimension).
+ * @param dataset    BigQuery dataset identifier.
  */
-export function recordBigQueryBytes(bytes: number, operation: string) {
+export function recordBigQueryBytes(
+  bytes: number,
+  operation: string,
+  tenantId?: string,
+  dataset?: string
+) {
   if (instruments) {
-    instruments.bigqueryBytesProcessed.add(bytes, {
-      operation,
-    });
+    const attrs: Record<string, string> = { operation };
+    if (tenantId) attrs.tenant_id = tenantId;
+    if (dataset) attrs.dataset = dataset;
+    instruments.bigqueryBytesProcessed.add(bytes, attrs);
+  }
+}
+
+/**
+ * Record a tool-level error with tenant and dataset context.
+ *
+ * @param errorType  Structured error code (e.g. 'QUERY_ERROR').
+ * @param tool       Tool name.
+ * @param tenantId   Tenant identifier (multi-tenant dimension).
+ * @param dataset    BigQuery dataset identifier.
+ */
+export function recordToolError(
+  errorType: string,
+  tool?: string,
+  tenantId?: string,
+  dataset?: string
+) {
+  if (instruments) {
+    const attrs: Record<string, string> = { errorType };
+    if (tool) attrs.tool = tool;
+    if (tenantId) attrs.tenant_id = tenantId;
+    if (dataset) attrs.dataset = dataset;
+    instruments.errorCounter.add(1, attrs);
   }
 }
 

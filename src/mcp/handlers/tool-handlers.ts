@@ -6,6 +6,11 @@ import type { Provenance, SchemaContext } from '../schemas/output-schemas.js';
 import { getKillSwitch, SessionHaltedError } from '../../governance/kill-switch.js';
 import { ModelArmorProvider, NoopModelArmorProvider } from '../../security/model-armor.js';
 import { loadCostElicitationConfig, estimateQueryCostUsd } from '../tools/annotations.js';
+import {
+  recordQueryLatency,
+  recordBigQueryBytes,
+  recordToolError,
+} from '../../telemetry/metrics.js';
 
 /** Safely coerce an unknown schema field value to string */
 function fieldStr(value: unknown, fallback: string): string {
@@ -342,6 +347,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
       }
 
       // Execute actual query
+      const queryStart = Date.now();
       const result = await this.context.bigQueryClient.query({
         query,
         maxResults,
@@ -350,6 +356,25 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         location,
         maximumBytesBilled: maxBytesBilled,
       });
+      const queryDurationMs = Date.now() - queryStart;
+
+      const tenantId = this.context.tenantContext?.tenantId;
+
+      // Emit OTel metrics with tenant_id and dataset context.
+      // Dataset is not reliably derivable from arbitrary SQL; emit the tenant's
+      // sole allowed dataset when there is exactly one, otherwise omit.
+      const allowedDatasets = this.context.tenantContext?.config.allowedDatasets;
+      const datasetAttr =
+        allowedDatasets && allowedDatasets.length === 1 ? allowedDatasets[0] : undefined;
+
+      recordQueryLatency(queryDurationMs, 'select', true, tenantId, datasetAttr);
+
+      const bytesProcessed = result.totalBytesProcessed
+        ? Number.parseInt(result.totalBytesProcessed, 10)
+        : 0;
+      if (bytesProcessed > 0) {
+        recordBigQueryBytes(bytesProcessed, 'query', tenantId, datasetAttr);
+      }
 
       const projectId =
         this.context.tenantContext?.projectId ?? this.context.bigQueryClient.getProjectId();
@@ -393,6 +418,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         schemaContext
       );
     } catch (error) {
+      recordToolError('QUERY_ERROR', 'query_bigquery', this.context.tenantContext?.tenantId);
       return this.formatError(error as Error, 'QUERY_ERROR');
     }
   }
@@ -451,6 +477,7 @@ export class ListDatasetsHandler extends BaseToolHandler {
         provenance
       );
     } catch (error) {
+      recordToolError('LIST_DATASETS_ERROR', 'list_datasets', this.context.tenantContext?.tenantId);
       return this.formatError(error as Error, 'LIST_DATASETS_ERROR');
     }
   }
@@ -461,9 +488,11 @@ export class ListDatasetsHandler extends BaseToolHandler {
  */
 export class ListTablesHandler extends BaseToolHandler {
   async execute(args: unknown): Promise<ToolResponse> {
+    let datasetIdForError: string | undefined;
     try {
       const validated = validateToolArgs('list_tables', args);
       const { datasetId, projectId, maxResults } = validated;
+      datasetIdForError = datasetId;
 
       logger.info('Listing BigQuery tables', {
         datasetId,
@@ -514,6 +543,12 @@ export class ListTablesHandler extends BaseToolHandler {
         provenance
       );
     } catch (error) {
+      recordToolError(
+        'LIST_TABLES_ERROR',
+        'list_tables',
+        this.context.tenantContext?.tenantId,
+        datasetIdForError
+      );
       return this.formatError(error as Error, 'LIST_TABLES_ERROR');
     }
   }
@@ -606,6 +641,7 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         schemaContext
       );
     } catch (error) {
+      recordToolError('GET_SCHEMA_ERROR', 'get_table_schema', this.context.tenantContext?.tenantId);
       return this.formatError(error as Error, 'GET_SCHEMA_ERROR');
     }
   }

@@ -66,7 +66,7 @@ export class EffectivenessTracker {
   constructor() {
     this.cleanupInterval = setInterval(
       () => this.trimRecords(),
-      EffectivenessTracker.CLEANUP_INTERVAL_MS,
+      EffectivenessTracker.CLEANUP_INTERVAL_MS
     );
     this.cleanupInterval.unref();
 
@@ -100,13 +100,12 @@ export class EffectivenessTracker {
     }
 
     // --- First try success rate ---
-    const nonRetries = this.records.filter(r => !r.wasRetry);
-    const firstTrySuccessRate = nonRetries.length > 0
-      ? nonRetries.filter(r => r.success).length / nonRetries.length
-      : 0;
+    const nonRetries = this.records.filter((r) => !r.wasRetry);
+    const firstTrySuccessRate =
+      nonRetries.length > 0 ? nonRetries.filter((r) => r.success).length / nonRetries.length : 0;
 
     // --- Retry rate ---
-    const retryRate = this.records.filter(r => r.wasRetry).length / this.records.length;
+    const retryRate = this.records.filter((r) => r.wasRetry).length / this.records.length;
 
     // --- Per-tool aggregations ---
     const toolGroups = this.groupByTool();
@@ -115,30 +114,30 @@ export class EffectivenessTracker {
     const p95LatencyByTool: Record<string, number> = {};
 
     for (const [tool, calls] of toolGroups) {
-      toolSuccessRates[tool] = calls.filter(r => r.success).length / calls.length;
+      toolSuccessRates[tool] = calls.filter((r) => r.success).length / calls.length;
 
-      const latencies = calls.map(r => r.executionTimeMs).sort((a, b) => a - b);
+      const latencies = calls.map((r) => r.executionTimeMs).sort((a, b) => a - b);
       averageLatencyByTool[tool] = latencies.reduce((s, v) => s + v, 0) / latencies.length;
       p95LatencyByTool[tool] = this.percentile(latencies, 95);
     }
 
     // --- Average calls per session ---
     const sessionGroups = this.groupBySession();
-    const sessionCounts = Array.from(sessionGroups.values()).map(s => s.length);
-    const averageCallsPerSession = sessionCounts.length > 0
-      ? sessionCounts.reduce((s, v) => s + v, 0) / sessionCounts.length
-      : 0;
+    const sessionCounts = Array.from(sessionGroups.values()).map((s) => s.length);
+    const averageCallsPerSession =
+      sessionCounts.length > 0
+        ? sessionCounts.reduce((s, v) => s + v, 0) / sessionCounts.length
+        : 0;
 
     // --- Exploration efficiency ---
     // "Useful" calls: successful, not a retry, and either used or resulted in rows
     const usefulCalls = this.records.filter(
-      r => r.success &&
+      (r) =>
+        r.success &&
         !r.wasRetry &&
-        (r.userSatisfaction === 'used' || r.userSatisfaction === undefined),
+        (r.userSatisfaction === 'used' || r.userSatisfaction === undefined)
     ).length;
-    const explorationEfficiency = this.records.length > 0
-      ? usefulCalls / this.records.length
-      : 0;
+    const explorationEfficiency = this.records.length > 0 ? usefulCalls / this.records.length : 0;
 
     // --- Peak hours distribution ---
     const peakHoursDistribution = new Array<number>(24).fill(0);
@@ -163,7 +162,7 @@ export class EffectivenessTracker {
    * Get a detailed report for a specific tool.
    */
   getToolReport(toolName: string): ToolReport {
-    const calls = this.records.filter(r => r.toolName === toolName);
+    const calls = this.records.filter((r) => r.toolName === toolName);
 
     if (calls.length === 0) {
       return {
@@ -178,19 +177,18 @@ export class EffectivenessTracker {
       };
     }
 
-    const successRate = calls.filter(r => r.success).length / calls.length;
-    const retryRate = calls.filter(r => r.wasRetry).length / calls.length;
+    const successRate = calls.filter((r) => r.success).length / calls.length;
+    const retryRate = calls.filter((r) => r.wasRetry).length / calls.length;
 
-    const latencies = calls.map(r => r.executionTimeMs).sort((a, b) => a - b);
+    const latencies = calls.map((r) => r.executionTimeMs).sort((a, b) => a - b);
     const averageLatencyMs = latencies.reduce((s, v) => s + v, 0) / latencies.length;
     const p95LatencyMs = this.percentile(latencies, 95);
 
     const rowCounts = calls
-      .filter(r => r.resultRowCount !== undefined)
-      .map(r => r.resultRowCount!);
-    const averageRowCount = rowCounts.length > 0
-      ? rowCounts.reduce((s, v) => s + v, 0) / rowCounts.length
-      : 0;
+      .filter((r) => r.resultRowCount !== undefined)
+      .map((r) => r.resultRowCount!);
+    const averageRowCount =
+      rowCounts.length > 0 ? rowCounts.reduce((s, v) => s + v, 0) / rowCounts.length : 0;
 
     const satisfactionBreakdown: Record<string, number> = {};
     for (const call of calls) {

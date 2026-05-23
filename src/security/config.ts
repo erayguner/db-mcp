@@ -29,13 +29,7 @@ export const SecurityPresets = {
       'DELETE FROM',
       'UNION SELECT',
     ],
-    sensitiveDataPatterns: [
-      'password',
-      'api_key',
-      'secret',
-      'token',
-      'credit_card',
-    ],
+    sensitiveDataPatterns: ['password', 'api_key', 'secret', 'token', 'credit_card'],
   } as Partial<SecurityConfig>,
 
   /**
@@ -131,15 +125,8 @@ export const SecurityPresets = {
     toolValidationEnabled: false,
     securityLoggingEnabled: false,
     logSuspiciousActivity: false,
-    suspiciousPatterns: [
-      'ignore previous instructions',
-      'DROP TABLE',
-    ],
-    sensitiveDataPatterns: [
-      'password',
-      'api_key',
-      'credit_card',
-    ],
+    suspiciousPatterns: ['ignore previous instructions', 'DROP TABLE'],
+    sensitiveDataPatterns: ['password', 'api_key', 'credit_card'],
   } as Partial<SecurityConfig>,
 };
 
@@ -220,10 +207,7 @@ export class SecurityPolicyBuilder {
    * Add sensitive data patterns
    */
   sensitiveData(patterns: string[]): this {
-    this.config.sensitiveDataPatterns = [
-      ...(this.config.sensitiveDataPatterns || []),
-      ...patterns,
-    ];
+    this.config.sensitiveDataPatterns = [...(this.config.sensitiveDataPatterns || []), ...patterns];
     return this;
   }
 

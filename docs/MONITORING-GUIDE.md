@@ -2,9 +2,11 @@
 
 ## Overview
 
-Comprehensive monitoring and observability setup for the MCP BigQuery Server using Google Cloud's native monitoring stack.
+Comprehensive monitoring and observability setup for the MCP BigQuery Server using Google Cloud's native monitoring
+stack.
 
 **Components**:
+
 - Cloud Monitoring (metrics & dashboards)
 - Cloud Trace (distributed tracing)
 - Cloud Logging (structured logs)
@@ -121,23 +123,27 @@ terraform apply -target=module.monitoring
 ### Log-Based Metrics
 
 **1. Error Count**
+
 - **Name**: `mcp_bigquery_error_count_{environment}`
 - **Type**: DELTA (counter)
 - **Filter**: Severity >= ERROR
 - **Use**: Track error rate over time
 
 **2. Query Latency**
+
 - **Name**: `mcp_bigquery_query_latency_{environment}`
 - **Type**: DISTRIBUTION
 - **Unit**: milliseconds
 - **Use**: P50/P95/P99 latency tracking
 
 **3. Authentication Failures**
+
 - **Name**: `mcp_bigquery_auth_failures_{environment}`
 - **Type**: DELTA (counter)
 - **Use**: Security monitoring
 
 **4. BigQuery Bytes Processed**
+
 - **Name**: `mcp_bigquery_bytes_processed_{environment}`
 - **Type**: DELTA (counter)
 - **Unit**: bytes
@@ -146,6 +152,7 @@ terraform apply -target=module.monitoring
 ### OpenTelemetry Metrics
 
 **Custom Application Metrics**:
+
 - `mcp.requests.total` - Total requests by `tool`, `success`, `tenant_id`
 - `mcp.errors.total` - Errors by type
 - `mcp.bigquery.query.duration` - Query latency histogram
@@ -156,9 +163,8 @@ terraform apply -target=module.monitoring
 - `mcp.tool.calls.total` - Tool calls by `tool`, `outcome` (allow/block/error), `tenant_id`
 - `mcp.tool.call.duration` - End-to-end tool call latency by `tool`, `outcome`, `tenant_id`
 
-> **Cardinality note:** `tenant_id` is only attached when a tenant context
-> is resolved. Slice dashboards by `tenant_id` to build GEAP-style topology
-> views of which tenants drive load, latency, or block rates.
+> **Cardinality note:** `tenant_id` is only attached when a tenant context is resolved. Slice dashboards by `tenant_id`
+> to build GEAP-style topology views of which tenants drive load, latency, or block rates.
 
 ### Cloud Run Metrics (Automatic)
 
@@ -175,16 +181,19 @@ terraform apply -target=module.monitoring
 ### Critical Alerts (PagerDuty + Email)
 
 **1. Service Down**
+
 - **Condition**: Uptime check fails for 5 minutes
 - **Action**: Page on-call engineer
 - **Severity**: Critical
 
 **2. High Error Rate**
+
 - **Condition**: Error rate > threshold for 5 minutes
 - **Action**: Page on-call engineer
 - **Severity**: Critical
 
 **3. Authentication Failures**
+
 - **Condition**: Auth failures > threshold for 5 minutes
 - **Action**: Page security team
 - **Severity**: Critical (potential attack)
@@ -192,30 +201,33 @@ terraform apply -target=module.monitoring
 ### Warning Alerts (Slack + Email)
 
 **4. High Latency**
+
 - **Condition**: P95 latency > 2000ms for 5 minutes
 - **Action**: Notify team
 - **Severity**: Warning
 
 **5. High Instance Count**
+
 - **Condition**: Instances > 50 for 5 minutes
 - **Action**: Notify team
 - **Severity**: Warning
 
 **6. High Memory Usage**
+
 - **Condition**: Memory > 85% for 5 minutes
 - **Action**: Notify team
 - **Severity**: Warning
 
 ### Alert Notification Matrix
 
-| Alert | Email | Slack | PagerDuty | Auto-Close |
-|-------|-------|-------|-----------|------------|
-| Service Down | ✅ | ✅ | ✅ (prod) | 1 hour |
-| High Error Rate | ✅ | ✅ | ✅ (prod) | 24 hours |
-| Auth Failures | ✅ | ❌ | ✅ (prod) | 12 hours |
-| High Latency | ✅ | ✅ | ❌ | 24 hours |
-| Instance Count | ✅ | ❌ | ❌ | 24 hours |
-| Memory Usage | ✅ | ❌ | ❌ | 24 hours |
+| Alert           | Email | Slack | PagerDuty | Auto-Close |
+| --------------- | ----- | ----- | --------- | ---------- |
+| Service Down    | ✅    | ✅    | ✅ (prod) | 1 hour     |
+| High Error Rate | ✅    | ✅    | ✅ (prod) | 24 hours   |
+| Auth Failures   | ✅    | ❌    | ✅ (prod) | 12 hours   |
+| High Latency    | ✅    | ✅    | ❌        | 24 hours   |
+| Instance Count  | ✅    | ❌    | ❌        | 24 hours   |
+| Memory Usage    | ✅    | ❌    | ❌        | 24 hours   |
 
 ---
 
@@ -224,12 +236,14 @@ terraform apply -target=module.monitoring
 ### Cloud Trace Integration
 
 **Automatic Instrumentation**:
+
 - HTTP requests (incoming/outgoing)
 - BigQuery operations
 - Authentication flows
 - Database connections
 
 **Custom Spans**:
+
 ```typescript
 import { traced, addSpanEvent, setSpanAttributes } from './telemetry';
 
@@ -251,6 +265,7 @@ const processQuery = traced('process_bigquery_query', async (query: string) => {
 ### Trace Attributes
 
 **Standard Attributes**:
+
 - `service.name` - Service identifier
 - `service.version` - Version number
 - `http.method` - HTTP method
@@ -258,6 +273,7 @@ const processQuery = traced('process_bigquery_query', async (query: string) => {
 - `http.route` - Request route
 
 **Custom Attributes**:
+
 - `mcp.tool` - MCP tool name
 - `tool.name` / `tool.request_id` - Tool invocation identifiers
 - `tenant.id` - Resolved tenant identifier (when tenant context is present)
@@ -274,11 +290,13 @@ const processQuery = traced('process_bigquery_query', async (query: string) => {
 ### Quick Access
 
 **Production Dashboard URL**:
+
 ```
 https://console.cloud.google.com/monitoring/dashboards/custom/${dashboard_id}?project=${project_id}
 ```
 
 **Get Dashboard URL from Terraform**:
+
 ```bash
 terraform output -module=monitoring dashboard_url
 ```
@@ -286,26 +304,32 @@ terraform output -module=monitoring dashboard_url
 ### Dashboard Widgets
 
 **Row 1: Traffic & Errors**
+
 - Request Rate (requests/sec by status)
 - Error Rate (errors/min)
 
 **Row 2: Performance**
+
 - Request Latency (P50, P95, P99)
 - BigQuery Query Latency
 
 **Row 3: Resources**
+
 - Instance Count
 - Memory Utilization (%)
 - CPU Utilization (%)
 
 **Row 4: Security & Cost**
+
 - Authentication Failures
 - BigQuery Bytes Processed
 
 **Row 5: Logs**
+
 - Recent Errors (last 100)
 
 **Row 6: SLO Tracking**
+
 - Availability SLO (30 days)
 - Latency SLO (30 days)
 
@@ -315,32 +339,35 @@ terraform output -module=monitoring dashboard_url
 
 ### Availability SLO
 
-**Target**: 99.9% (three nines)
-**Measurement**: Request-based
+**Target**: 99.9% (three nines) **Measurement**: Request-based
+
 - **Good requests**: HTTP 2xx responses
 - **Total requests**: All requests
 - **Period**: Rolling 30 days
 
 **Error Budget**:
+
 - Monthly: 43.2 minutes downtime
 - Weekly: 10.1 minutes downtime
 - Daily: 1.4 minutes downtime
 
 ### Latency SLO
 
-**Target**: 95% of requests < 2000ms
-**Measurement**: Distribution-based
+**Target**: 95% of requests < 2000ms **Measurement**: Distribution-based
+
 - **Good requests**: Latency < 2000ms
 - **Total requests**: All requests
 - **Period**: Rolling 30 days
 
 **Error Budget**:
+
 - 5% of requests can exceed 2000ms
 - ~2.16M slow requests per month (at 1M req/day)
 
 ### SLO Dashboard
 
 View SLO compliance:
+
 ```bash
 # List SLOs
 gcloud monitoring slos list --service=mcp-bigquery-${env}
@@ -360,10 +387,7 @@ gcloud monitoring slos describe latency \
 
 ### Health Check Configuration
 
-**Endpoint**: `https://${cloud_run_url}/health`
-**Method**: GET
-**Frequency**: Every 60 seconds
-**Timeout**: 10 seconds
+**Endpoint**: `https://${cloud_run_url}/health` **Method**: GET **Frequency**: Every 60 seconds **Timeout**: 10 seconds
 **Expected**: HTTP 200 + body contains "healthy"
 
 ### Health Check Response
@@ -422,6 +446,7 @@ app.get('/health', async (req, res) => {
 ### Useful Log Queries
 
 **All Errors**:
+
 ```
 resource.type="cloud_run_revision"
 resource.labels.service_name="mcp-bigquery-server"
@@ -429,6 +454,7 @@ severity>=ERROR
 ```
 
 **Authentication Failures**:
+
 ```
 resource.type="cloud_run_revision"
 resource.labels.service_name="mcp-bigquery-server"
@@ -436,6 +462,7 @@ jsonPayload.message=~"authentication failed|token verification failed"
 ```
 
 **Slow Queries**:
+
 ```
 resource.type="cloud_run_revision"
 resource.labels.service_name="mcp-bigquery-server"
@@ -444,6 +471,7 @@ jsonPayload.duration>2000
 ```
 
 **High BigQuery Costs**:
+
 ```
 resource.type="cloud_run_revision"
 resource.labels.service_name="mcp-bigquery-server"
@@ -468,6 +496,7 @@ gcloud logging sinks create mcp-bigquery-logs-sink \
 ### High Error Rate Alert
 
 **1. Immediate Actions**:
+
 ```bash
 # Check recent errors
 gcloud logging read \
@@ -481,12 +510,14 @@ gcloud run services describe mcp-bigquery-server \
 ```
 
 **2. Investigation**:
+
 - Review Cloud Logging for error patterns
 - Check Workload Identity Federation configuration
 - Verify BigQuery API quotas
 - Review recent deployments
 
 **3. Resolution**:
+
 - Rollback if deployment-related
 - Scale up if capacity issue
 - Fix configuration if IAM-related
@@ -494,6 +525,7 @@ gcloud run services describe mcp-bigquery-server \
 ### High Latency Alert
 
 **1. Immediate Actions**:
+
 ```bash
 # Check current latency
 gcloud monitoring time-series list \
@@ -504,12 +536,14 @@ bq ls -j --max_results=10
 ```
 
 **2. Investigation**:
+
 - Review BigQuery query patterns
 - Check for large dataset scans
 - Verify network connectivity
 - Check BigQuery slot usage
 
 **3. Resolution**:
+
 - Optimize slow queries
 - Add query caching
 - Increase Cloud Run resources
@@ -518,6 +552,7 @@ bq ls -j --max_results=10
 ### Authentication Failure Alert
 
 **1. Immediate Actions** (SECURITY INCIDENT):
+
 ```bash
 # Check failed auth attempts
 gcloud logging read \
@@ -532,12 +567,14 @@ gcloud logging read \
 ```
 
 **2. Investigation**:
+
 - Identify attack patterns
 - Check if legitimate users affected
 - Review Workspace OIDC configuration
 - Verify service account permissions
 
 **3. Resolution**:
+
 - Block malicious IPs (if attack)
 - Fix WIF configuration (if misconfigured)
 - Update allowed groups (if policy change)
@@ -550,6 +587,7 @@ gcloud logging read \
 ### Monitoring Costs
 
 **Cost Components**:
+
 - Cloud Monitoring API calls
 - Cloud Trace spans
 - Log ingestion (>50 GB/month charged)
@@ -558,6 +596,7 @@ gcloud logging read \
 **Optimization Strategies**:
 
 **1. Log Sampling**:
+
 ```typescript
 // Only log 10% of successful requests
 if (success && Math.random() > 0.1) return;
@@ -565,6 +604,7 @@ logger.info('Request completed', { ... });
 ```
 
 **2. Metric Aggregation**:
+
 ```hcl
 # Use longer alignment periods
 aggregation {
@@ -573,6 +613,7 @@ aggregation {
 ```
 
 **3. Trace Sampling**:
+
 ```typescript
 // Sample 10% of traces
 const tracerProvider = new NodeTracerProvider({
@@ -581,6 +622,7 @@ const tracerProvider = new NodeTracerProvider({
 ```
 
 **4. Log Exclusion**:
+
 ```bash
 # Exclude health check logs
 gcloud logging exclusions create health-check-exclusion \
@@ -590,12 +632,14 @@ gcloud logging exclusions create health-check-exclusion \
 ### Cost Monitoring
 
 **Monthly Cost Estimate**:
+
 - Metrics: ~$2-5/month (< 150 metrics)
 - Traces: ~$5-10/month (100k spans)
 - Logs: ~$10-20/month (10 GB)
 - **Total**: ~$20-40/month
 
 **Budget Alert**:
+
 ```bash
 gcloud billing budgets create \
   --billing-account=${BILLING_ACCOUNT} \
@@ -612,12 +656,14 @@ gcloud billing budgets create \
 ### No Metrics Showing
 
 **Check**:
+
 1. OpenTelemetry initialized correctly
 2. Service account has `monitoring.metricWriter` role
 3. Metric exporter configured with correct project ID
 4. Cloud Monitoring API enabled
 
 **Verify**:
+
 ```bash
 # Check metric descriptors
 gcloud monitoring metric-descriptors list \
@@ -631,12 +677,14 @@ gcloud logging read \
 ### Traces Not Appearing
 
 **Check**:
+
 1. Cloud Trace API enabled
 2. Service account has `cloudtrace.agent` role
 3. Trace exporter configured
 4. Sampling rate not too low
 
 **Verify**:
+
 ```bash
 # List recent traces
 gcloud trace traces list \
@@ -650,12 +698,14 @@ gcloud logging read \
 ### Alerts Not Firing
 
 **Check**:
+
 1. Alert policy enabled
 2. Notification channels configured
 3. Metric data available
 4. Threshold values correct
 
 **Test Alert**:
+
 ```bash
 # Describe alert policy
 gcloud monitoring alert-policies describe ${POLICY_ID}
@@ -674,6 +724,7 @@ gcloud monitoring channels verify ${CHANNEL_ID}
 ### Logging
 
 ✅ **DO**:
+
 - Use structured JSON logging
 - Include correlation IDs
 - Log at appropriate levels (DEBUG, INFO, WARN, ERROR)
@@ -681,6 +732,7 @@ gcloud monitoring channels verify ${CHANNEL_ID}
 - Log errors with stack traces
 
 ❌ **DON'T**:
+
 - Log sensitive data (tokens, passwords)
 - Log high-volume success messages
 - Use console.log (use Winston)
@@ -690,23 +742,26 @@ gcloud monitoring channels verify ${CHANNEL_ID}
 ### MCP-Specific Logging
 
 **Critical Configuration**:
+
 ```typescript
 // ✅ CORRECT: All logs to stderr
 new winston.transports.Console({
   stderrLevels: ['error', 'warn', 'info', 'debug', 'verbose', 'silly'],
-})
+});
 
 // ❌ WRONG: Default winston (writes some to stdout)
-new winston.transports.Console()  // Don't use default!
+new winston.transports.Console(); // Don't use default!
 ```
 
 **Why This Matters**:
+
 - MCP uses **stdout for JSON-RPC messages** only
 - Any logs to stdout will **corrupt the protocol**
 - Winston must be configured to write **all levels to stderr**
 - This is enforced in `src/utils/logger.ts`
 
 **Monitoring stderr logs in production**:
+
 ```bash
 # Cloud Run automatically captures stderr
 gcloud logging read \
@@ -722,13 +777,15 @@ gcloud logging read \
 ### Metrics
 
 ✅ **DO**:
-- Use consistent naming (mcp.* prefix)
+
+- Use consistent naming (mcp.\* prefix)
 - Add meaningful labels
 - Use appropriate metric types (counter, histogram, gauge)
 - Set histogram buckets appropriately
 - Document custom metrics
 
 ❌ **DON'T**:
+
 - Create metrics with high cardinality labels
 - Use overly specific metric names
 - Create duplicate metrics
@@ -737,6 +794,7 @@ gcloud logging read \
 ### Tracing
 
 ✅ **DO**:
+
 - Create spans for significant operations
 - Add meaningful span attributes
 - Use semantic conventions
@@ -744,6 +802,7 @@ gcloud logging read \
 - Link related spans
 
 ❌ **DON'T**:
+
 - Create too many spans (overhead)
 - Include sensitive data in attributes
 - Trace everything (sampling!)
@@ -752,6 +811,7 @@ gcloud logging read \
 ### Alerts
 
 ✅ **DO**:
+
 - Set appropriate thresholds based on SLOs
 - Include runbook links in alert documentation
 - Use multiple notification channels
@@ -759,6 +819,7 @@ gcloud logging read \
 - Review and update thresholds
 
 ❌ **DON'T**:
+
 - Alert on everything (alert fatigue)
 - Set thresholds too tight (false alarms)
 - Forget to document response procedures
@@ -769,6 +830,7 @@ gcloud logging read \
 ## Next Steps
 
 1. **Deploy Monitoring Module**:
+
    ```bash
    terraform apply -target=module.monitoring
    ```
@@ -798,6 +860,7 @@ gcloud logging read \
 ## Resources
 
 ### GCP Documentation
+
 - [Cloud Monitoring](https://cloud.google.com/monitoring/docs)
 - [Cloud Trace](https://cloud.google.com/trace/docs)
 - [Cloud Logging](https://cloud.google.com/logging/docs)
@@ -805,17 +868,17 @@ gcloud logging read \
 - [SLO Monitoring](https://cloud.google.com/stackdriver/docs/solutions/slo-monitoring)
 
 ### OpenTelemetry
+
 - [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
 - [Node.js Instrumentation](https://opentelemetry.io/docs/instrumentation/js/)
 - [GCP Exporters](https://github.com/GoogleCloudPlatform/opentelemetry-operations-js)
 
 ### Tools
+
 - [Terraform Provider](https://registry.terraform.io/providers/hashicorp/google/latest/docs)
 - [gcloud CLI](https://cloud.google.com/sdk/gcloud/reference)
 - [Cloud Console](https://console.cloud.google.com/)
 
 ---
 
-**Guide Version**: 1.0.0
-**Last Updated**: 2025-10-27
-**Status**: ✅ Production Ready
+**Guide Version**: 1.0.0 **Last Updated**: 2025-10-27 **Status**: ✅ Production Ready

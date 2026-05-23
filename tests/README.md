@@ -40,31 +40,37 @@ tests/
 ## Running Tests
 
 ### All Tests
+
 ```bash
 npm test
 ```
 
 ### Unit Tests Only
+
 ```bash
 npm test -- tests/unit
 ```
 
 ### Integration Tests Only
+
 ```bash
 npm test -- tests/integration
 ```
 
 ### Performance Benchmarks
+
 ```bash
 npm test -- tests/performance
 ```
 
 ### Watch Mode
+
 ```bash
 npm test -- --watch
 ```
 
 ### Coverage Report
+
 ```bash
 npm run test:coverage
 ```
@@ -81,6 +87,7 @@ npm run test:coverage
 ### Unit Tests
 
 #### BigQuery Client (`unit/bigquery-client.test.ts`)
+
 - Constructor and initialization
 - Query execution
 - Dry run cost estimation
@@ -91,6 +98,7 @@ npm run test:coverage
 - Connection testing
 
 #### Security Middleware (`unit/security-middleware.test.ts`)
+
 - Rate limiting
 - Prompt injection detection
 - Input validation (SQL, dataset IDs, table IDs)
@@ -100,6 +108,7 @@ npm run test:coverage
 - Request/response validation
 
 #### OIDC Authentication (`auth/oidc-authenticator.test.ts`, `auth/auth-middleware.test.ts`)
+
 - JWT signature validation against JWKS endpoint
 - Issuer and audience claim verification
 - Scope enforcement and missing scope errors
@@ -108,6 +117,7 @@ npm run test:coverage
 - Principal extraction from validated tokens
 
 #### Multi-Tenant Isolation (`tenancy/`)
+
 - Tenant config schema validation (`tenant-config.test.ts`)
 - Tenant registry lookup and caching (`tenant-registry.test.ts`)
 - Dataset access policy enforcement (`dataset-policy.test.ts`)
@@ -116,12 +126,14 @@ npm run test:coverage
 - Default tenant fallback behavior
 
 #### Dataset Policy (`tenancy/dataset-policy.test.ts`)
+
 - Allowed and denied dataset access rules
 - Per-tenant dataset isolation
 - Policy evaluation order and precedence
 - Error handling for unlisted datasets
 
 #### Tool Annotations (`mcp/annotations.test.ts`)
+
 - MCP tool metadata correctness
 - Annotation schema compliance
 - Required vs optional annotation fields
@@ -129,6 +141,7 @@ npm run test:coverage
 ### Integration Tests
 
 #### MCP Server (`mcp-server.test.ts`)
+
 - Complete request/response flow
 - Tool handler integration
 - Security middleware integration
@@ -137,12 +150,14 @@ npm run test:coverage
 - Performance under load
 
 #### Multi-Tenant Isolation (`tenant-isolation.test.ts`)
+
 - Cross-tenant data access prevention
 - Per-tenant dataset policy enforcement end-to-end
 - Tenant resolution through the full request pipeline
 - Authentication to tenant binding verification
 
 #### Security (`security.test.ts`)
+
 - End-to-end request validation
 - Multi-layer security enforcement
 - Attack chain detection
@@ -153,6 +168,7 @@ npm run test:coverage
 ### Performance Tests
 
 #### Benchmarks (`benchmarks.test.ts`)
+
 - Query execution speed (<100ms simple queries)
 - Batch query processing (100 queries <5s)
 - Large result set handling (10k rows <1s)
@@ -233,6 +249,7 @@ it('should execute within time limit', async () => {
 ## CI/CD Integration
 
 Tests are configured to run in CI/CD pipelines with:
+
 - Automatic test execution on PR
 - Coverage reporting
 - Performance regression detection
@@ -241,16 +258,19 @@ Tests are configured to run in CI/CD pipelines with:
 ## Debugging Tests
 
 ### Run Single Test
+
 ```bash
 npm test -- -t "test name"
 ```
 
 ### Debug Mode
+
 ```bash
 node --inspect-brk node_modules/.bin/jest --runInBand
 ```
 
 ### Verbose Output
+
 ```bash
 npm test -- --verbose
 ```
@@ -259,13 +279,13 @@ npm test -- --verbose
 
 Current performance targets:
 
-| Operation | Target | Current |
-|-----------|--------|---------|
-| Simple query | <100ms | ~50ms |
-| 100 queries | <5s | ~2.5s |
-| 10k rows | <1s | ~500ms |
-| Security validation | <10ms | ~3ms |
-| 1000 validations | <5s | ~2s |
+| Operation           | Target | Current |
+| ------------------- | ------ | ------- |
+| Simple query        | <100ms | ~50ms   |
+| 100 queries         | <5s    | ~2.5s   |
+| 10k rows            | <1s    | ~500ms  |
+| Security validation | <10ms  | ~3ms    |
+| 1000 validations    | <5s    | ~2s     |
 
 ## Best Practices
 
@@ -280,16 +300,19 @@ Current performance targets:
 ## Troubleshooting
 
 ### Tests Timing Out
+
 - Increase timeout: `jest.setTimeout(10000)`
 - Check for unresolved promises
 - Verify mock implementations
 
 ### Flaky Tests
+
 - Check for race conditions
 - Use proper async/await
 - Verify mock state cleanup
 
 ### Coverage Not Meeting Threshold
+
 - Identify uncovered lines: `npm run test:coverage`
 - Add tests for edge cases
 - Test error handling paths
@@ -297,6 +320,7 @@ Current performance targets:
 ## Contributing
 
 When adding new features:
+
 1. Write tests first (TDD)
 2. Ensure coverage remains >80%
 3. Add integration tests for new workflows

@@ -16,23 +16,38 @@ function spawnServer(): Promise<{ proc: any; stop: () => Promise<void> }> {
         GCP_PROJECT_ID: 'test-project-id', // Required by environment validation
         USE_MOCK_BIGQUERY: 'true', // Use mock to avoid real GCP calls
       },
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
     let started = false;
-    proc.stderr.on('data', d => {
+    proc.stderr.on('data', (d) => {
       const s = d.toString();
       if (!started && s.includes('Server started')) {
         started = true;
-        resolve({ proc, stop: () => new Promise(r => { proc.kill(); setTimeout(r, 250); }) });
+        resolve({
+          proc,
+          stop: () =>
+            new Promise((r) => {
+              proc.kill();
+              setTimeout(r, 250);
+            }),
+        });
       }
     });
-    setTimeout(() => { if (!started) resolve({ proc, stop: async () => { proc.kill(); } }); }, 1500);
+    setTimeout(() => {
+      if (!started)
+        resolve({
+          proc,
+          stop: async () => {
+            proc.kill();
+          },
+        });
+    }, 1500);
     proc.on('error', reject);
   });
 }
 
 function sendRequest(proc: any, method: string, params?: any): Promise<any> {
-  const id = Math.floor(Math.random()*1e6);
+  const id = Math.floor(Math.random() * 1e6);
   const payload = { jsonrpc: '2.0', id, method, params };
   return new Promise((resolve, reject) => {
     let buffer = '';
@@ -49,12 +64,16 @@ function sendRequest(proc: any, method: string, params?: any): Promise<any> {
             if (msg.error) reject(new Error(msg.error.message));
             else resolve(msg.result);
           }
-        } catch { /* ignore non-json */ }
+        } catch {
+          /* ignore non-json */
+        }
       }
     };
     proc.stdout.on('data', onData);
     proc.stdin.write(JSON.stringify(payload) + '\n');
-    setTimeout(() => { reject(new Error('timeout')); }, 8000);
+    setTimeout(() => {
+      reject(new Error('timeout'));
+    }, 8000);
   });
 }
 
@@ -73,7 +92,7 @@ describe.skip('Integration: list_tools', () => {
       await sendRequest(proc, 'initialize', {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'itest', version: '1.0.0' }
+        clientInfo: { name: 'itest', version: '1.0.0' },
       });
       const toolsResult = await sendRequest(proc, 'tools/list');
       expect(Array.isArray(toolsResult.tools)).toBe(true);

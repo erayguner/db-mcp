@@ -44,6 +44,7 @@ The health monitoring system provides:
 ### 1. Connection Pool Health
 
 **Checks:**
+
 - Active vs idle connection ratio
 - Waiting request queue length
 - Connection failure rate
@@ -51,11 +52,13 @@ The health monitoring system provides:
 - Average acquire time
 
 **Thresholds:**
+
 - Minimum healthy connections: 1
 - Maximum waiting requests: 10
 - Maximum failure rate: 10%
 
 **Status Determination:**
+
 - **Healthy**: All metrics within thresholds
 - **Degraded**: Metrics approaching limits (within 1.5x)
 - **Unhealthy**: Metrics exceeding thresholds
@@ -63,16 +66,19 @@ The health monitoring system provides:
 ### 2. Dataset Manager Cache
 
 **Checks:**
+
 - Dataset cache hit rate
 - Table cache hit rate
 - Cache utilization (size vs capacity)
 - LRU eviction rate
 
 **Thresholds:**
+
 - Minimum hit rate: 30%
 - Maximum cache utilization: 90% (degraded), 95% (unhealthy)
 
 **Metrics:**
+
 ```typescript
 {
   datasets: {
@@ -91,6 +97,7 @@ The health monitoring system provides:
 ### 3. WIF Token Health
 
 **Checks:**
+
 - WIF configuration validity
 - Token system operational status
 - Provider and pool availability
@@ -100,18 +107,21 @@ The health monitoring system provides:
 ### 4. Query Performance
 
 **Checks:**
+
 - Query error rate
 - Average query latency
 - Cache effectiveness
 - Cost efficiency
 
 **Thresholds:**
+
 - Maximum error rate: 10%
 - Maximum average latency: 5000ms
 - Minimum cache hit rate: 20%
 - Average cost threshold: $0.10
 
 **Metrics:**
+
 ```typescript
 {
   errorRate: number,           // Percentage of failed queries
@@ -132,10 +142,12 @@ The health monitoring system provides:
 **Purpose:** Determines if the service is alive and responsive.
 
 **Response Codes:**
+
 - `200`: Service is alive
 - `503`: Service is not responding
 
 **Example Response:**
+
 ```json
 {
   "status": "alive",
@@ -145,6 +157,7 @@ The health monitoring system provides:
 ```
 
 **Cloud Run Configuration:**
+
 ```yaml
 livenessProbe:
   httpGet:
@@ -163,10 +176,12 @@ livenessProbe:
 **Purpose:** Determines if the service is ready to accept requests.
 
 **Response Codes:**
+
 - `200`: Service is ready
 - `503`: Service is not ready
 
 **Example Response:**
+
 ```json
 {
   "status": "ready",
@@ -181,6 +196,7 @@ livenessProbe:
 ```
 
 **Cloud Run Configuration:**
+
 ```yaml
 readinessProbe:
   httpGet:
@@ -199,10 +215,12 @@ readinessProbe:
 **Purpose:** Provides detailed health information for all components.
 
 **Response Codes:**
+
 - `200`: System is healthy or degraded (still accepting requests)
 - `503`: System is unhealthy
 
 **Example Response:**
+
 ```json
 {
   "status": "healthy",
@@ -250,6 +268,7 @@ readinessProbe:
 **Endpoint:** `GET /health/component/{name}`
 
 **Available Components:**
+
 - `connection-pool`
 - `dataset-manager-cache`
 - `wif-authentication`
@@ -394,19 +413,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (component) {
       const health = await healthEndpoints.handleComponentHealth(component);
       return {
-        content: [{
-          type: 'text',
-          text: health.body,
-        }],
+        content: [
+          {
+            type: 'text',
+            text: health.body,
+          },
+        ],
       };
     }
 
     const summary = await healthEndpoints.getHealthSummary();
     return {
-      content: [{
-        type: 'text',
-        text: summary,
-      }],
+      content: [
+        {
+          type: 'text',
+          text: summary,
+        },
+      ],
     };
   }
 });
@@ -426,16 +449,12 @@ healthMonitor.on('health:check', (report) => {
 
   // Record overall health status
   metrics.healthStatus.record(
-    report.status === HealthStatus.HEALTHY ? 1 :
-    report.status === HealthStatus.DEGRADED ? 0.5 : 0
+    report.status === HealthStatus.HEALTHY ? 1 : report.status === HealthStatus.DEGRADED ? 0.5 : 0
   );
 
   // Record component health
   for (const component of report.components) {
-    metrics.componentHealth.record(
-      component.status === HealthStatus.HEALTHY ? 1 : 0,
-      { component: component.name }
-    );
+    metrics.componentHealth.record(component.status === HealthStatus.HEALTHY ? 1 : 0, { component: component.name });
   }
 });
 ```
@@ -446,9 +465,9 @@ Create Cloud Monitoring alert policies based on health metrics:
 
 ```yaml
 # Example alerting policy
-displayName: "BigQuery MCP Server Unhealthy"
+displayName: 'BigQuery MCP Server Unhealthy'
 conditions:
-  - displayName: "Health check failure"
+  - displayName: 'Health check failure'
     conditionThreshold:
       filter: 'metric.type="custom.googleapis.com/mcp/health/status"'
       comparison: COMPARISON_LT
@@ -466,15 +485,18 @@ notificationChannels:
 ### High Connection Pool Failure Rate
 
 **Symptoms:**
+
 - `failureRate` check shows `degraded` or `unhealthy`
 - High `totalFailed` metric
 
 **Possible Causes:**
+
 - BigQuery API rate limiting
 - Network connectivity issues
 - Invalid credentials
 
 **Resolution:**
+
 1. Check BigQuery API quotas in Cloud Console
 2. Review connection pool configuration
 3. Verify WIF token exchange is working
@@ -483,15 +505,18 @@ notificationChannels:
 ### Low Cache Hit Rate
 
 **Symptoms:**
+
 - `datasetCacheHitRate` or `tableCacheHitRate` below threshold
 - Excessive BigQuery API calls
 
 **Possible Causes:**
+
 - Cache size too small
 - TTL too short
 - High dataset/table volatility
 
 **Resolution:**
+
 1. Increase `cacheSize` configuration
 2. Extend `cacheTTLMs` if data is relatively static
 3. Monitor cache eviction patterns
@@ -500,16 +525,19 @@ notificationChannels:
 ### High Query Error Rate
 
 **Symptoms:**
+
 - `errorRate` check shows `unhealthy`
 - Many failed queries in metrics
 
 **Possible Causes:**
+
 - Invalid SQL queries
 - Insufficient permissions
 - Quota exceeded
 - Table/dataset not found
 
 **Resolution:**
+
 1. Review query error logs
 2. Validate SQL syntax
 3. Check BigQuery permissions
@@ -519,15 +547,18 @@ notificationChannels:
 ### Service Not Ready
 
 **Symptoms:**
+
 - Readiness check returns `503`
 - One or more components not ready
 
 **Possible Causes:**
+
 - Connection pool not initialized
 - Minimum connections not established
 - Component initialization failure
 
 **Resolution:**
+
 1. Check component initialization logs
 2. Verify configuration is correct
 3. Ensure BigQuery API is accessible

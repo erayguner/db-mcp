@@ -143,6 +143,7 @@ This document provides detailed specifications for each component in the BigQuer
 ### 1. MCP Protocol Layer
 
 #### StdioTransport
+
 ```typescript
 interface StdioTransport {
   // Reads JSON-RPC messages from stdin
@@ -157,16 +158,19 @@ interface StdioTransport {
 ```
 
 **Responsibilities**:
+
 - Line-buffered message reading from stdin
 - JSON parsing and validation
 - Message framing for Claude Desktop
 - Protocol-level error handling
 
 **Dependencies**:
+
 - Node.js readline module
 - @modelcontextprotocol/sdk
 
 #### HttpTransport
+
 ```typescript
 interface HttpTransport {
   // HTTP endpoint for Streamable HTTP connections
@@ -181,22 +185,25 @@ interface HttpTransport {
 ```
 
 **Responsibilities**:
+
 - Express-based Streamable HTTP for Cloud Run deployment
 - Session management
 - Client authentication
 - Request/response handling
 
 **Dependencies**:
+
 - Express.js (5.x)
 - @modelcontextprotocol/sdk
 
 ### 2. Tool Registry
 
 #### QueryTool
+
 ```typescript
 interface QueryTool extends MCPTool {
-  name: "query_bigquery";
-  description: "Execute SQL queries on BigQuery";
+  name: 'query_bigquery';
+  description: 'Execute SQL queries on BigQuery';
 
   inputSchema: {
     query: string;
@@ -210,6 +217,7 @@ interface QueryTool extends MCPTool {
 ```
 
 **Features**:
+
 - SQL syntax validation
 - Parameter sanitization
 - Dry run cost estimation
@@ -217,15 +225,17 @@ interface QueryTool extends MCPTool {
 - Streaming results for large datasets
 
 #### SchemaTool
+
 ```typescript
 interface SchemaTool extends MCPTool {
-  name: "list_datasets" | "list_tables" | "get_table_schema";
+  name: 'list_datasets' | 'list_tables' | 'get_table_schema';
 
   handler(input: SchemaInput): Promise<SchemaResult>;
 }
 ```
 
 **Features**:
+
 - Metadata caching (15min TTL)
 - Hierarchical browsing
 - Column type inference
@@ -235,6 +245,7 @@ interface SchemaTool extends MCPTool {
 ### 3. Security Layer
 
 #### AuthenticationManager
+
 ```typescript
 class AuthenticationManager {
   private wifProvider: WIFProvider;
@@ -263,26 +274,23 @@ class AuthenticationManager {
 ```
 
 **Security Features**:
+
 - Automatic token refresh (5min before expiry)
 - Secure token storage (memory only)
 - Token revocation on errors
 - Audit logging of auth events
 
 #### AuthorizationManager
+
 ```typescript
 class AuthorizationManager {
-  async checkPermission(
-    principal: string,
-    resource: string,
-    action: string
-  ): Promise<boolean> {
+  async checkPermission(principal: string, resource: string, action: string): Promise<boolean> {
     // 1. Fetch IAM policy for resource
     const policy = await this.getPolicyWithCache(resource);
 
     // 2. Evaluate bindings
     for (const binding of policy.bindings) {
-      if (binding.members.includes(principal) &&
-          binding.role.permissions.includes(action)) {
+      if (binding.members.includes(principal) && binding.role.permissions.includes(action)) {
         return true;
       }
     }
@@ -293,6 +301,7 @@ class AuthorizationManager {
 ```
 
 **Features**:
+
 - IAM policy caching (10min TTL)
 - Least privilege enforcement
 - Conditional bindings support
@@ -301,16 +310,14 @@ class AuthorizationManager {
 ### 4. BigQuery Adapter
 
 #### QueryService
+
 ```typescript
 class QueryService {
   private jobManager: JobManager;
   private queryBuilder: QueryBuilder;
   private resultParser: ResultParser;
 
-  async executeQuery(
-    sql: string,
-    options: QueryOptions
-  ): Promise<QueryResult> {
+  async executeQuery(sql: string, options: QueryOptions): Promise<QueryResult> {
     // 1. Validate and optimize query
     const validated = this.queryBuilder.validate(sql);
     const optimized = this.queryBuilder.optimize(validated);
@@ -332,6 +339,7 @@ class QueryService {
 ```
 
 **Features**:
+
 - Query parameterization
 - Cost optimization (partition pruning, clustering)
 - Result pagination
@@ -339,6 +347,7 @@ class QueryService {
 - Query job cancellation
 
 #### SchemaService
+
 ```typescript
 class SchemaService {
   private metadataAPI: MetadataAPI;
@@ -361,16 +370,14 @@ class SchemaService {
     return datasets;
   }
 
-  async getTableSchema(
-    datasetId: string,
-    tableId: string
-  ): Promise<TableSchema> {
+  async getTableSchema(datasetId: string, tableId: string): Promise<TableSchema> {
     // Similar caching strategy for table schemas
   }
 }
 ```
 
 **Caching Strategy**:
+
 - Datasets: 15min TTL
 - Tables: 15min TTL
 - Schemas: 30min TTL
@@ -379,6 +386,7 @@ class SchemaService {
 ### 5. Observability Layer
 
 #### Logger (Winston)
+
 ```typescript
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
@@ -391,16 +399,17 @@ const logger = winston.createLogger({
     new winston.transports.Console(),
     new winston.transports.File({
       filename: 'logs/error.log',
-      level: 'error'
+      level: 'error',
     }),
     new winston.transports.File({
-      filename: 'logs/combined.log'
-    })
-  ]
+      filename: 'logs/combined.log',
+    }),
+  ],
 });
 ```
 
 **Log Levels**:
+
 - ERROR: System errors, auth failures
 - WARN: Retries, rate limits, deprecations
 - INFO: Query execution, tool invocations
@@ -408,6 +417,7 @@ const logger = winston.createLogger({
 - TRACE: Internal state changes
 
 #### Tracer (OpenTelemetry)
+
 ```typescript
 const tracer = trace.getTracer('bigquery-mcp-server', '1.0.0');
 
@@ -417,7 +427,7 @@ function traceQuery(sql: string): Span {
       'db.system': 'bigquery',
       'db.statement': sql.substring(0, 500), // Truncate
       'db.operation': 'SELECT',
-    }
+    },
   });
 
   return span;
@@ -425,6 +435,7 @@ function traceQuery(sql: string): Span {
 ```
 
 **Trace Attributes**:
+
 - Request ID
 - User principal
 - Query text (truncated)
@@ -433,30 +444,29 @@ function traceQuery(sql: string): Span {
 - Rows returned
 
 #### Metrics (OpenTelemetry)
+
 ```typescript
 const meter = metrics.getMeter('bigquery-mcp-server', '1.0.0');
 
 // Counters
 const queryCounter = meter.createCounter('bigquery.queries.total', {
-  description: 'Total number of queries executed'
+  description: 'Total number of queries executed',
 });
 
 // Histograms
 const queryDuration = meter.createHistogram('bigquery.query.duration', {
   description: 'Query execution duration in milliseconds',
-  unit: 'ms'
+  unit: 'ms',
 });
 
 // Gauges
-const activeConnections = meter.createObservableGauge(
-  'bigquery.connections.active',
-  {
-    description: 'Number of active BigQuery connections'
-  }
-);
+const activeConnections = meter.createObservableGauge('bigquery.connections.active', {
+  description: 'Number of active BigQuery connections',
+});
 ```
 
 **Key Metrics**:
+
 - `bigquery.queries.total{status, tool}` - Query counter
 - `bigquery.query.duration` - Execution time histogram
 - `bigquery.bytes.scanned` - Data processed
@@ -495,6 +505,7 @@ Observability Layer
 ## Build and Packaging
 
 ### TypeScript Compilation
+
 ```json
 {
   "compilerOptions": {
@@ -518,6 +529,7 @@ Observability Layer
 ```
 
 ### Docker Image
+
 ```dockerfile
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -538,6 +550,7 @@ CMD ["node", "dist/index.js"]
 ```
 
 **Image Optimization**:
+
 - Multi-stage builds (90MB final size)
 - Alpine Linux base
 - Production dependencies only

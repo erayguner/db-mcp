@@ -1,5 +1,5 @@
 /**
- * OAuth 2.0 / MCP 2025-06-18 metadata discovery
+ * OAuth 2.0 / MCP 2025-11-25 metadata discovery
  *
  * Required by:
  * - RFC 8414 (OAuth 2.0 Authorization Server Metadata) — `/.well-known/oauth-authorization-server`
@@ -119,7 +119,7 @@ export function buildProtectedResourceMetadata(cfg: OAuthMetadataConfig): Record
 /**
  * Build the value for the `WWW-Authenticate` response header on 401 responses.
  *
- * Per MCP 2025-06-18, clients use the `resource_metadata` parameter to discover
+ * Per MCP 2025-11-25, clients use the `resource_metadata` parameter to discover
  * the protected-resource metadata document, which in turn points to the
  * authorization server.
  */

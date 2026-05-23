@@ -39,7 +39,10 @@ type PromptGenerator = (args: Record<string, string>) => PromptResult;
  * in a structured way.
  */
 export class PromptRegistry {
-  private readonly prompts = new Map<string, { definition: MCPPrompt; generate: PromptGenerator }>();
+  private readonly prompts = new Map<
+    string,
+    { definition: MCPPrompt; generate: PromptGenerator }
+  >();
 
   constructor() {
     this.registerBuiltins();
@@ -123,14 +126,14 @@ export class PromptRegistry {
               '2. Review the schema — column names, types, modes, and any descriptions.',
               '3. Summarize what this table appears to contain.',
               '4. Suggest 3-5 useful analytical queries a data analyst might run against this table, explaining what each one reveals.',
-            ].join('\n'),
+            ].join('\n')
           ),
           msg(
             'assistant',
-            `I'll start by fetching the schema for \`${args.datasetId}.${args.tableId}\` using the get_table_schema tool.`,
+            `I'll start by fetching the schema for \`${args.datasetId}.${args.tableId}\` using the get_table_schema tool.`
           ),
         ],
-      }),
+      })
     );
   }
 
@@ -160,14 +163,14 @@ export class PromptRegistry {
               '   - What are the key entities or domains represented?',
               '   - How do the tables relate to each other (any obvious foreign keys)?',
               '   - What kinds of analyses could be performed with this data?',
-            ].join('\n'),
+            ].join('\n')
           ),
           msg(
             'assistant',
-            `I'll start by listing all tables in the \`${args.datasetId}\` dataset.`,
+            `I'll start by listing all tables in the \`${args.datasetId}\` dataset.`
           ),
         ],
-      }),
+      })
     );
   }
 
@@ -211,15 +214,15 @@ export class PromptRegistry {
                 '4. Write a well-formatted BigQuery Standard SQL query that fulfills the request.',
                 '5. Explain what the query does and any assumptions you made.',
                 '6. Optionally run a `dryRun` via `query_bigquery` to estimate bytes processed.',
-              ].join('\n'),
+              ].join('\n')
             ),
             msg(
               'assistant',
-              'I\'ll start by examining the available tables and schemas so I can write an accurate query.',
+              "I'll start by examining the available tables and schemas so I can write an accurate query."
             ),
           ],
         };
-      },
+      }
     );
   }
 
@@ -257,14 +260,14 @@ export class PromptRegistry {
               '   - Inefficient JOIN ordering',
               '4. Provide an optimized version of the query with explanations for each change.',
               '5. Estimate the cost reduction if possible (run another dryRun on the optimized query).',
-            ].join('\n'),
+            ].join('\n')
           ),
           msg(
             'assistant',
-            'I\'ll start by running a dry run on the original query to establish a baseline for bytes processed.',
+            "I'll start by running a dry run on the original query to establish a baseline for bytes processed."
           ),
         ],
-      }),
+      })
     );
   }
 
@@ -299,14 +302,14 @@ export class PromptRegistry {
               '   - Potential duplicate rows',
               '   - Any outliers or unexpected distributions',
               '   - Recommendations for data cleaning or validation rules',
-            ].join('\n'),
+            ].join('\n')
           ),
           msg(
             'assistant',
-            `I'll begin by fetching the schema for \`${args.datasetId}.${args.tableId}\` to understand the table structure before running quality checks.`,
+            `I'll begin by fetching the schema for \`${args.datasetId}.${args.tableId}\` to understand the table structure before running quality checks.`
           ),
         ],
-      }),
+      })
     );
   }
 }

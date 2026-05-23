@@ -40,7 +40,7 @@ describeMulti('Multi-Project Connection Management', () => {
         clients.set(projectId, client);
 
         // Wait for pool initialization
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         expect(client.isHealthy()).toBe(true);
       }
@@ -96,18 +96,21 @@ describeMulti('Multi-Project Connection Management', () => {
   describe('Concurrent Operations', () => {
     it('should handle concurrent queries across multiple projects', async () => {
       const queryPromises = Array.from(clients.entries()).map(([projectId, client]) =>
-        client.query({
-          query: 'SELECT 1 as test',
-          dryRun: true,
-        }).then(result => ({
-          projectId,
-          success: true,
-          jobId: result.jobId,
-        })).catch(error => ({
-          projectId,
-          success: false,
-          error: error.message,
-        }))
+        client
+          .query({
+            query: 'SELECT 1 as test',
+            dryRun: true,
+          })
+          .then((result) => ({
+            projectId,
+            success: true,
+            jobId: result.jobId,
+          }))
+          .catch((error) => ({
+            projectId,
+            success: false,
+            error: error.message,
+          }))
       );
 
       const results = await Promise.all(queryPromises);
@@ -115,7 +118,7 @@ describeMulti('Multi-Project Connection Management', () => {
       expect(results).toHaveLength(clients.size);
 
       // In mock/test environment, we expect dry runs to work
-      const successCount = results.filter(r => r.success).length;
+      const successCount = results.filter((r) => r.success).length;
       expect(successCount).toBeGreaterThan(0);
     });
 
@@ -124,17 +127,19 @@ describeMulti('Multi-Project Connection Management', () => {
       const initialMetrics = client.getPoolMetrics();
 
       // Simulate concurrent operations
-      const operations = Array(20).fill(null).map(async (_, index) => {
-        try {
-          await client.query({
-            query: `SELECT ${index} as id`,
-            dryRun: true,
-          });
-          return { success: true };
-        } catch (error) {
-          return { success: false, error };
-        }
-      });
+      const operations = Array(20)
+        .fill(null)
+        .map(async (_, index) => {
+          try {
+            await client.query({
+              query: `SELECT ${index} as id`,
+              dryRun: true,
+            });
+            return { success: true };
+          } catch (error) {
+            return { success: false, error };
+          }
+        });
 
       await Promise.allSettled(operations);
 
@@ -151,16 +156,20 @@ describeMulti('Multi-Project Connection Management', () => {
       const client2 = clients.get('project-b')!;
 
       // Force an error in client1
-      const promise1 = client1.query({
-        query: 'INVALID SQL QUERY HERE',
-        retry: false,
-      }).catch(error => ({ error: error.message }));
+      const promise1 = client1
+        .query({
+          query: 'INVALID SQL QUERY HERE',
+          retry: false,
+        })
+        .catch((error) => ({ error: error.message }));
 
       // Valid query in client2
-      const promise2 = client2.query({
-        query: 'SELECT 1',
-        dryRun: true,
-      }).then(result => ({ success: true, jobId: result.jobId }));
+      const promise2 = client2
+        .query({
+          query: 'SELECT 1',
+          dryRun: true,
+        })
+        .then((result) => ({ success: true, jobId: result.jobId }));
 
       const [result1] = await Promise.all([promise1, promise2]);
 
@@ -185,13 +194,15 @@ describeMulti('Multi-Project Connection Management', () => {
       ]);
 
       // Allow time for connections to be released
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       const afterMetrics = client.getPoolMetrics();
 
       // Connections should be released back to pool
       expect(afterMetrics.totalReleased).toBeGreaterThanOrEqual(beforeMetrics.totalReleased);
-      expect(afterMetrics.activeConnections).toBeLessThanOrEqual(afterMetrics.idleConnections + afterMetrics.activeConnections);
+      expect(afterMetrics.activeConnections).toBeLessThanOrEqual(
+        afterMetrics.idleConnections + afterMetrics.activeConnections
+      );
     });
 
     it('should handle graceful shutdown of individual projects', async () => {
@@ -210,9 +221,9 @@ describeMulti('Multi-Project Connection Management', () => {
       expect(testClient.isHealthy()).toBe(false);
 
       // Should reject new queries after shutdown
-      await expect(
-        testClient.query({ query: 'SELECT 1' })
-      ).rejects.toThrow(/shutting down|shutdown/i);
+      await expect(testClient.query({ query: 'SELECT 1' })).rejects.toThrow(
+        /shutting down|shutdown/i
+      );
     });
 
     it('should not affect other projects when one shuts down', async () => {
@@ -228,10 +239,12 @@ describeMulti('Multi-Project Connection Management', () => {
       expect(client2.isHealthy()).toBe(true);
 
       // client2 should still be able to execute queries
-      const result = await client2.query({
-        query: 'SELECT 1',
-        dryRun: true,
-      }).catch(error => ({ error }));
+      const result = await client2
+        .query({
+          query: 'SELECT 1',
+          dryRun: true,
+        })
+        .catch((error) => ({ error }));
 
       // In test environment, dry run should work
       expect(result).toBeDefined();
@@ -263,16 +276,20 @@ describeMulti('Multi-Project Connection Management', () => {
       clients.set('default-project', client);
 
       // Query with explicit project override
-      const query1 = await client.query({
-        query: 'SELECT 1',
-        dryRun: true,
-      }).catch(error => ({ error }));
+      const query1 = await client
+        .query({
+          query: 'SELECT 1',
+          dryRun: true,
+        })
+        .catch((error) => ({ error }));
 
-      const query2 = await client.query({
-        query: 'SELECT 2',
-        dryRun: true,
-        location: 'EU',
-      }).catch(error => ({ error }));
+      const query2 = await client
+        .query({
+          query: 'SELECT 2',
+          dryRun: true,
+          location: 'EU',
+        })
+        .catch((error) => ({ error }));
 
       expect(query1).toBeDefined();
       expect(query2).toBeDefined();
@@ -289,9 +306,7 @@ describeMulti('Multi-Project Connection Management', () => {
         },
       });
 
-      await expect(
-        invalidClient.query({ query: 'SELECT 1' })
-      ).rejects.toThrow();
+      await expect(invalidClient.query({ query: 'SELECT 1' })).rejects.toThrow();
 
       // Other clients should not be affected
       const validClient = clients.get('project-a')!;
@@ -304,18 +319,22 @@ describeMulti('Multi-Project Connection Management', () => {
       const client = clients.get('project-a')!;
 
       // First query might fail
-      const result1 = await client.query({
-        query: 'SELECT 1',
-        dryRun: true,
-        retry: true,
-        maxRetries: 3,
-      }).catch(error => ({ error }));
+      const result1 = await client
+        .query({
+          query: 'SELECT 1',
+          dryRun: true,
+          retry: true,
+          maxRetries: 3,
+        })
+        .catch((error) => ({ error }));
 
       // Subsequent queries should work
-      const result2 = await client.query({
-        query: 'SELECT 2',
-        dryRun: true,
-      }).catch(error => ({ error }));
+      const result2 = await client
+        .query({
+          query: 'SELECT 2',
+          dryRun: true,
+        })
+        .catch((error) => ({ error }));
 
       expect(result1).toBeDefined();
       expect(result2).toBeDefined();
@@ -327,10 +346,12 @@ describeMulti('Multi-Project Connection Management', () => {
       const client2 = clients.get('project-b')!;
 
       // Force error in client1
-      await client1.query({
-        query: 'INVALID QUERY',
-        retry: false,
-      }).catch(() => {});
+      await client1
+        .query({
+          query: 'INVALID QUERY',
+          retry: false,
+        })
+        .catch(() => {});
 
       // Both clients should maintain independent health states
       const metrics1 = client1.getPoolMetrics();
@@ -384,10 +405,12 @@ describeMulti('Multi-Project Connection Management', () => {
         Array.from(clients.entries()).map(async ([projectId, client]) => {
           const start = Date.now();
 
-          await client.query({
-            query: 'SELECT 1',
-            dryRun: true,
-          }).catch(() => {});
+          await client
+            .query({
+              query: 'SELECT 1',
+              dryRun: true,
+            })
+            .catch(() => {});
 
           const duration = Date.now() - start;
 

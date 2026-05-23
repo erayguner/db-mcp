@@ -102,14 +102,26 @@ export const AuditEventSchema = z.object({
   bytesProcessed: z.number().optional(),
 
   // §11.7 Data lineage — retrieval source provenance on consuming events.
-  lineage: z.object({
-    sources: z.array(z.object({
-      type: z.enum(['bigquery_table', 'bigquery_dataset', 'document_store', 'vector_index', 'prompt_template']),
-      identifier: z.string(),
-      version: z.string(),
-    })).default([]),
-    promptTemplateVersion: z.string().optional(),
-  }).optional(),
+  lineage: z
+    .object({
+      sources: z
+        .array(
+          z.object({
+            type: z.enum([
+              'bigquery_table',
+              'bigquery_dataset',
+              'document_store',
+              'vector_index',
+              'prompt_template',
+            ]),
+            identifier: z.string(),
+            version: z.string(),
+          })
+        )
+        .default([]),
+      promptTemplateVersion: z.string().optional(),
+    })
+    .optional(),
 });
 
 export type AuditEvent = z.infer<typeof AuditEventSchema>;
@@ -190,30 +202,30 @@ class AuditEventStore {
 
     // Filter by principal
     if (options.principal) {
-      results = results.filter(e => e.principal === options.principal);
+      results = results.filter((e) => e.principal === options.principal);
     }
 
     // Filter by event type
     if (options.eventType) {
-      results = results.filter(e => e.eventType === options.eventType);
+      results = results.filter((e) => e.eventType === options.eventType);
     }
 
     // Filter by severity
     if (options.severity) {
-      results = results.filter(e => e.severity === options.severity);
+      results = results.filter((e) => e.severity === options.severity);
     }
 
     // Filter by outcome
     if (options.outcome) {
-      results = results.filter(e => e.outcome === options.outcome);
+      results = results.filter((e) => e.outcome === options.outcome);
     }
 
     // Filter by time range
     if (options.startTime) {
-      results = results.filter(e => e.timestamp >= options.startTime!);
+      results = results.filter((e) => e.timestamp >= options.startTime!);
     }
     if (options.endTime) {
-      results = results.filter(e => e.timestamp <= options.endTime!);
+      results = results.filter((e) => e.timestamp <= options.endTime!);
     }
 
     // Sort by timestamp (newest first)
@@ -309,17 +321,19 @@ class AuditEventStore {
       'errorDetails',
     ].join(',');
 
-    const rows = this.events.map(e => [
-      e.timestamp.toISOString(),
-      e.eventType,
-      e.severity,
-      e.principal,
-      e.action,
-      e.resource || '',
-      e.outcome,
-      JSON.stringify(e.message),
-      e.errorDetails || '',
-    ].join(','));
+    const rows = this.events.map((e) =>
+      [
+        e.timestamp.toISOString(),
+        e.eventType,
+        e.severity,
+        e.principal,
+        e.action,
+        e.resource || '',
+        e.outcome,
+        JSON.stringify(e.message),
+        e.errorDetails || '',
+      ].join(',')
+    );
 
     return headers + '\n' + rows.join('\n');
   }
@@ -331,9 +345,7 @@ class AuditEventStore {
     const cutoff = Date.now() - this.retentionMs;
     const originalLength = this.events.length;
 
-    this.events = this.events.filter(
-      e => e.timestamp.getTime() > cutoff
-    );
+    this.events = this.events.filter((e) => e.timestamp.getTime() > cutoff);
 
     const removed = originalLength - this.events.length;
     if (removed > 0) {
@@ -363,18 +375,17 @@ export class SecurityAuditLogger {
   private chainFile?: string;
   private signer?: Signer;
 
-  constructor(options: {
-    maxEvents?: number;
-    retentionDays?: number;
-    enableCloudLogging?: boolean;
-    chain?: AuditChain<AuditEvent>;
-    chainFile?: string;
-    signer?: Signer;
-  } = {}) {
-    this.store = new AuditEventStore(
-      options.maxEvents,
-      options.retentionDays
-    );
+  constructor(
+    options: {
+      maxEvents?: number;
+      retentionDays?: number;
+      enableCloudLogging?: boolean;
+      chain?: AuditChain<AuditEvent>;
+      chainFile?: string;
+      signer?: Signer;
+    } = {}
+  ) {
+    this.store = new AuditEventStore(options.maxEvents, options.retentionDays);
     this.enableCloudLogging = options.enableCloudLogging ?? true;
     this.chain = options.chain;
     this.chainFile = options.chainFile;
@@ -414,9 +425,9 @@ export class SecurityAuditLogger {
       const entry: ChainEntry<AuditEvent> = this.chain.append(fullEvent, fullEvent.timestamp);
       if (this.chainFile) {
         // Fire-and-forget; DLQ handles write failures (§13.2).
-        this.chain.appendToFile(this.chainFile, entry).catch(err =>
-          logger.error('Audit chain append failed', { err: String(err) }),
-        );
+        this.chain
+          .appendToFile(this.chainFile, entry)
+          .catch((err) => logger.error('Audit chain append failed', { err: String(err) }));
       }
     }
 
@@ -626,12 +637,18 @@ export class SecurityAuditLogger {
    */
   private severityToLogLevel(severity: AuditSeverity): string {
     switch (severity) {
-      case AuditSeverity.DEBUG: return 'debug';
-      case AuditSeverity.INFO: return 'info';
-      case AuditSeverity.WARNING: return 'warn';
-      case AuditSeverity.ERROR: return 'error';
-      case AuditSeverity.CRITICAL: return 'error';
-      default: return 'info';
+      case AuditSeverity.DEBUG:
+        return 'debug';
+      case AuditSeverity.INFO:
+        return 'info';
+      case AuditSeverity.WARNING:
+        return 'warn';
+      case AuditSeverity.ERROR:
+        return 'error';
+      case AuditSeverity.CRITICAL:
+        return 'error';
+      default:
+        return 'info';
     }
   }
 }
@@ -639,7 +656,9 @@ export class SecurityAuditLogger {
 // Export singleton instance
 let auditLoggerInstance: SecurityAuditLogger | null = null;
 
-export function getAuditLogger(options?: ConstructorParameters<typeof SecurityAuditLogger>[0]): SecurityAuditLogger {
+export function getAuditLogger(
+  options?: ConstructorParameters<typeof SecurityAuditLogger>[0]
+): SecurityAuditLogger {
   if (!auditLoggerInstance) {
     auditLoggerInstance = new SecurityAuditLogger(options);
   }

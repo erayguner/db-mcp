@@ -13,12 +13,20 @@ locals {
   datasets_with_env = {
     for k, v in var.datasets : "${k}_${var.environment}" => v
   }
+
+  # Map BigQuery dataset location to the matching KMS location.
+  # BQ multi-region "EU" requires KMS in "europe"; "US" → "us".
+  # Single regions pass through (lowercased).
+  kms_location = lookup({
+    "EU" = "europe"
+    "US" = "us"
+  }, var.bigquery_location, lower(var.bigquery_location))
 }
 
-# KMS Key Ring for BigQuery encryption
+# KMS Key Ring for BigQuery encryption (matched to dataset location).
 resource "google_kms_key_ring" "bigquery" {
   name     = "bigquery-${var.environment}"
-  location = var.region
+  location = local.kms_location
   project  = var.project_id
 }
 
@@ -153,8 +161,8 @@ resource "google_bigquery_dataset" "audit_logs" {
   project       = var.project_id
   dataset_id    = "audit_logs_${var.environment}"
   friendly_name = "Audit Logs - ${upper(var.environment)}"
-  description   = "Audit logs for BigQuery access"
-  location      = var.region
+  description   = "Application audit log of BigQuery access (long-term Cloud Audit Logs go to the 7-year log bucket in audit-logging.tf)"
+  location      = var.bigquery_location
 
   delete_contents_on_destroy = false
 
@@ -181,9 +189,11 @@ resource "google_bigquery_table" "access_log" {
 
   deletion_protection = true
 
+  # No partition expiration: app audit records are retained for the
+  # compliance window. Long-term Cloud Audit Logs retention is centrally
+  # managed by the 2,555-day log bucket in audit-logging.tf.
   time_partitioning {
-    type          = "DAY"
-    expiration_ms = 7776000000 # 90 days
+    type = "DAY"
   }
 
   schema = jsonencode([

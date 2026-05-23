@@ -1,12 +1,18 @@
 import { z } from 'zod';
 import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose';
 import { logger } from '../utils/logger.js';
+import type { OAuthMetadataConfig } from './oauth-metadata.js';
 
 export const OIDCConfigSchema = z.object({
-  issuer: z.string().url().refine(
-    (url) => url.startsWith('https://'),
-    { message: 'Issuer must use HTTPS' }
-  ),
+  issuer: z
+    .string()
+    .url()
+    .refine((url) => url.startsWith('https://'), { message: 'Issuer must use HTTPS' }),
+  /**
+   * Expected `aud` claim value.  Must equal the server's own resource URI
+   * (i.e. OAUTH_RESOURCE_AUDIENCE / OAUTH_RESOURCE_URL) so that tokens minted
+   * for a different service are rejected.  MCP spec 2025-11-25 §4.2.
+   */
   audience: z.string().min(1),
   jwksUri: z.string().url().optional(),
   requiredScopes: z.array(z.string()).default([]),
@@ -50,6 +56,24 @@ export class OIDCAuthenticator {
     });
   }
 
+  /**
+   * Build an OIDCConfig from OAuth metadata, using the resource audience
+   * (OAUTH_RESOURCE_AUDIENCE / OAUTH_RESOURCE_URL) as the `aud` claim value.
+   * This ensures tokens must be explicitly minted for this server's resource URI,
+   * preventing cross-service token reuse (MCP spec 2025-11-25 §4.2).
+   */
+  static configFromOAuthMetadata(
+    oauthCfg: OAuthMetadataConfig,
+    overrides?: Partial<OIDCConfig>
+  ): OIDCConfig {
+    return OIDCConfigSchema.parse({
+      issuer: oauthCfg.authorizationServerIssuer,
+      audience: oauthCfg.resourceAudience,
+      jwksUri: oauthCfg.jwksUri,
+      ...overrides,
+    });
+  }
+
   async authenticate(token: string): Promise<AuthenticatedPrincipal> {
     if (!token) {
       throw new OIDCAuthenticationError('No token provided', 'MISSING_TOKEN');
@@ -64,14 +88,23 @@ export class OIDCAuthenticator {
       const tokenScopes = typeof payload.scope === 'string' ? payload.scope.split(' ') : [];
       for (const required of this.config.requiredScopes) {
         if (!tokenScopes.includes(required)) {
-          throw new OIDCAuthenticationError(`Missing required scope: ${required}`, 'INSUFFICIENT_SCOPE', 403);
+          throw new OIDCAuthenticationError(
+            `Missing required scope: ${required}`,
+            'INSUFFICIENT_SCOPE',
+            403
+          );
         }
       }
       return {
         subject: payload.sub || '',
         email: (payload.email as string) || '',
         issuer: payload.iss || '',
-        audience: typeof payload.aud === 'string' ? payload.aud : Array.isArray(payload.aud) ? payload.aud[0] : '',
+        audience:
+          typeof payload.aud === 'string'
+            ? payload.aud
+            : Array.isArray(payload.aud)
+              ? payload.aud[0]
+              : '',
         scopes: tokenScopes,
         claims: payload,
         authenticatedAt: new Date(),

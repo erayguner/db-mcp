@@ -66,7 +66,7 @@ describe.skip('QueryCache', () => {
       cache.set(key, value);
 
       // Wait for TTL to expire
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       const result = cache.get(key);
       expect(result).toBeNull();
@@ -148,7 +148,7 @@ describe.skip('QueryCache', () => {
       cache.set('key2', 'value2');
 
       // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       const removed = cache.cleanup();
 
@@ -217,7 +217,7 @@ describe.skip('QueryCache', () => {
     it('should return false for expired keys', async () => {
       cache.set('key1', 'value1');
 
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       expect(cache.has('key1')).toBe(false);
     });

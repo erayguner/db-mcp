@@ -83,9 +83,7 @@ describeDiscovery('Dataset Discovery Integration', () => {
 
     it('should discover datasets across multiple projects', async () => {
       const projects = ['project-1', 'project-2', 'project-3'];
-      const clients = projects.map(projectId =>
-        new BigQueryClient({ projectId })
-      );
+      const clients = projects.map((projectId) => new BigQueryClient({ projectId }));
 
       const discoveryResults = await Promise.all(
         clients.map(async (c, index) => ({
@@ -102,7 +100,7 @@ describeDiscovery('Dataset Discovery Integration', () => {
       }
 
       // Cleanup
-      await Promise.all(clients.map(c => c.shutdown()));
+      await Promise.all(clients.map((c) => c.shutdown()));
     });
   });
 
@@ -128,8 +126,9 @@ describeDiscovery('Dataset Discovery Integration', () => {
       const testDataset = 'test_dataset';
       const testTable = 'test_table';
 
-      const table = await client.getTable(testDataset, testTable, testProjectId)
-        .catch(error => null);
+      const table = await client
+        .getTable(testDataset, testTable, testProjectId)
+        .catch((error) => null);
 
       if (table) {
         expect(table).toHaveProperty('id', testTable);
@@ -146,8 +145,12 @@ describeDiscovery('Dataset Discovery Integration', () => {
       let cacheHit = false;
       let cacheMiss = false;
 
-      client.once('cache:hit', () => { cacheHit = true; });
-      client.once('cache:miss', () => { cacheMiss = true; });
+      client.once('cache:hit', () => {
+        cacheHit = true;
+      });
+      client.once('cache:miss', () => {
+        cacheMiss = true;
+      });
 
       // First call
       await client.getTable(testDataset, testTable).catch(() => {});
@@ -156,8 +159,12 @@ describeDiscovery('Dataset Discovery Integration', () => {
       cacheHit = false;
       cacheMiss = false;
 
-      client.once('cache:hit', () => { cacheHit = true; });
-      client.once('cache:miss', () => { cacheMiss = true; });
+      client.once('cache:hit', () => {
+        cacheHit = true;
+      });
+      client.once('cache:miss', () => {
+        cacheMiss = true;
+      });
 
       // Second call (should hit cache if first succeeded)
       await client.getTable(testDataset, testTable).catch(() => {});
@@ -167,9 +174,7 @@ describeDiscovery('Dataset Discovery Integration', () => {
     });
 
     it('should handle non-existent tables gracefully', async () => {
-      await expect(
-        client.getTable('nonexistent_dataset', 'nonexistent_table')
-      ).rejects.toThrow();
+      await expect(client.getTable('nonexistent_dataset', 'nonexistent_table')).rejects.toThrow();
 
       // Client should remain healthy
       expect(client.isHealthy()).toBe(true);
@@ -206,7 +211,7 @@ describeDiscovery('Dataset Discovery Integration', () => {
 
       if (dataset) {
         // Wait for cache to expire
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await new Promise((resolve) => setTimeout(resolve, 150));
 
         // This should trigger a cache miss
         let cacheMissTriggered = false;
@@ -314,7 +319,7 @@ describeDiscovery('Dataset Discovery Integration', () => {
       expect(autoClient.isHealthy()).toBe(true);
 
       // Auto-discovery should not crash the client
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
 
       expect(autoClient.isHealthy()).toBe(true);
 
@@ -347,10 +352,9 @@ describeDiscovery('Dataset Discovery Integration', () => {
       });
 
       // Query dataset from different project
-      const dataset = await crossProjectClient.getDataset(
-        'target_dataset',
-        'target-project'
-      ).catch(() => null);
+      const dataset = await crossProjectClient
+        .getDataset('target_dataset', 'target-project')
+        .catch(() => null);
 
       // Should handle cross-project access
       if (dataset) {

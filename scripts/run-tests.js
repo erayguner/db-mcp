@@ -13,10 +13,7 @@ async function main() {
     testMatch: ['**/tests/**/*.test.ts', '**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
     testPathIgnorePatterns: ['/node_modules/', '/dist/'],
     transform: {
-      '^.+\\.tsx?$': [
-        'ts-jest',
-        { useESM: true, diagnostics: false },
-      ],
+      '^.+\\.tsx?$': ['ts-jest', { useESM: true, diagnostics: false }],
     },
     verbose: true,
     collectCoverageFrom: [
@@ -50,14 +47,17 @@ async function main() {
       numTodoTests: results.numTodoTests,
       startTime: results.startTime,
       endTime: Date.now(),
-      testResults: results.testResults.map(tr => ({
+      testResults: results.testResults.map((tr) => ({
         name: tr.testFilePath,
         status: tr.status,
-        assertionResults: tr.assertionResults.map(a => ({ title: a.title, status: a.status }))
+        assertionResults: tr.assertionResults.map((a) => ({ title: a.title, status: a.status })),
       })),
     };
 
-    fs.writeFileSync(path.join(rootDir, 'programmatic-jest-summary.json'), JSON.stringify(summary, null, 2));
+    fs.writeFileSync(
+      path.join(rootDir, 'programmatic-jest-summary.json'),
+      JSON.stringify(summary, null, 2)
+    );
   } catch (err) {
     fs.writeFileSync(path.join(rootDir, 'programmatic-jest-error.log'), String(err.stack || err));
     process.exitCode = 1;
@@ -65,4 +65,3 @@ async function main() {
 }
 
 await main();
-

@@ -23,10 +23,6 @@
     "ssn",
     "social_security"
   ],
-  "deniedTopics": [
-    "credential exfiltration",
-    "destructive DDL",
-    "cross-tenant data access"
-  ],
+  "deniedTopics": ["credential exfiltration", "destructive DDL", "cross-tenant data access"],
   "modelArmorMode": "inspect_and_block"
 }

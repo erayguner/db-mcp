@@ -8,8 +8,6 @@
 
 import { BigQueryClient } from '../../src/bigquery/client.js';
 
-
-
 const skipPerf = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
 const describePerf = skipPerf ? describe.skip : describe;
 
@@ -39,10 +37,12 @@ describePerf('Performance Benchmark Integration Tests', () => {
     it('should execute simple queries within acceptable time', async () => {
       const start = Date.now();
 
-      const result = await client.query({
-        query: 'SELECT 1 as test',
-        dryRun: true,
-      }).catch(error => ({ error }));
+      const result = await client
+        .query({
+          query: 'SELECT 1 as test',
+          dryRun: true,
+        })
+        .catch((error) => ({ error }));
 
       const duration = Date.now() - start;
 
@@ -54,12 +54,16 @@ describePerf('Performance Benchmark Integration Tests', () => {
       const concurrentQueries = 20;
       const start = Date.now();
 
-      const queries = Array(concurrentQueries).fill(null).map((_, i) =>
-        client.query({
-          query: `SELECT ${i} as id`,
-          dryRun: true,
-        }).catch(error => ({ error }))
-      );
+      const queries = Array(concurrentQueries)
+        .fill(null)
+        .map((_, i) =>
+          client
+            .query({
+              query: `SELECT ${i} as id`,
+              dryRun: true,
+            })
+            .catch((error) => ({ error }))
+        );
 
       const results = await Promise.all(queries);
       const duration = Date.now() - start;
@@ -81,19 +85,23 @@ describePerf('Performance Benchmark Integration Tests', () => {
         const start = Date.now();
 
         await Promise.all(
-          Array(queriesPerIteration).fill(null).map(() =>
-            client.query({
-              query: 'SELECT 1',
-              dryRun: true,
-            }).catch(() => {})
-          )
+          Array(queriesPerIteration)
+            .fill(null)
+            .map(() =>
+              client
+                .query({
+                  query: 'SELECT 1',
+                  dryRun: true,
+                })
+                .catch(() => {})
+            )
         );
 
         const duration = Date.now() - start;
         results.push(duration);
 
         // Small delay between iterations
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
       // Throughput should remain consistent
@@ -114,10 +122,12 @@ describePerf('Performance Benchmark Integration Tests', () => {
 
       const start = Date.now();
 
-      const result = await client.query({
-        query: largeQuery,
-        dryRun: true,
-      }).catch(error => ({ error }));
+      const result = await client
+        .query({
+          query: largeQuery,
+          dryRun: true,
+        })
+        .catch((error) => ({ error }));
 
       const duration = Date.now() - start;
 
@@ -154,10 +164,12 @@ describePerf('Performance Benchmark Integration Tests', () => {
       const start = Date.now();
 
       for (let i = 0; i < acquisitions; i++) {
-        await client.query({
-          query: 'SELECT 1',
-          dryRun: true,
-        }).catch(() => {});
+        await client
+          .query({
+            query: 'SELECT 1',
+            dryRun: true,
+          })
+          .catch(() => {});
       }
 
       const duration = Date.now() - start;
@@ -177,12 +189,16 @@ describePerf('Performance Benchmark Integration Tests', () => {
         const start = Date.now();
 
         await Promise.all(
-          Array(test.concurrent).fill(null).map(() =>
-            client.query({
-              query: 'SELECT 1',
-              dryRun: true,
-            }).catch(() => {})
-          )
+          Array(test.concurrent)
+            .fill(null)
+            .map(() =>
+              client
+                .query({
+                  query: 'SELECT 1',
+                  dryRun: true,
+                })
+                .catch(() => {})
+            )
         );
 
         const duration = Date.now() - start;
@@ -197,9 +213,9 @@ describePerf('Performance Benchmark Integration Tests', () => {
 
       // Execute some queries
       await Promise.all(
-        Array(10).fill(null).map(() =>
-          client.query({ query: 'SELECT 1', dryRun: true }).catch(() => {})
-        )
+        Array(10)
+          .fill(null)
+          .map(() => client.query({ query: 'SELECT 1', dryRun: true }).catch(() => {}))
       );
 
       const newMetrics = client.getPoolMetrics();
@@ -215,12 +231,9 @@ describePerf('Performance Benchmark Integration Tests', () => {
         const metrics = client.getPoolMetrics();
 
         // Simulate acquire/release pattern
-        await Promise.all([
-          metrics.totalAcquired,
-          metrics.totalReleased,
-        ]);
+        await Promise.all([metrics.totalAcquired, metrics.totalReleased]);
 
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
 
       const finalMetrics = client.getPoolMetrics();
@@ -298,7 +311,9 @@ describePerf('Performance Benchmark Integration Tests', () => {
 
     it('should measure cache effectiveness', async () => {
       // Generate cache activity
-      const datasets = Array(5).fill(null).map((_, i) => `dataset_${i}`);
+      const datasets = Array(5)
+        .fill(null)
+        .map((_, i) => `dataset_${i}`);
 
       for (let round = 0; round < 3; round++) {
         for (const ds of datasets) {
@@ -315,14 +330,14 @@ describePerf('Performance Benchmark Integration Tests', () => {
 
   describe('Resource Utilization', () => {
     it('should maintain stable memory usage', async () => {
-
-
       // Execute many operations
       for (let i = 0; i < 100; i++) {
-        await client.query({
-          query: `SELECT ${i}`,
-          dryRun: true,
-        }).catch(() => {});
+        await client
+          .query({
+            query: `SELECT ${i}`,
+            dryRun: true,
+          })
+          .catch(() => {});
       }
 
       const finalMetrics = client.getPoolMetrics();
@@ -362,15 +377,15 @@ describePerf('Performance Benchmark Integration Tests', () => {
 
       // Create many connections
       await Promise.all(
-        Array(10).fill(null).map(() =>
-          testClient.query({ query: 'SELECT 1', dryRun: true }).catch(() => {})
-        )
+        Array(10)
+          .fill(null)
+          .map(() => testClient.query({ query: 'SELECT 1', dryRun: true }).catch(() => {}))
       );
 
       const beforeMetrics = testClient.getPoolMetrics();
 
       // Wait for idle timeout
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const afterMetrics = testClient.getPoolMetrics();
 
@@ -385,11 +400,13 @@ describePerf('Performance Benchmark Integration Tests', () => {
     it('should retry failed queries efficiently', async () => {
       const start = Date.now();
 
-      await client.query({
-        query: 'INVALID SQL',
-        retry: true,
-        maxRetries: 3,
-      }).catch(() => {});
+      await client
+        .query({
+          query: 'INVALID SQL',
+          retry: true,
+          maxRetries: 3,
+        })
+        .catch(() => {});
 
       const duration = Date.now() - start;
 
@@ -403,11 +420,13 @@ describePerf('Performance Benchmark Integration Tests', () => {
       for (let i = 0; i < 5; i++) {
         const start = Date.now();
 
-        await client.query({
-          query: 'SELECT 1',
-          dryRun: true,
-          retry: true,
-        }).catch(() => {});
+        await client
+          .query({
+            query: 'SELECT 1',
+            dryRun: true,
+            retry: true,
+          })
+          .catch(() => {});
 
         results.push(Date.now() - start);
       }
@@ -432,10 +451,12 @@ describePerf('Performance Benchmark Integration Tests', () => {
 
       const start = Date.now();
 
-      await retryClient.query({
-        query: 'INVALID',
-        retry: true,
-      }).catch(() => {});
+      await retryClient
+        .query({
+          query: 'INVALID',
+          retry: true,
+        })
+        .catch(() => {});
 
       const duration = Date.now() - start;
 
@@ -465,9 +486,9 @@ describePerf('Performance Benchmark Integration Tests', () => {
       // Concurrent queries
       start = Date.now();
       await Promise.all(
-        Array(10).fill(null).map(() =>
-          client.query({ query: 'SELECT 1', dryRun: true }).catch(() => {})
-        )
+        Array(10)
+          .fill(null)
+          .map(() => client.query({ query: 'SELECT 1', dryRun: true }).catch(() => {}))
       );
       benchmarks.concurrentQueries = Date.now() - start;
 

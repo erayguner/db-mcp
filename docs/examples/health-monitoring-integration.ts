@@ -42,7 +42,7 @@ export async function basicHealthMonitorSetup() {
 
   const queryMetrics = new QueryMetricsTracker({
     slowQueryThresholdMs: 5000,
-    expensiveCostThresholdUSD: 0.50,
+    expensiveCostThresholdUSD: 0.5,
     enableDetailedTracking: true,
   });
 
@@ -172,11 +172,7 @@ export class MCPServerWithHealthMonitoring {
               component: {
                 type: 'string',
                 description: 'Optional: Check specific component',
-                enum: [
-                  'connection-pool',
-                  'dataset-manager-cache',
-                  'query-performance',
-                ],
+                enum: ['connection-pool', 'dataset-manager-cache', 'query-performance'],
               },
             },
           },
@@ -264,9 +260,7 @@ export class MCPServerWithHealthMonitoring {
   private async handleHealthCheck(args: { component?: string }) {
     try {
       if (args.component) {
-        const health = await this.healthEndpoints.handleComponentHealth(
-          args.component
-        );
+        const health = await this.healthEndpoints.handleComponentHealth(args.component);
         return {
           content: [
             {
@@ -433,8 +427,8 @@ export class CloudMonitoringIntegration {
       report.status === HealthStatus.HEALTHY
         ? 1
         : report.status === HealthStatus.DEGRADED
-        ? 0.5
-        : 0;
+          ? 0.5
+          : 0;
 
     // Export to Cloud Monitoring (example)
     logger.info('Exporting health metrics to Cloud Monitoring', {

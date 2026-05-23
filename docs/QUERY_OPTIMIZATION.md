@@ -29,10 +29,10 @@ Memory-based LRU (Least Recently Used) cache for query results.
 
 ```typescript
 const cache = new QueryCache({
-  maxSize: 100 * 1024 * 1024,  // 100MB
-  ttl: 60 * 60 * 1000,          // 1 hour
-  maxEntries: 1000,             // Max number of entries
-  enableCompression: false,      // Value compression
+  maxSize: 100 * 1024 * 1024, // 100MB
+  ttl: 60 * 60 * 1000, // 1 hour
+  maxEntries: 1000, // Max number of entries
+  enableCompression: false, // Value compression
 });
 ```
 
@@ -63,6 +63,7 @@ console.log(`Hit rate: ${stats.hitRate}%`);
 #### Cache Key Generation
 
 Keys are generated using SHA-256 hash of:
+
 - Normalized SQL query (lowercase, no extra whitespace, no comments)
 - Query parameters (if any)
 
@@ -102,7 +103,7 @@ Validates, analyzes, and optimizes SQL queries before execution.
 const optimizer = new QueryOptimizer(client, {
   autoAddLimit: true,
   maxAutoLimit: 1000,
-  costThresholdUSD: 0.50,
+  costThresholdUSD: 0.5,
   enableQueryRewrite: true,
   enablePartitionPruning: true,
 });
@@ -137,13 +138,14 @@ The optimizer checks for:
 
 - Empty queries
 - Dangerous SQL patterns (DROP, DELETE, TRUNCATE, etc.)
-- Expensive operations (SELECT *, CROSS JOIN, etc.)
+- Expensive operations (SELECT \*, CROSS JOIN, etc.)
 - Unbalanced parentheses
 - Valid SQL structure
 
 #### Cost Estimation
 
 Uses BigQuery's dry run feature to estimate:
+
 - Total bytes processed
 - Estimated cost in USD
 - Whether query exceeds cost threshold
@@ -179,7 +181,7 @@ Tracks query performance and generates analytics.
 ```typescript
 const tracker = new QueryMetricsTracker({
   slowQueryThresholdMs: 5000,
-  expensiveCostThresholdUSD: 0.50,
+  expensiveCostThresholdUSD: 0.5,
   retentionPeriodMs: 24 * 60 * 60 * 1000, // 24 hours
   enableDetailedTracking: true,
 });
@@ -263,7 +265,7 @@ class OptimizedQueryExecutor {
 
     this.optimizer = new QueryOptimizer(client, {
       autoAddLimit: true,
-      costThresholdUSD: 0.50,
+      costThresholdUSD: 0.5,
     });
 
     this.metrics = new QueryMetricsTracker({
@@ -305,16 +307,19 @@ class OptimizedQueryExecutor {
 ## Performance Benefits
 
 ### Caching
+
 - **Latency Reduction**: 90%+ for cached queries
 - **Cost Savings**: Zero cost for cache hits
 - **Load Reduction**: Less load on BigQuery
 
 ### Optimization
+
 - **Cost Reduction**: 30-70% through better query structure
 - **Performance**: Faster execution with LIMIT clauses
 - **Safety**: Prevention of expensive runaway queries
 
 ### Metrics
+
 - **Visibility**: Real-time performance insights
 - **Optimization**: Data-driven query improvements
 - **Budgeting**: Cost tracking and forecasting
@@ -334,19 +339,21 @@ class OptimizedQueryExecutor {
 
 3. **Invalidation**: Clear cache when data changes
    ```typescript
-   cache.invalidate(/^users:/);  // All user queries
-   cache.invalidate(/users.*id=123/);  // Specific user
+   cache.invalidate(/^users:/); // All user queries
+   cache.invalidate(/users.*id=123/); // Specific user
    ```
 
 ### Optimizer Configuration
 
 1. **Auto-Limit**: Enable for production
+
    ```typescript
    autoAddLimit: true,
    maxAutoLimit: 1000,
    ```
 
 2. **Cost Threshold**: Set based on budget
+
    ```typescript
    costThresholdUSD: 0.50,  // Warn on queries >$0.50
    ```
@@ -359,12 +366,14 @@ class OptimizedQueryExecutor {
 ### Metrics Configuration
 
 1. **Thresholds**: Adjust based on requirements
+
    ```typescript
    slowQueryThresholdMs: 5000,     // 5 seconds
    expensiveCostThresholdUSD: 0.50, // $0.50
    ```
 
 2. **Retention**: Balance memory vs. historical data
+
    ```typescript
    retentionPeriodMs: 24 * 60 * 60 * 1000, // 24 hours
    ```
@@ -431,6 +440,7 @@ All metrics are exported to GCP Cloud Monitoring.
 **Symptoms**: `cacheHitRate < 20%`
 
 **Solutions**:
+
 1. Increase TTL if data allows
 2. Normalize queries (use parameters instead of literals)
 3. Check if queries have unique filters
@@ -441,6 +451,7 @@ All metrics are exported to GCP Cloud Monitoring.
 **Symptoms**: Cache size approaching max
 
 **Solutions**:
+
 1. Reduce `maxEntries` or `maxSize`
 2. Decrease TTL
 3. Implement more aggressive invalidation
@@ -451,6 +462,7 @@ All metrics are exported to GCP Cloud Monitoring.
 **Symptoms**: Many queries in `slowQueries` list
 
 **Solutions**:
+
 1. Review optimization suggestions
 2. Add appropriate filters/indexes
 3. Use partitioned tables
@@ -462,6 +474,7 @@ All metrics are exported to GCP Cloud Monitoring.
 **Symptoms**: `totalCost` exceeding budget
 
 **Solutions**:
+
 1. Enable auto-limit
 2. Use partitioned/clustered tables
 3. Add date filters
@@ -487,6 +500,7 @@ npm run test:coverage     # Coverage report
 ```
 
 See test files for usage examples:
+
 - [QueryCache tests](../tests/bigquery/query-cache.test.ts)
 - [QueryOptimizer tests](../tests/bigquery/query-optimizer.test.ts)
 - [QueryMetricsTracker tests](../tests/bigquery/query-metrics.test.ts)

@@ -74,7 +74,7 @@ export class QueryMetricsTracker {
   constructor(config?: Partial<QueryMetricsConfig>) {
     this.config = {
       slowQueryThresholdMs: config?.slowQueryThresholdMs ?? 5000,
-      expensiveCostThresholdUSD: config?.expensiveCostThresholdUSD ?? 0.50,
+      expensiveCostThresholdUSD: config?.expensiveCostThresholdUSD ?? 0.5,
       retentionPeriodMs: config?.retentionPeriodMs ?? 24 * 60 * 60 * 1000, // 24 hours
       enableDetailedTracking: config?.enableDetailedTracking ?? true,
     };
@@ -143,11 +143,7 @@ export class QueryMetricsTracker {
     metric.cost = result.cost ?? (metric.bytesProcessed / 1e12) * 6.25;
 
     // Record to OpenTelemetry
-    recordQueryLatency(
-      duration,
-      metric.cached ? 'cached' : 'direct',
-      result.success
-    );
+    recordQueryLatency(duration, metric.cached ? 'cached' : 'direct', result.success);
 
     if (result.bytesProcessed) {
       recordBigQueryBytes(result.bytesProcessed, 'query');
@@ -197,35 +193,29 @@ export class QueryMetricsTracker {
    */
   getStats(): QueryStats {
     const allMetrics = this.getAllMetrics();
-    const completedMetrics = allMetrics.filter(m => m.endTime !== undefined);
+    const completedMetrics = allMetrics.filter((m) => m.endTime !== undefined);
 
     const totalQueries = completedMetrics.length;
-    const successfulQueries = completedMetrics.filter(m => m.success).length;
+    const successfulQueries = completedMetrics.filter((m) => m.success).length;
     const failedQueries = totalQueries - successfulQueries;
-    const cachedQueries = completedMetrics.filter(m => m.cached).length;
+    const cachedQueries = completedMetrics.filter((m) => m.cached).length;
 
-    const totalBytesProcessed = completedMetrics.reduce(
-      (sum, m) => sum + m.bytesProcessed,
-      0
-    );
+    const totalBytesProcessed = completedMetrics.reduce((sum, m) => sum + m.bytesProcessed, 0);
     const totalCost = completedMetrics.reduce((sum, m) => sum + m.cost, 0);
 
-    const totalDuration = completedMetrics.reduce(
-      (sum, m) => sum + (m.duration ?? 0),
-      0
-    );
+    const totalDuration = completedMetrics.reduce((sum, m) => sum + (m.duration ?? 0), 0);
     const averageDuration = totalQueries > 0 ? totalDuration / totalQueries : 0;
     const averageCost = totalQueries > 0 ? totalCost / totalQueries : 0;
 
     // Get slow queries
     const slowQueries = completedMetrics
-      .filter(m => (m.duration ?? 0) > this.config.slowQueryThresholdMs)
+      .filter((m) => (m.duration ?? 0) > this.config.slowQueryThresholdMs)
       .sort((a, b) => (b.duration ?? 0) - (a.duration ?? 0))
       .slice(0, 10);
 
     // Get expensive queries
     const expensiveQueries = completedMetrics
-      .filter(m => m.cost > this.config.expensiveCostThresholdUSD)
+      .filter((m) => m.cost > this.config.expensiveCostThresholdUSD)
       .sort((a, b) => b.cost - a.cost)
       .slice(0, 10);
 
@@ -278,11 +268,8 @@ export class QueryMetricsTracker {
   /**
    * Get top queries by a specific metric
    */
-  getTopQueries(
-    by: 'duration' | 'cost' | 'bytes',
-    limit: number = 10
-  ): QueryMetrics[] {
-    const completedMetrics = this.getAllMetrics().filter(m => m.endTime !== undefined);
+  getTopQueries(by: 'duration' | 'cost' | 'bytes', limit: number = 10): QueryMetrics[] {
+    const completedMetrics = this.getAllMetrics().filter((m) => m.endTime !== undefined);
 
     const sorted = completedMetrics.sort((a, b) => {
       switch (by) {
@@ -329,7 +316,7 @@ export class QueryMetricsTracker {
       );
     }
 
-    if (stats.averageCost > 0.10) {
+    if (stats.averageCost > 0.1) {
       recommendations.push(
         `High average query cost ($${stats.averageCost.toFixed(4)}). Optimize queries or use partitioned tables.`
       );
@@ -389,9 +376,12 @@ export class QueryMetricsTracker {
    */
   private startCleanup(): void {
     // Run cleanup every hour
-    this.cleanupInterval = setInterval(() => {
-      this.cleanup();
-    }, 60 * 60 * 1000);
+    this.cleanupInterval = setInterval(
+      () => {
+        this.cleanup();
+      },
+      60 * 60 * 1000
+    );
     if (typeof this.cleanupInterval.unref === 'function') this.cleanupInterval.unref();
 
     logger.debug('Periodic metrics cleanup started');

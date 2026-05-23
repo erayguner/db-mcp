@@ -110,11 +110,10 @@ export class ConnectionPool extends EventEmitter {
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      this.emit('error', new ConnectionPoolError(
-        'Failed to initialize connection pool',
-        'INIT_ERROR',
-        err
-      ));
+      this.emit(
+        'error',
+        new ConnectionPoolError('Failed to initialize connection pool', 'INIT_ERROR', err)
+      );
       throw err;
     }
   }
@@ -150,11 +149,10 @@ export class ConnectionPool extends EventEmitter {
       return connection;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      this.emit('error', new ConnectionPoolError(
-        `Failed to create connection ${connectionId}`,
-        'CREATE_ERROR',
-        err
-      ));
+      this.emit(
+        'error',
+        new ConnectionPoolError(`Failed to create connection ${connectionId}`, 'CREATE_ERROR', err)
+      );
       throw err;
     }
   }
@@ -185,7 +183,7 @@ export class ConnectionPool extends EventEmitter {
 
           this.emit('connection:acquired', {
             id: connection.id,
-            acquireTimeMs: acquireTime
+            acquireTimeMs: acquireTime,
           });
 
           resolve(connection.client);
@@ -204,10 +202,12 @@ export class ConnectionPool extends EventEmitter {
         if (index !== -1) {
           this.waitingQueue.splice(index, 1);
           this.metrics.totalTimeouts++;
-          request.reject(new ConnectionPoolError(
-            `Connection acquisition timeout after ${this.config.acquireTimeoutMs}ms`,
-            'ACQUIRE_TIMEOUT'
-          ));
+          request.reject(
+            new ConnectionPoolError(
+              `Connection acquisition timeout after ${this.config.acquireTimeoutMs}ms`,
+              'ACQUIRE_TIMEOUT'
+            )
+          );
         }
       }, this.config.acquireTimeoutMs);
 
@@ -224,7 +224,7 @@ export class ConnectionPool extends EventEmitter {
   private processAcquireRequest(request: AcquireRequest): void {
     // Check for idle connections
     const idleConnection = Array.from(this.connections.values()).find(
-      conn => !conn.inUse && conn.failureCount < this.config.maxRetries
+      (conn) => !conn.inUse && conn.failureCount < this.config.maxRetries
     );
 
     if (idleConnection) {
@@ -254,20 +254,18 @@ export class ConnectionPool extends EventEmitter {
     // Add to waiting queue
     this.waitingQueue.push(request);
     this.emit('connection:queued', {
-      queueLength: this.waitingQueue.length
+      queueLength: this.waitingQueue.length,
     });
   }
 
   public release(client: BigQuery): void {
-    const connection = Array.from(this.connections.values()).find(
-      conn => conn.client === client
-    );
+    const connection = Array.from(this.connections.values()).find((conn) => conn.client === client);
 
     if (!connection) {
-      this.emit('warning', new ConnectionPoolError(
-        'Attempted to release unknown connection',
-        'UNKNOWN_CONNECTION'
-      ));
+      this.emit(
+        'warning',
+        new ConnectionPoolError('Attempted to release unknown connection', 'UNKNOWN_CONNECTION')
+      );
       return;
     }
 
@@ -295,8 +293,7 @@ export class ConnectionPool extends EventEmitter {
   private cleanupIdleConnections(): void {
     const now = Date.now();
     const idleConnections = Array.from(this.connections.values()).filter(
-      conn => !conn.inUse &&
-      now - conn.lastUsedAt.getTime() > this.config.idleTimeoutMs
+      (conn) => !conn.inUse && now - conn.lastUsedAt.getTime() > this.config.idleTimeoutMs
     );
 
     const excessConnections = this.connections.size - this.config.minConnections;
@@ -307,14 +304,14 @@ export class ConnectionPool extends EventEmitter {
       this.connections.delete(conn.id);
       this.emit('connection:removed', {
         id: conn.id,
-        reason: 'idle_timeout'
+        reason: 'idle_timeout',
       });
     }
   }
 
   private startHealthCheck(): void {
     this.healthCheckInterval = setInterval(() => {
-      void this.performHealthCheck().catch(err => {
+      void this.performHealthCheck().catch((err) => {
         const error = err instanceof Error ? err : new Error(String(err));
         this.emit('health:check:error', { error: error.message });
       });
@@ -346,7 +343,7 @@ export class ConnectionPool extends EventEmitter {
         this.emit('health:check:failed', {
           id: conn.id,
           failureCount: conn.failureCount,
-          error: err.message
+          error: err.message,
         });
 
         // Remove connection if it has exceeded max retries
@@ -354,7 +351,7 @@ export class ConnectionPool extends EventEmitter {
           this.connections.delete(conn.id);
           this.emit('connection:removed', {
             id: conn.id,
-            reason: 'health_check_failed'
+            reason: 'health_check_failed',
           });
 
           // Create replacement if below minimum
@@ -362,12 +359,16 @@ export class ConnectionPool extends EventEmitter {
             try {
               this.createConnection();
             } catch (createError) {
-              const err = createError instanceof Error ? createError : new Error(String(createError));
-              this.emit('error', new ConnectionPoolError(
-                'Failed to create replacement connection',
-                'REPLACEMENT_ERROR',
-                err
-              ));
+              const err =
+                createError instanceof Error ? createError : new Error(String(createError));
+              this.emit(
+                'error',
+                new ConnectionPoolError(
+                  'Failed to create replacement connection',
+                  'REPLACEMENT_ERROR',
+                  err
+                )
+              );
             }
           }
         }
@@ -379,12 +380,13 @@ export class ConnectionPool extends EventEmitter {
 
   public getMetrics(): PoolMetrics {
     const activeConnections = Array.from(this.connections.values()).filter(
-      conn => conn.inUse
+      (conn) => conn.inUse
     ).length;
 
-    const averageAcquireTime = this.metrics.acquireTimes.length > 0
-      ? this.metrics.acquireTimes.reduce((a, b) => a + b, 0) / this.metrics.acquireTimes.length
-      : 0;
+    const averageAcquireTime =
+      this.metrics.acquireTimes.length > 0
+        ? this.metrics.acquireTimes.reduce((a, b) => a + b, 0) / this.metrics.acquireTimes.length
+        : 0;
 
     return {
       totalConnections: this.connections.size,
@@ -418,10 +420,7 @@ export class ConnectionPool extends EventEmitter {
       if (request.timeoutHandle) {
         clearTimeout(request.timeoutHandle);
       }
-      request.reject(new ConnectionPoolError(
-        'Pool is shutting down',
-        'POOL_SHUTDOWN'
-      ));
+      request.reject(new ConnectionPoolError('Pool is shutting down', 'POOL_SHUTDOWN'));
     }
     this.waitingQueue = [];
 
@@ -430,7 +429,7 @@ export class ConnectionPool extends EventEmitter {
     const startShutdown = Date.now();
 
     while (this.hasActiveConnections() && Date.now() - startShutdown < shutdownTimeout) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
     // Clear all connections
@@ -440,12 +439,14 @@ export class ConnectionPool extends EventEmitter {
   }
 
   private hasActiveConnections(): boolean {
-    return Array.from(this.connections.values()).some(conn => conn.inUse);
+    return Array.from(this.connections.values()).some((conn) => conn.inUse);
   }
 
   public isHealthy(): boolean {
-    return !this.isShuttingDown &&
-           this.connections.size >= this.config.minConnections &&
-           this.connections.size <= this.config.maxConnections;
+    return (
+      !this.isShuttingDown &&
+      this.connections.size >= this.config.minConnections &&
+      this.connections.size <= this.config.maxConnections
+    );
   }
 }

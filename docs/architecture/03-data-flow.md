@@ -496,16 +496,19 @@ Invalidate Pattern
 ## Performance Characteristics
 
 ### Query Execution
+
 - **Latency**: 100-5000ms (depends on query complexity)
 - **Throughput**: 100+ concurrent queries
 - **Cache Hit Rate**: 60-80% for schema operations
 
 ### Authentication
+
 - **Token Acquisition**: 500-2000ms (first time)
 - **Token Refresh**: 200-500ms (from cache)
 - **Cache Duration**: 55min (refreshed at 5min before expiry)
 
 ### Error Recovery
+
 - **Transient Errors**: 3-5 retries with exponential backoff
 - **Permanent Errors**: Fail immediately with detailed error
 - **Circuit Breaker**: Open after 5 consecutive failures

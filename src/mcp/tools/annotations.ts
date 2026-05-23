@@ -1,5 +1,5 @@
 /**
- * MCP tool annotations (2025-06-18 spec) plus cost-guardrail thresholds.
+ * MCP tool annotations (2025-11-25 spec) plus cost-guardrail thresholds.
  *
  * `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`
  * let MCP clients risk-classify a tool before invocation. The extension

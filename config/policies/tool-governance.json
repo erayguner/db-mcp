@@ -9,11 +9,7 @@
     "list_tables",
     "get_table_schema"
   ],
-  "denyList": [
-    "drop_table",
-    "delete_dataset",
-    "execute_dml"
-  ],
+  "denyList": ["drop_table", "delete_dataset", "execute_dml"],
   "requireApproval": [],
   "categories": {
     "query_bigquery": "execution",

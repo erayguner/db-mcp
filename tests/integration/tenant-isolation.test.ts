@@ -36,9 +36,13 @@ describe('Tenant Isolation Integration', () => {
 
   it('isolates tenant A to analytics dataset only', () => {
     const ctx = factory.createContext({
-      subject: 'u1', email: 'user@tenant-a.com',
-      issuer: 'https://idp.com', audience: 'mcp', scopes: [],
-      claims: {}, authenticatedAt: new Date(),
+      subject: 'u1',
+      email: 'user@tenant-a.com',
+      issuer: 'https://idp.com',
+      audience: 'mcp',
+      scopes: [],
+      claims: {},
+      authenticatedAt: new Date(),
     });
     expect(ctx.policy.canAccessDataset('analytics')).toBe(true);
     expect(ctx.policy.canAccessDataset('sales')).toBe(false);
@@ -47,9 +51,13 @@ describe('Tenant Isolation Integration', () => {
 
   it('allows tenant B to access sales and inventory with writes', () => {
     const ctx = factory.createContext({
-      subject: 'u2', email: 'user@tenant-b.com',
-      issuer: 'https://idp.com', audience: 'mcp', scopes: [],
-      claims: {}, authenticatedAt: new Date(),
+      subject: 'u2',
+      email: 'user@tenant-b.com',
+      issuer: 'https://idp.com',
+      audience: 'mcp',
+      scopes: [],
+      claims: {},
+      authenticatedAt: new Date(),
     });
     expect(ctx.policy.canAccessDataset('sales')).toBe(true);
     expect(ctx.policy.canAccessDataset('inventory')).toBe(true);
@@ -59,9 +67,13 @@ describe('Tenant Isolation Integration', () => {
 
   it('tenant A cannot query tenant B datasets', () => {
     const ctx = factory.createContext({
-      subject: 'u1', email: 'user@tenant-a.com',
-      issuer: 'https://idp.com', audience: 'mcp', scopes: [],
-      claims: {}, authenticatedAt: new Date(),
+      subject: 'u1',
+      email: 'user@tenant-a.com',
+      issuer: 'https://idp.com',
+      audience: 'mcp',
+      scopes: [],
+      claims: {},
+      authenticatedAt: new Date(),
     });
     const result = ctx.policy.validateQuery('SELECT * FROM `proj-b.sales.orders`');
     expect(result.allowed).toBe(false);
@@ -70,9 +82,13 @@ describe('Tenant Isolation Integration', () => {
 
   it('tenant A query within allowed dataset passes', () => {
     const ctx = factory.createContext({
-      subject: 'u1', email: 'user@tenant-a.com',
-      issuer: 'https://idp.com', audience: 'mcp', scopes: [],
-      claims: {}, authenticatedAt: new Date(),
+      subject: 'u1',
+      email: 'user@tenant-a.com',
+      issuer: 'https://idp.com',
+      audience: 'mcp',
+      scopes: [],
+      claims: {},
+      authenticatedAt: new Date(),
     });
     const result = ctx.policy.validateQuery('SELECT * FROM `proj-a.analytics.events`');
     expect(result.allowed).toBe(true);

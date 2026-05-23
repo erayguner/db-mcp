@@ -239,7 +239,7 @@ export class HealthMonitor extends EventEmitter {
 
     // Aggregate status
     const status = this.aggregateHealth(components);
-    const checks = components.flatMap(c => Object.values(c.checks));
+    const checks = components.flatMap((c) => Object.values(c.checks));
 
     const report: SystemHealthReport = {
       status,
@@ -248,9 +248,9 @@ export class HealthMonitor extends EventEmitter {
       components,
       metrics: {
         totalChecks: checks.length,
-        healthyChecks: checks.filter(c => c.status === HealthStatus.HEALTHY).length,
-        degradedChecks: checks.filter(c => c.status === HealthStatus.DEGRADED).length,
-        unhealthyChecks: checks.filter(c => c.status === HealthStatus.UNHEALTHY).length,
+        healthyChecks: checks.filter((c) => c.status === HealthStatus.HEALTHY).length,
+        degradedChecks: checks.filter((c) => c.status === HealthStatus.DEGRADED).length,
+        unhealthyChecks: checks.filter((c) => c.status === HealthStatus.UNHEALTHY).length,
       },
       version: process.env.npm_package_version ?? '1.0.0',
     };
@@ -290,9 +290,10 @@ export class HealthMonitor extends EventEmitter {
 
       // Check active connections
       checks.activeConnections = {
-        status: metrics.totalConnections >= thresholds.minHealthyConnections
-          ? HealthStatus.HEALTHY
-          : HealthStatus.UNHEALTHY,
+        status:
+          metrics.totalConnections >= thresholds.minHealthyConnections
+            ? HealthStatus.HEALTHY
+            : HealthStatus.UNHEALTHY,
         message: `${metrics.activeConnections}/${metrics.totalConnections} connections active`,
         details: {
           active: metrics.activeConnections,
@@ -305,11 +306,12 @@ export class HealthMonitor extends EventEmitter {
 
       // Check waiting requests
       checks.waitingRequests = {
-        status: metrics.waitingRequests <= thresholds.maxWaitingRequests
-          ? HealthStatus.HEALTHY
-          : metrics.waitingRequests <= thresholds.maxWaitingRequests * 1.5
-          ? HealthStatus.DEGRADED
-          : HealthStatus.UNHEALTHY,
+        status:
+          metrics.waitingRequests <= thresholds.maxWaitingRequests
+            ? HealthStatus.HEALTHY
+            : metrics.waitingRequests <= thresholds.maxWaitingRequests * 1.5
+              ? HealthStatus.DEGRADED
+              : HealthStatus.UNHEALTHY,
         message: `${metrics.waitingRequests} requests waiting`,
         details: { waitingRequests: metrics.waitingRequests },
         timestamp: Date.now(),
@@ -321,11 +323,12 @@ export class HealthMonitor extends EventEmitter {
       const failureRate = totalOperations > 0 ? metrics.totalFailed / totalOperations : 0;
 
       checks.failureRate = {
-        status: failureRate <= thresholds.maxFailureRate
-          ? HealthStatus.HEALTHY
-          : failureRate <= thresholds.maxFailureRate * 1.5
-          ? HealthStatus.DEGRADED
-          : HealthStatus.UNHEALTHY,
+        status:
+          failureRate <= thresholds.maxFailureRate
+            ? HealthStatus.HEALTHY
+            : failureRate <= thresholds.maxFailureRate * 1.5
+              ? HealthStatus.DEGRADED
+              : HealthStatus.UNHEALTHY,
         message: `${(failureRate * 100).toFixed(2)}% failure rate`,
         details: {
           failureRate,
@@ -338,9 +341,7 @@ export class HealthMonitor extends EventEmitter {
 
       // Check pool availability
       checks.poolAvailability = {
-        status: this.connectionPool!.isHealthy()
-          ? HealthStatus.HEALTHY
-          : HealthStatus.UNHEALTHY,
+        status: this.connectionPool!.isHealthy() ? HealthStatus.HEALTHY : HealthStatus.UNHEALTHY,
         message: this.connectionPool!.isHealthy() ? 'Pool is healthy' : 'Pool is unhealthy',
         details: {
           uptime: metrics.uptime,
@@ -380,11 +381,12 @@ export class HealthMonitor extends EventEmitter {
 
       // Check dataset cache hit rate
       checks.datasetCacheHitRate = {
-        status: cacheStats.datasets.hitRate >= thresholds.minHitRate
-          ? HealthStatus.HEALTHY
-          : cacheStats.datasets.hitRate >= thresholds.minHitRate * 0.5
-          ? HealthStatus.DEGRADED
-          : HealthStatus.UNHEALTHY,
+        status:
+          cacheStats.datasets.hitRate >= thresholds.minHitRate
+            ? HealthStatus.HEALTHY
+            : cacheStats.datasets.hitRate >= thresholds.minHitRate * 0.5
+              ? HealthStatus.DEGRADED
+              : HealthStatus.UNHEALTHY,
         message: `Dataset cache hit rate: ${(cacheStats.datasets.hitRate * 100).toFixed(1)}%`,
         details: cacheStats.datasets,
         timestamp: Date.now(),
@@ -393,11 +395,12 @@ export class HealthMonitor extends EventEmitter {
 
       // Check table cache hit rate
       checks.tableCacheHitRate = {
-        status: cacheStats.tables.hitRate >= thresholds.minHitRate
-          ? HealthStatus.HEALTHY
-          : cacheStats.tables.hitRate >= thresholds.minHitRate * 0.5
-          ? HealthStatus.DEGRADED
-          : HealthStatus.UNHEALTHY,
+        status:
+          cacheStats.tables.hitRate >= thresholds.minHitRate
+            ? HealthStatus.HEALTHY
+            : cacheStats.tables.hitRate >= thresholds.minHitRate * 0.5
+              ? HealthStatus.DEGRADED
+              : HealthStatus.UNHEALTHY,
         message: `Table cache hit rate: ${(cacheStats.tables.hitRate * 100).toFixed(1)}%`,
         details: cacheStats.tables,
         timestamp: Date.now(),
@@ -409,11 +412,12 @@ export class HealthMonitor extends EventEmitter {
       const tableUtilization = cacheStats.tables.size / cacheStats.tables.maxSize;
 
       checks.cacheUtilization = {
-        status: datasetUtilization < 0.9 && tableUtilization < 0.9
-          ? HealthStatus.HEALTHY
-          : datasetUtilization < 0.95 && tableUtilization < 0.95
-          ? HealthStatus.DEGRADED
-          : HealthStatus.UNHEALTHY,
+        status:
+          datasetUtilization < 0.9 && tableUtilization < 0.9
+            ? HealthStatus.HEALTHY
+            : datasetUtilization < 0.95 && tableUtilization < 0.95
+              ? HealthStatus.DEGRADED
+              : HealthStatus.UNHEALTHY,
         message: `Cache utilization: datasets ${(datasetUtilization * 100).toFixed(1)}%, tables ${(tableUtilization * 100).toFixed(1)}%`,
         details: {
           datasetUtilization,
@@ -503,11 +507,12 @@ export class HealthMonitor extends EventEmitter {
 
       // Check error rate
       checks.errorRate = {
-        status: stats.errorRate <= thresholds.maxErrorRate * 100
-          ? HealthStatus.HEALTHY
-          : stats.errorRate <= thresholds.maxErrorRate * 150
-          ? HealthStatus.DEGRADED
-          : HealthStatus.UNHEALTHY,
+        status:
+          stats.errorRate <= thresholds.maxErrorRate * 100
+            ? HealthStatus.HEALTHY
+            : stats.errorRate <= thresholds.maxErrorRate * 150
+              ? HealthStatus.DEGRADED
+              : HealthStatus.UNHEALTHY,
         message: `Query error rate: ${stats.errorRate.toFixed(2)}%`,
         details: {
           errorRate: stats.errorRate,
@@ -520,11 +525,12 @@ export class HealthMonitor extends EventEmitter {
 
       // Check average latency
       checks.averageLatency = {
-        status: stats.averageDuration <= thresholds.maxAverageLatency
-          ? HealthStatus.HEALTHY
-          : stats.averageDuration <= thresholds.maxAverageLatency * 1.5
-          ? HealthStatus.DEGRADED
-          : HealthStatus.UNHEALTHY,
+        status:
+          stats.averageDuration <= thresholds.maxAverageLatency
+            ? HealthStatus.HEALTHY
+            : stats.averageDuration <= thresholds.maxAverageLatency * 1.5
+              ? HealthStatus.DEGRADED
+              : HealthStatus.UNHEALTHY,
         message: `Average query latency: ${stats.averageDuration.toFixed(0)}ms`,
         details: {
           averageDuration: stats.averageDuration,
@@ -536,11 +542,12 @@ export class HealthMonitor extends EventEmitter {
 
       // Check cache effectiveness
       checks.cacheHitRate = {
-        status: stats.cacheHitRate >= 20
-          ? HealthStatus.HEALTHY
-          : stats.cacheHitRate >= 10
-          ? HealthStatus.DEGRADED
-          : HealthStatus.UNHEALTHY,
+        status:
+          stats.cacheHitRate >= 20
+            ? HealthStatus.HEALTHY
+            : stats.cacheHitRate >= 10
+              ? HealthStatus.DEGRADED
+              : HealthStatus.UNHEALTHY,
         message: `Query cache hit rate: ${stats.cacheHitRate.toFixed(1)}%`,
         details: {
           cacheHitRate: stats.cacheHitRate,
@@ -553,11 +560,12 @@ export class HealthMonitor extends EventEmitter {
 
       // Check cost efficiency
       checks.costEfficiency = {
-        status: stats.averageCost <= 0.10
-          ? HealthStatus.HEALTHY
-          : stats.averageCost <= 0.50
-          ? HealthStatus.DEGRADED
-          : HealthStatus.UNHEALTHY,
+        status:
+          stats.averageCost <= 0.1
+            ? HealthStatus.HEALTHY
+            : stats.averageCost <= 0.5
+              ? HealthStatus.DEGRADED
+              : HealthStatus.UNHEALTHY,
         message: `Average query cost: $${stats.averageCost.toFixed(4)}`,
         details: {
           averageCost: stats.averageCost,
@@ -614,7 +622,7 @@ export class HealthMonitor extends EventEmitter {
       components.queryMetrics = true;
     }
 
-    const ready = Object.values(components).every(c => c);
+    const ready = Object.values(components).every((c) => c);
 
     logger.debug('Readiness check', { ready, components });
 
@@ -656,18 +664,18 @@ export class HealthMonitor extends EventEmitter {
       return null;
     }
 
-    return this.lastHealthReport.components.find(c => c.name === name) ?? null;
+    return this.lastHealthReport.components.find((c) => c.name === name) ?? null;
   }
 
   /**
    * Aggregate component health status
    */
   private aggregateComponentHealth(checks: HealthCheckResult[]): HealthStatus {
-    if (checks.some(c => c.status === HealthStatus.UNHEALTHY)) {
+    if (checks.some((c) => c.status === HealthStatus.UNHEALTHY)) {
       return HealthStatus.UNHEALTHY;
     }
 
-    if (checks.some(c => c.status === HealthStatus.DEGRADED)) {
+    if (checks.some((c) => c.status === HealthStatus.DEGRADED)) {
       return HealthStatus.DEGRADED;
     }
 
@@ -678,11 +686,11 @@ export class HealthMonitor extends EventEmitter {
    * Aggregate overall health status
    */
   private aggregateHealth(components: ComponentHealth[]): HealthStatus {
-    if (components.some(c => c.status === HealthStatus.UNHEALTHY)) {
+    if (components.some((c) => c.status === HealthStatus.UNHEALTHY)) {
       return HealthStatus.UNHEALTHY;
     }
 
-    if (components.some(c => c.status === HealthStatus.DEGRADED)) {
+    if (components.some((c) => c.status === HealthStatus.DEGRADED)) {
       return HealthStatus.DEGRADED;
     }
 

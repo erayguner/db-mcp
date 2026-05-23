@@ -1,8 +1,22 @@
 /**
- * IAM Module
+ * IAM Module — Service Accounts and Bindings
  *
- * Creates service accounts and IAM bindings for MCP server.
- * NO SERVICE ACCOUNT KEYS - Uses Workload Identity Federation only!
+ * NO SERVICE ACCOUNT KEYS — Workload Identity Federation only.
+ *
+ * Changes from the previous design:
+ *   - Removed project-level roles/bigquery.dataEditor on the BigQuery SA
+ *     (the MCP tools are read-only; write perms violated least privilege).
+ *   - Removed the custom role with tables.create / tables.updateData /
+ *     tables.getData (write permissions on a read-only server).
+ *   - Removed project-wide roles/secretmanager.secretAccessor — now
+ *     granted per-secret in the cloud-run module.
+ *   - Replaced wildcard principalSet bindings (attribute.hd/*,
+ *     attribute.repository_owner/*) with domain/repo-scoped bindings.
+ *   - Removed the broken google_service_account_iam_member.cloud_run_invoker
+ *     (roles/run.invoker on a SA does not grant Cloud Run invocation;
+ *     the cloud-run module handles invoker IAM on the service itself).
+ *
+ * Deny and PAB policies live in deny.tf and pab.tf respectively.
  */
 
 locals {
@@ -10,55 +24,63 @@ locals {
   bigquery_sa_name = "mcp-bigquery-${var.environment}"
 }
 
-# MCP Server Service Account (NO KEYS!)
+# Runtime service account for the Cloud Run service.
 resource "google_service_account" "mcp_server" {
   project      = var.project_id
   account_id   = local.mcp_sa_name
   display_name = "MCP Server Service Account - ${upper(var.environment)}"
-  description  = "Service account for MCP server operations (${var.environment})"
+  description  = "Runtime SA for the MCP BigQuery server (${var.environment})"
 }
 
-# BigQuery Service Account (NO KEYS!)
+# Data-tier service account — the MCP SA impersonates this account for
+# BigQuery operations. Keeping a separate data-tier identity preserves
+# the audit boundary between the web tier and the data tier.
 resource "google_service_account" "bigquery" {
   project      = var.project_id
   account_id   = local.bigquery_sa_name
   display_name = "MCP BigQuery Service Account - ${upper(var.environment)}"
-  description  = "Service account for BigQuery operations (${var.environment})"
+  description  = "Data-tier SA for BigQuery operations (${var.environment})"
 }
 
-# Workload Identity Binding - Google Workspace to MCP SA
+# --- Workload Identity Federation bindings (domain/repo-scoped) ---
+
+# Google Workspace users in the specified hosted domain may impersonate
+# the MCP SA. Previously this was attribute.hd/* — any Workspace tenant.
 resource "google_service_account_iam_member" "workspace_wif_binding" {
+  count              = var.workspace_domain != "" ? 1 : 0
   service_account_id = google_service_account.mcp_server.name
   role               = "roles/iam.workloadIdentityUser"
-
-  member = "principalSet://iam.googleapis.com/${var.workload_identity_pool_id}/attribute.hd/*"
+  member             = "principalSet://iam.googleapis.com/${var.workload_identity_pool_id}/attribute.hd/${var.workspace_domain}"
 }
 
-# Workload Identity Binding - GitHub Actions to MCP SA
+# GitHub Actions in the specified repository may impersonate the MCP SA.
+# Previously this was attribute.repository_owner/* — any GitHub org/user.
 resource "google_service_account_iam_member" "github_wif_binding" {
-  count = var.github_provider_id != null ? 1 : 0
-
+  count              = var.github_provider_id != null && var.github_repository != "" ? 1 : 0
   service_account_id = google_service_account.mcp_server.name
   role               = "roles/iam.workloadIdentityUser"
-
-  member = "principalSet://iam.googleapis.com/${var.workload_identity_pool_id}/attribute.repository_owner/*"
+  member             = "principalSet://iam.googleapis.com/${var.workload_identity_pool_id}/attribute.repository/${var.github_repository}"
 }
 
-# Service Account Impersonation - MCP SA can impersonate BigQuery SA
+# --- Service account impersonation boundary ---
+# The MCP SA can mint short-lived access tokens for the BigQuery SA.
+# Combined with deny.tf, this gives genuine defense-in-depth: an attacker
+# who lands on the MCP SA must additionally exercise the token-creator
+# grant to reach BigQuery, and that impersonation is separately audited.
 resource "google_service_account_iam_member" "mcp_impersonate_bigquery" {
   service_account_id = google_service_account.bigquery.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "serviceAccount:${google_service_account.mcp_server.email}"
 }
 
-# IAM Roles for MCP Server Service Account
+# --- MCP Server SA: project-level roles ---
 resource "google_project_iam_member" "mcp_server_roles" {
   for_each = toset([
-    "roles/bigquery.jobUser",             # Create and run BigQuery jobs
-    "roles/logging.logWriter",            # Write logs
-    "roles/monitoring.metricWriter",      # Write metrics
-    "roles/cloudtrace.agent",             # Write traces
-    "roles/secretmanager.secretAccessor", # Access secrets
+    "roles/bigquery.jobUser",        # Create BigQuery jobs (in this project)
+    "roles/logging.logWriter",       # Write structured logs
+    "roles/monitoring.metricWriter", # Write metrics
+    "roles/cloudtrace.agent",        # Write traces
+    # roles/secretmanager.secretAccessor is granted per-secret in cloud-run/main.tf
   ])
 
   project = var.project_id
@@ -66,50 +88,17 @@ resource "google_project_iam_member" "mcp_server_roles" {
   member  = "serviceAccount:${google_service_account.mcp_server.email}"
 }
 
-# IAM Roles for BigQuery Service Account
-resource "google_project_iam_member" "bigquery_roles" {
+# --- BigQuery SA: project-level roles (read-only / job-runner) ---
+# Note: dataset-scoped roles/bigquery.dataViewer are granted by the bigquery
+# module via tenant_dataset_bindings. Project-level dataEditor has been
+# REMOVED (it was over-privileged for a read-only MCP server).
+resource "google_project_iam_member" "bigquery_sa_roles" {
   for_each = toset([
-    "roles/bigquery.dataEditor", # Read and write BigQuery data
-    "roles/bigquery.user",       # Use BigQuery
+    "roles/bigquery.jobUser",        # Create query jobs
+    "roles/bigquery.metadataViewer", # List datasets/tables (without data access)
   ])
 
   project = var.project_id
   role    = each.value
   member  = "serviceAccount:${google_service_account.bigquery.email}"
-}
-
-# Custom IAM Role for Fine-Grained BigQuery Access
-resource "google_project_iam_custom_role" "bigquery_mcp_role" {
-  project     = var.project_id
-  role_id     = "bigqueryMcpRole${title(var.environment)}"
-  title       = "BigQuery MCP Role - ${upper(var.environment)}"
-  description = "Custom role for MCP BigQuery operations with minimal permissions"
-
-  permissions = [
-    "bigquery.datasets.get",
-    "bigquery.tables.get",
-    "bigquery.tables.list",
-    "bigquery.tables.getData",
-    "bigquery.tables.updateData",
-    "bigquery.tables.create",
-    "bigquery.jobs.create",
-    "bigquery.jobs.get",
-    "bigquery.jobs.list",
-  ]
-}
-
-# Assign Custom Role to BigQuery Service Account
-resource "google_project_iam_member" "bigquery_custom_role" {
-  project = var.project_id
-  role    = google_project_iam_custom_role.bigquery_mcp_role.id
-  member  = "serviceAccount:${google_service_account.bigquery.email}"
-}
-
-# Cloud Run Invoker Role (if needed for public access)
-resource "google_service_account_iam_member" "cloud_run_invoker" {
-  count = var.allow_public_access ? 1 : 0
-
-  service_account_id = google_service_account.mcp_server.name
-  role               = "roles/run.invoker"
-  member             = "allUsers"
 }

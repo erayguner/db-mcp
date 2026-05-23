@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import { logger } from '../utils/logger.js';
 import { CredentialManager, CredentialConfig } from './credential-manager.js';
-import { SecurityAuditLogger, AuditEventType, AuditSeverity, getAuditLogger } from './audit-logger.js';
+import {
+  SecurityAuditLogger,
+  AuditEventType,
+  AuditSeverity,
+  getAuditLogger,
+} from './audit-logger.js';
 import { recordError } from '../telemetry/metrics.js';
 import { setSpanAttributes } from '../telemetry/tracing.js';
 
@@ -49,10 +54,12 @@ export const WIFAuthConfigSchema = z.object({
   enableAuditLogging: z.boolean().default(true),
 
   // Scopes
-  scopes: z.array(z.string()).default([
-    'https://www.googleapis.com/auth/cloud-platform',
-    'https://www.googleapis.com/auth/bigquery',
-  ]),
+  scopes: z
+    .array(z.string())
+    .default([
+      'https://www.googleapis.com/auth/cloud-platform',
+      'https://www.googleapis.com/auth/bigquery',
+    ]),
 });
 
 export type WIFAuthConfig = z.infer<typeof WIFAuthConfigSchema>;
@@ -117,7 +124,7 @@ class OIDCTokenValidator {
       // Validate audience if configured
       if (this.config.allowedAudiences && this.config.allowedAudiences.length > 0) {
         const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-        const hasValidAudience = audiences.some(aud =>
+        const hasValidAudience = audiences.some((aud) =>
           this.config.allowedAudiences!.includes(aud)
         );
         if (!hasValidAudience) {

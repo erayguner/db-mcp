@@ -16,7 +16,7 @@ describe.skip('QueryOptimizer', () => {
     optimizer = new QueryOptimizer(mockClient, {
       autoAddLimit: true,
       maxAutoLimit: 100,
-      costThresholdUSD: 0.10,
+      costThresholdUSD: 0.1,
     });
   });
 

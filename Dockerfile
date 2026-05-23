@@ -1,5 +1,7 @@
 # Build stage
-FROM node:22-alpine AS builder
+# Pinned digest of node:22-alpine ensures reproducible builds.
+# Refresh with: docker pull node:22-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:22-alpine
+FROM node:22-alpine@sha256:968df39aedcea65eeb078fb336ed7191baf48f972b4479711397108be0966920 AS builder
 RUN apk upgrade --no-cache
 WORKDIR /app
 COPY package*.json ./
@@ -8,8 +10,8 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
 
-# Production stage
-FROM node:22-alpine
+# Production stage — same digest as the builder so the OS layer is identical.
+FROM node:22-alpine@sha256:968df39aedcea65eeb078fb336ed7191baf48f972b4479711397108be0966920
 RUN apk upgrade --no-cache
 WORKDIR /app
 

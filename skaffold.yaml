@@ -1,0 +1,54 @@
+# Skaffold manifest consumed by Cloud Deploy releases.
+# The image reference is substituted at release-creation time via
+# --images=mcp-bigquery-server=<digest-pinned-ref> in deploy.yml.
+# Skaffold itself does NOT build the image here; building happens in
+# the build-sign-push job before the Cloud Deploy release is created.
+
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: db-mcp
+
+build:
+  # Building is handled by the GitHub Actions build-sign-push job.
+  # Skaffold is only invoked by Cloud Deploy for rendering/deploying.
+  artifacts:
+    - image: mcp-bigquery-server
+      # context and docker sections are intentionally omitted;
+      # Cloud Deploy replaces the image tag/digest via --images flag.
+      context: .
+      docker:
+        dockerfile: Dockerfile
+
+deploy:
+  cloudrun:
+    projectid: "" # Resolved at deploy time by Cloud Deploy from the Target's run.location.
+    region: europe-west2
+
+profiles:
+  - name: dev
+    deploy:
+      cloudrun:
+        projectid: ""
+        region: europe-west2
+    manifests:
+      rawYaml:
+        - deployment/cloudrun-dev.yaml
+
+  - name: staging
+    deploy:
+      cloudrun:
+        projectid: ""
+        region: europe-west2
+    manifests:
+      rawYaml:
+        - deployment/cloudrun-staging.yaml
+
+  - name: prod
+    deploy:
+      cloudrun:
+        projectid: ""
+        region: europe-west2
+    manifests:
+      rawYaml:
+        - deployment/cloudrun-prod.yaml
