@@ -1768,7 +1768,6 @@ class WIFTroubleshooter {
 **Consequences**:
 
 - **Positive**:
-
   - Reduced security risk (no key exposure)
   - Automated credential management
   - Better compliance posture
@@ -1776,7 +1775,6 @@ class WIFTroubleshooter {
   - Improved audit trail
 
 - **Negative**:
-
   - Initial migration effort (3-4 weeks)
   - Learning curve for WIF configuration
   - Dependency on external identity providers

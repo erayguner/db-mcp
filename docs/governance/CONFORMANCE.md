@@ -16,13 +16,13 @@ Target maturity: **L2 — Production-ready** with partial L3 controls.
 
 ## §4 — Tool and MCP access controls
 
-| Control                                                  | Status     | Reference                                                                                                      |
-| -------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------- |
-| §4.1 Structured sandboxing                               | ✅         | `src/mcp/handlers/tool-handlers.ts` routes every call through a single dispatch (`ToolHandlerFactory.execute`) |
-| §4.2 Declarative policy (allow-list, budgets, arg gates) | ✅         | `config/policies/tool-governance.json` loaded by `src/governance/policy.ts`                                    |
-| §4.3 Registry-led categorisation                         | ✅         | `categories` field on every tool in `config/policies/tool-governance.json`                                     |
+| Control                                                  | Status    | Reference                                                                                                      |
+| -------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------- |
+| §4.1 Structured sandboxing                               | ✅        | `src/mcp/handlers/tool-handlers.ts` routes every call through a single dispatch (`ToolHandlerFactory.execute`) |
+| §4.2 Declarative policy (allow-list, budgets, arg gates) | ✅        | `config/policies/tool-governance.json` loaded by `src/governance/policy.ts`                                    |
+| §4.3 Registry-led categorisation                         | ✅        | `categories` field on every tool in `config/policies/tool-governance.json`                                     |
 | §4.4 Per-principal budgets                               | ⚠ partial | budget _limits_ declared; runtime enforcement still pending (tracked below)                                    |
-| §4.5 MCP catalogue drift                                 | ✅         | `src/governance/catalogue-hasher.ts` + tests                                                                   |
+| §4.5 MCP catalogue drift                                 | ✅        | `src/governance/catalogue-hasher.ts` + tests                                                                   |
 
 ## §7 — Least-privilege execution
 
@@ -36,54 +36,54 @@ Target maturity: **L2 — Production-ready** with partial L3 controls.
 
 ## §8 — Auditability
 
-| Control                                                         | Status     | Reference                                                                                      |
-| --------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------- |
-| §8.1 Recorded events                                            | ✅         | `src/auth/audit-logger.ts` — tool calls, guardrails, admin actions                             |
-| §8.2 Tamper evidence (chained SHA-256, signed manifest, export) | ✅         | `src/governance/audit-chain.ts` — HMAC/Ed25519 signers, `exportSigned`, `loadFromDisk(strict)` |
-| §8.3 Correlation                                                | ✅         | `correlationId` + `sessionId` on every `AuditEvent`                                            |
-| §8.4 Retention (7y for regulated)                               | ✅         | BigQuery audit sink + GCS lifecycle (`terraform/modules/bigquery/`)                            |
+| Control                                                         | Status    | Reference                                                                                      |
+| --------------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------- |
+| §8.1 Recorded events                                            | ✅        | `src/auth/audit-logger.ts` — tool calls, guardrails, admin actions                             |
+| §8.2 Tamper evidence (chained SHA-256, signed manifest, export) | ✅        | `src/governance/audit-chain.ts` — HMAC/Ed25519 signers, `exportSigned`, `loadFromDisk(strict)` |
+| §8.3 Correlation                                                | ✅        | `correlationId` + `sessionId` on every `AuditEvent`                                            |
+| §8.4 Retention (7y for regulated)                               | ✅        | BigQuery audit sink + GCS lifecycle (`terraform/modules/bigquery/`)                            |
 | §8.5 Independent blast-radius storage                           | ⚠ partial | Sink lands in the same GCP project; move-to-separate-project tracked as follow-up              |
 
 ## §11 — Data handling
 
-| Control                                               | Status       | Reference                                                                   |
-| ----------------------------------------------------- | ------------ | --------------------------------------------------------------------------- |
-| §11.1 Data classification                             | ✅           | `config/policies/data-classification.json`                                  |
-| §11.2 Input filters (PII / secret / prompt-injection) | ✅           | `src/security/middleware.ts` + patterns in `content-safety.json`            |
-| §11.3 Output filters                                  | ✅           | `src/security/column-masking.ts` (column-level redact/hash/partial/nullify) |
+| Control                                               | Status      | Reference                                                                   |
+| ----------------------------------------------------- | ----------- | --------------------------------------------------------------------------- |
+| §11.1 Data classification                             | ✅          | `config/policies/data-classification.json`                                  |
+| §11.2 Input filters (PII / secret / prompt-injection) | ✅          | `src/security/middleware.ts` + patterns in `content-safety.json`            |
+| §11.3 Output filters                                  | ✅          | `src/security/column-masking.ts` (column-level redact/hash/partial/nullify) |
 | §11.4 Provider guardrails                             | ⚠ not wired | Model Armor integration scoped for L3 (no LLM served by this repo)          |
-| §11.6 Session memory                                  | N/A          | No cross-session memory store in db-mcp                                     |
-| §11.7 Data lineage (source versioning)                | ✅           | `src/governance/lineage.ts` + `lineage.sources[]` on `AuditEventSchema`     |
-| §11.8 DLP + k-anonymity                               | ✅           | `src/governance/dlp.ts` — `DlpProvider` interface, `enforceKAnonymity`      |
+| §11.6 Session memory                                  | N/A         | No cross-session memory store in db-mcp                                     |
+| §11.7 Data lineage (source versioning)                | ✅          | `src/governance/lineage.ts` + `lineage.sources[]` on `AuditEventSchema`     |
+| §11.8 DLP + k-anonymity                               | ✅          | `src/governance/dlp.ts` — `DlpProvider` interface, `enforceKAnonymity`      |
 
 ## §12 — Security
 
-| Control                                                            | Status       | Reference                                                                                                  |
-| ------------------------------------------------------------------ | ------------ | ---------------------------------------------------------------------------------------------------------- |
-| §12.2 Secret hygiene                                               | ✅           | No static keys (WIF); pre-commit secret scan via MegaLinter                                                |
-| §12.3 Supply chain (SLSA ≥ L2, signed images, pinned MCP binaries) | ✅           | `.github/workflows/deploy.yml` — cosign keyless + `actions/attest-build-provenance@v2` + trivy + syft SBOM |
-| §12.4 Signed artifacts                                             | ✅           | cosign OIDC keyless on every image; chain manifests signed via `audit-chain.ts`                            |
-| §12.5 Boundary hardening                                           | ✅           | VPC-SC, egress denylist (terraform)                                                                        |
+| Control                                                            | Status      | Reference                                                                                                  |
+| ------------------------------------------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------- |
+| §12.2 Secret hygiene                                               | ✅          | No static keys (WIF); pre-commit secret scan via MegaLinter                                                |
+| §12.3 Supply chain (SLSA ≥ L2, signed images, pinned MCP binaries) | ✅          | `.github/workflows/deploy.yml` — cosign keyless + `actions/attest-build-provenance@v2` + trivy + syft SBOM |
+| §12.4 Signed artifacts                                             | ✅          | cosign OIDC keyless on every image; chain manifests signed via `audit-chain.ts`                            |
+| §12.5 Boundary hardening                                           | ✅          | VPC-SC, egress denylist (terraform)                                                                        |
 | §12.6 Managed threat detection                                     | ⚠ follow-up | SCC Agent Engine Threat Detection wiring pending (Preview service)                                         |
-| §12.7 Red-teaming                                                  | 📋 process   | Quarterly red-team cadence — runbook in `docs/governance/RED_TEAM.md` (to be authored)                     |
+| §12.7 Red-teaming                                                  | 📋 process  | Quarterly red-team cadence — runbook in `docs/governance/RED_TEAM.md` (to be authored)                     |
 
 ## §13 — Resilience
 
-| Control                            | Status     | Reference                                                                                             |
-| ---------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------- |
-| §13.1 Circuit breakers             | ✅         | `src/governance/circuit-breaker.ts`                                                                   |
-| §13.2 Dead-letter queue            | ✅         | `src/governance/dead-letter-queue.ts`                                                                 |
+| Control                            | Status    | Reference                                                                                             |
+| ---------------------------------- | --------- | ----------------------------------------------------------------------------------------------------- |
+| §13.1 Circuit breakers             | ✅        | `src/governance/circuit-breaker.ts`                                                                   |
+| §13.2 Dead-letter queue            | ✅        | `src/governance/dead-letter-queue.ts`                                                                 |
 | §13.3 Reconciliation               | ⚠ partial | `src/bigquery/graceful-degradation.ts` covers dep failure; a governance-plane reconciler is follow-up |
-| §13.4 Degraded modes (fail-closed) | ✅         | `isToolAllowed` denies on unknown; `AuditChain.loadFromDisk(strict)` raises on break                  |
-| §13.5 Idempotency                  | ✅         | request IDs on every tool call metadata                                                               |
+| §13.4 Degraded modes (fail-closed) | ✅        | `isToolAllowed` denies on unknown; `AuditChain.loadFromDisk(strict)` raises on break                  |
+| §13.5 Idempotency                  | ✅        | request IDs on every tool call metadata                                                               |
 
 ## §14 — Human oversight
 
-| Control                                      | Status       | Reference                                                                                |
-| -------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------- |
-| §14.1 Kill-switch (<1 min, no cred rotation) | ✅           | `src/governance/kill-switch.ts`, wired in `src/mcp/handlers/tool-handlers.ts`            |
+| Control                                      | Status      | Reference                                                                                |
+| -------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------- |
+| §14.1 Kill-switch (<1 min, no cred rotation) | ✅          | `src/governance/kill-switch.ts`, wired in `src/mcp/handlers/tool-handlers.ts`            |
 | §14.2 Override API                           | ⚠ partial   | halt / resume implemented; full approval-override flow pending                           |
-| §14.3 Interactive review                     | N/A          | db-mcp does not host the approval UI                                                     |
+| §14.3 Interactive review                     | N/A         | db-mcp does not host the approval UI                                                     |
 | §14.4 Transparency alerts                    | ⚠ follow-up | contextualised alerts wired through OTel + Cloud Monitoring; escalation metadata pending |
 
 ## §15 — Incident response

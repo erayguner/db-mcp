@@ -329,12 +329,10 @@ class OptimizedQueryExecutor {
 ### Cache Configuration
 
 1. **Size**: Set based on available memory
-
    - Development: 50-100MB
    - Production: 500MB-2GB
 
 2. **TTL**: Based on data freshness requirements
-
    - Real-time data: 5-15 minutes
    - Analytical data: 1-4 hours
    - Static data: 24 hours

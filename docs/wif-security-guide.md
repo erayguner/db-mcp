@@ -101,19 +101,16 @@ resources using short-lived tokens.
 #### ✅ Eliminated Risks
 
 1. **Service Account Key Leakage**
-
    - **Before**: Keys stored in files, environment variables, secrets managers
    - **After**: No keys exist to leak
    - **Impact**: 100% elimination of key compromise risk
 
 2. **Long-Lived Credential Exposure**
-
    - **Before**: Keys valid indefinitely until rotation
    - **After**: Tokens valid for 1 hour maximum (configurable)
    - **Impact**: 99.9% reduction in exposure window
 
 3. **Manual Key Rotation**
-
    - **Before**: Manual rotation every 90 days (often neglected)
    - **After**: Automatic token refresh every hour
    - **Impact**: Zero manual intervention required
@@ -201,7 +198,6 @@ resources using short-lived tokens.
 #### ✅ Google Workspace OIDC Provider Security
 
 1. **Token Signature Validation**
-
    - Google signs tokens with RSA keys
    - Public keys available at: `https://www.googleapis.com/oauth2/v3/certs`
    - GCP automatically validates signatures (no manual verification needed)
@@ -221,7 +217,6 @@ resources using short-lived tokens.
    ```
 
 4. **Token Expiration Enforcement**
-
    - Tokens expire after 1 hour (max)
    - GCP rejects expired tokens automatically
    - No manual expiration checking required
@@ -638,7 +633,6 @@ const groupStructure = {
 #### MFA Enforcement
 
 1. **Google Workspace Admin Console**:
-
    - Security → 2-Step Verification
    - Enforce for all users accessing BigQuery
    - Allow only security keys (FIDO U2F) for high-privilege accounts
@@ -789,25 +783,21 @@ const groupStructure = {
 ### 8.1 Immediate Actions (P0 - Before Production)
 
 1. **Implement Workload Identity Federation**
-
    - Create identity pool with Google Workspace OIDC provider
    - Configure attribute conditions (domain, groups, MFA)
    - Test authentication flow end-to-end
 
 2. **Enable Comprehensive Audit Logging**
-
    - Cloud Audit Logs for IAM and BigQuery
    - Log sink to BigQuery dataset for analysis
    - Real-time alerts for authentication failures
 
 3. **Configure Service Account Impersonation**
-
    - Create service account with minimum permissions
    - Restrict impersonation to specific groups only
    - Test token lifetime and refresh
 
 4. **Enforce Multi-Factor Authentication**
-
    - Google Workspace MFA for all users
    - Attribute condition requires MFA
    - Monitor for non-MFA authentication attempts
@@ -821,19 +811,16 @@ const groupStructure = {
 ### 8.2 Short-Term Goals (P1 - Within 30 Days)
 
 1. **Monitoring & Alerting**
-
    - Dashboard for authentication metrics
    - Alerts for unusual patterns (>5 failures in 5 min)
    - Weekly audit log reviews
 
 2. **Documentation**
-
    - Runbook for authentication troubleshooting
    - Security architecture diagram
    - Incident response procedures
 
 3. **Compliance Validation**
-
    - GDPR compliance review
    - HIPAA compliance validation
    - SOC 2 control mapping
@@ -846,13 +833,11 @@ const groupStructure = {
 ### 8.3 Long-Term Goals (P2 - Within 90 Days)
 
 1. **Advanced Security**
-
    - Context-aware access (IP, device, location)
    - Risk-based authentication (ML-based)
    - Automated threat response
 
 2. **Continuous Monitoring**
-
    - Real-time anomaly detection
    - SIEM integration (Chronicle, Splunk)
    - Automated security reporting

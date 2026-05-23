@@ -23,7 +23,6 @@ docker build -t mcp-bigquery-server .
 **Stages**:
 
 1. **Builder Stage**:
-
    - Base: node:22-alpine
    - Installed packages via `npm ci --production=false`
    - Compiled TypeScript via `npm run build` (0 errors)

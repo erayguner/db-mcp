@@ -836,19 +836,16 @@ gcloud logging read \
    ```
 
 2. **Configure Notifications**:
-
    - Set up Slack webhook
    - Configure PagerDuty (production)
    - Test notification channels
 
 3. **Customize Dashboards**:
-
    - Add business-specific metrics
    - Create team-specific views
    - Set up TV dashboards
 
 4. **Set Up Alerts**:
-
    - Adjust thresholds per environment
    - Test alert firing
    - Document response procedures
