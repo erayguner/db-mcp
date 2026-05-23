@@ -20,7 +20,11 @@ export const BudgetLimitsSchema = z.object({
 
 export const ArgumentGateSchema = z.object({
   tool: z.string(),
-  maxArgBytes: z.number().int().positive().default(64 * 1024),
+  maxArgBytes: z
+    .number()
+    .int()
+    .positive()
+    .default(64 * 1024),
   denyRegex: z.array(z.string()).default([]),
   requiredFields: z.array(z.string()).default([]),
 });
@@ -53,13 +57,15 @@ export type ContentSafety = z.infer<typeof ContentSafetySchema>;
 export const DataClassificationSchema = z.object({
   $schema: z.literal('db-mcp/data-classification.v1'),
   version: z.string(),
-  classifications: z.array(z.object({
-    dataset: z.string(),
-    class: z.enum(['public', 'internal', 'confidential', 'regulated']),
-    piiFields: z.array(z.string()).default([]),
-    kAnonymityK: z.number().int().min(1).optional(),
-    retentionDays: z.number().int().positive(),
-  })),
+  classifications: z.array(
+    z.object({
+      dataset: z.string(),
+      class: z.enum(['public', 'internal', 'confidential', 'regulated']),
+      piiFields: z.array(z.string()).default([]),
+      kAnonymityK: z.number().int().min(1).optional(),
+      retentionDays: z.number().int().positive(),
+    })
+  ),
 });
 export type DataClassification = z.infer<typeof DataClassificationSchema>;
 
@@ -69,7 +75,11 @@ export interface LoadedPolicies {
   dataClassification: DataClassification;
 }
 
-const KNOWN_POLICY_FILES = new Set(['tool-governance.json', 'content-safety.json', 'data-classification.json']);
+const KNOWN_POLICY_FILES = new Set([
+  'tool-governance.json',
+  'content-safety.json',
+  'data-classification.json',
+]);
 
 export async function loadPolicies(dir: string): Promise<LoadedPolicies> {
   const files = await readdir(dir);
@@ -79,7 +89,8 @@ export async function loadPolicies(dir: string): Promise<LoadedPolicies> {
     const raw: unknown = JSON.parse(await readFile(join(dir, file), 'utf8'));
     if (file === 'tool-governance.json') out.toolGovernance = ToolGovernanceSchema.parse(raw);
     else if (file === 'content-safety.json') out.contentSafety = ContentSafetySchema.parse(raw);
-    else if (file === 'data-classification.json') out.dataClassification = DataClassificationSchema.parse(raw);
+    else if (file === 'data-classification.json')
+      out.dataClassification = DataClassificationSchema.parse(raw);
   }
   if (!out.toolGovernance || !out.contentSafety || !out.dataClassification) {
     throw new Error(`policy directory ${dir} missing required policy files`);
@@ -88,7 +99,10 @@ export async function loadPolicies(dir: string): Promise<LoadedPolicies> {
 }
 
 /** Fail-closed dispatch check (§6.3, §4.2). */
-export function isToolAllowed(policy: ToolGovernance, tool: string): { allowed: boolean; reason?: string } {
+export function isToolAllowed(
+  policy: ToolGovernance,
+  tool: string
+): { allowed: boolean; reason?: string } {
   if (policy.denyList.includes(tool)) return { allowed: false, reason: 'deny-list' };
   if (!policy.allowList.includes(tool)) return { allowed: false, reason: 'not-in-allow-list' };
   return { allowed: true };

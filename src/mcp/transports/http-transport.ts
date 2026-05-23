@@ -355,7 +355,14 @@ export class StreamableHttpTransport {
       this.handleSseConnect(req, res);
     });
 
-    const endpoints = ['/health', '/health/live', '/readiness', '/health/ready', '/metrics', 'POST /mcp'];
+    const endpoints = [
+      '/health',
+      '/health/live',
+      '/readiness',
+      '/health/ready',
+      '/metrics',
+      'POST /mcp',
+    ];
     if (this.config.oauthMetadata) {
       endpoints.push(
         'GET /.well-known/oauth-authorization-server',
@@ -398,15 +405,23 @@ export class StreamableHttpTransport {
       legacyHeaders: false,
     });
 
-    app.get('/.well-known/oauth-authorization-server', oauthDiscoveryLimiter, (_req: Request, res: Response) => {
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.json(buildAuthorizationServerMetadata(cfg));
-    });
+    app.get(
+      '/.well-known/oauth-authorization-server',
+      oauthDiscoveryLimiter,
+      (_req: Request, res: Response) => {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.json(buildAuthorizationServerMetadata(cfg));
+      }
+    );
 
-    app.get('/.well-known/oauth-protected-resource', oauthDiscoveryLimiter, (_req: Request, res: Response) => {
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.json(buildProtectedResourceMetadata(cfg));
-    });
+    app.get(
+      '/.well-known/oauth-protected-resource',
+      oauthDiscoveryLimiter,
+      (_req: Request, res: Response) => {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.json(buildProtectedResourceMetadata(cfg));
+      }
+    );
   }
 
   /**

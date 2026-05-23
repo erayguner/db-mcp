@@ -1,5 +1,10 @@
 import { describe, it, expect } from '@jest/globals';
-import { snapshotCatalogue, diffCatalogue, enforceCatalogue, CatalogueDriftError } from '../../src/governance/catalogue-hasher';
+import {
+  snapshotCatalogue,
+  diffCatalogue,
+  enforceCatalogue,
+  CatalogueDriftError,
+} from '../../src/governance/catalogue-hasher';
 
 const baseTools = [
   { name: 'query_bigquery', description: 'Run SQL', inputSchema: { type: 'object' } },
@@ -8,7 +13,9 @@ const baseTools = [
 
 describe('catalogue hasher', () => {
   it('produces stable hash for identical catalogues', () => {
-    expect(snapshotCatalogue(baseTools).hash).toBe(snapshotCatalogue([...baseTools].reverse()).hash);
+    expect(snapshotCatalogue(baseTools).hash).toBe(
+      snapshotCatalogue([...baseTools].reverse()).hash
+    );
   });
 
   it('flags additions', () => {

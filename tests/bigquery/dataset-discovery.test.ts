@@ -164,7 +164,7 @@ describeDiscovery('DatasetDiscovery', () => {
 
       const results = await filteredDiscovery.discoverDatasets(['project1', 'project2']);
 
-      expect(results.every(d => d.location === 'EU')).toBe(true);
+      expect(results.every((d) => d.location === 'EU')).toBe(true);
       filteredDiscovery.shutdown();
     });
 
@@ -182,7 +182,7 @@ describeDiscovery('DatasetDiscovery', () => {
 
       const results = await filteredDiscovery.discoverDatasets(['project1']);
 
-      expect(results.every(d => d.labels?.env === 'test')).toBe(true);
+      expect(results.every((d) => d.labels?.env === 'test')).toBe(true);
       filteredDiscovery.shutdown();
     });
   });
@@ -212,7 +212,7 @@ describeDiscovery('DatasetDiscovery', () => {
 
       const results = await discovery.search(query);
 
-      expect(results.every(r => r.dataset.labels?.env === 'prod')).toBe(true);
+      expect(results.every((r) => r.dataset.labels?.env === 'prod')).toBe(true);
     });
 
     it('should filter by regions', async () => {
@@ -222,7 +222,7 @@ describeDiscovery('DatasetDiscovery', () => {
 
       const results = await discovery.search(query);
 
-      expect(results.every(r => r.dataset.location === 'EU')).toBe(true);
+      expect(results.every((r) => r.dataset.location === 'EU')).toBe(true);
     });
 
     it('should filter by size range', async () => {
@@ -235,7 +235,7 @@ describeDiscovery('DatasetDiscovery', () => {
 
       expect(
         results.every(
-          r => r.dataset.totalSizeBytes >= 1000 && r.dataset.totalSizeBytes <= 1000000000
+          (r) => r.dataset.totalSizeBytes >= 1000 && r.dataset.totalSizeBytes <= 1000000000
         )
       ).toBe(true);
     });
@@ -271,7 +271,7 @@ describeDiscovery('DatasetDiscovery', () => {
       };
 
       const results = await discovery.search(query);
-      const firstResult = results.find(r => r.dataset.id === 'dataset1');
+      const firstResult = results.find((r) => r.dataset.id === 'dataset1');
 
       expect(firstResult?.matchedFields).toContain('id');
       expect(firstResult?.highlights).toHaveProperty('id');
@@ -499,9 +499,7 @@ describeDiscovery('DatasetDiscovery', () => {
 
   describe('Error Handling', () => {
     it('should handle discovery errors', async () => {
-      (mockDatasetManager.listDatasets as any).mockRejectedValue(
-        new Error('Discovery failed')
-      );
+      (mockDatasetManager.listDatasets as any).mockRejectedValue(new Error('Discovery failed'));
 
       await expect(discovery.discoverDatasets(['project1'])).rejects.toThrow(
         'Failed to discover datasets'

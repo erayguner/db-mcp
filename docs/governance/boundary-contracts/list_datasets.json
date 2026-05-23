@@ -4,10 +4,7 @@
   "purpose": "Return the list of BigQuery datasets visible to the caller's tenant scope, with no data content exposed.",
   "role": "observer",
   "inScopeTools": ["list_datasets"],
-  "outOfScopeSystems": [
-    "datasets outside tenant scope",
-    "row-level or column-level data access"
-  ],
+  "outOfScopeSystems": ["datasets outside tenant scope", "row-level or column-level data access"],
   "delegatableAgents": [],
   "dataClasses": ["internal"],
   "approvalClass": "none",

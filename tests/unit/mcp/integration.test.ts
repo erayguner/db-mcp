@@ -214,14 +214,16 @@ describe.skip('MCP Integration Tests', () => {
       await factory.start();
 
       // Execute tool while server is running
-      mockBigQueryClient.listDatasets.mockResolvedValue([
-        { id: 'dataset1', projectId: 'project' },
-      ]);
+      mockBigQueryClient.listDatasets.mockResolvedValue([{ id: 'dataset1', projectId: 'project' }]);
 
-      const response = await toolHandlerFactory.execute('list_datasets', {}, {
-        bigQueryClient: mockBigQueryClient,
-        requestId: 'req-456',
-      });
+      const response = await toolHandlerFactory.execute(
+        'list_datasets',
+        {},
+        {
+          bigQueryClient: mockBigQueryClient,
+          requestId: 'req-456',
+        }
+      );
 
       expect(response.isError).toBeUndefined();
 
@@ -288,9 +290,7 @@ describe.skip('MCP Integration Tests', () => {
       const args = { query: 'SELECT 1' };
       const validatedArgs = validateToolArgs('query_bigquery', args);
 
-      mockBigQueryClient.query.mockRejectedValue(
-        new Error('Quota exceeded: rate limit')
-      );
+      mockBigQueryClient.query.mockRejectedValue(new Error('Quota exceeded: rate limit'));
 
       const response = await toolHandlerFactory.execute('query_bigquery', validatedArgs, {
         bigQueryClient: mockBigQueryClient,

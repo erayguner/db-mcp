@@ -52,10 +52,14 @@ describe.skip('MCP Server Integration', () => {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({
-                rowCount: mockQueryResults.length,
-                rows: mockQueryResults,
-              }, null, 2),
+              text: JSON.stringify(
+                {
+                  rowCount: mockQueryResults.length,
+                  rows: mockQueryResults,
+                },
+                null,
+                2
+              ),
             },
           ],
         };
@@ -125,11 +129,7 @@ describe.skip('MCP Server Integration', () => {
     describe('list_datasets', () => {
       it('should list all datasets', async () => {
         // Arrange
-        const mockDatasets = [
-          { id: 'dataset1' },
-          { id: 'dataset2' },
-          { id: 'analytics' },
-        ];
+        const mockDatasets = [{ id: 'dataset1' }, { id: 'dataset2' }, { id: 'analytics' }];
         mockBQClient.getDatasets.mockResolvedValue([mockDatasets as any]);
 
         // Act
@@ -172,10 +172,7 @@ describe.skip('MCP Server Integration', () => {
       it('should list tables in dataset', async () => {
         // Arrange
         const datasetId = 'my_dataset';
-        const mockTables = [
-          { id: 'users' },
-          { id: 'orders' },
-        ];
+        const mockTables = [{ id: 'users' }, { id: 'orders' }];
         const mockDataset = {
           getTables: jest.fn().mockResolvedValue([mockTables]),
         };
@@ -222,7 +219,11 @@ describe.skip('MCP Server Integration', () => {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({ dataset: datasetId, table: tableId, schema: mockSchema }, null, 2),
+              text: JSON.stringify(
+                { dataset: datasetId, table: tableId, schema: mockSchema },
+                null,
+                2
+              ),
             },
           ],
         };
@@ -299,10 +300,7 @@ describe.skip('MCP Server Integration', () => {
     it('should read dataset resource', async () => {
       // Arrange
       const uri = 'bigquery://datasets';
-      const mockDatasets = [
-        { id: 'dataset1' },
-        { id: 'dataset2' },
-      ];
+      const mockDatasets = [{ id: 'dataset1' }, { id: 'dataset2' }];
       mockBQClient.getDatasets.mockResolvedValue([mockDatasets as any]);
 
       // Act
@@ -325,9 +323,9 @@ describe.skip('MCP Server Integration', () => {
   describe('Performance', () => {
     it('should handle concurrent requests', async () => {
       // Arrange
-      const requests = Array(10).fill(null).map((_, i) =>
-        createMockMCPRequest('list_datasets', {})
-      );
+      const requests = Array(10)
+        .fill(null)
+        .map((_, i) => createMockMCPRequest('list_datasets', {}));
 
       mockBQClient.getDatasets.mockResolvedValue([[]]);
 
@@ -342,10 +340,12 @@ describe.skip('MCP Server Integration', () => {
 
     it('should process large result sets efficiently', async () => {
       // Arrange
-      const largeResultSet = Array(1000).fill(null).map((_, i) => ({
-        id: `id-${i}`,
-        data: `data-${i}`,
-      }));
+      const largeResultSet = Array(1000)
+        .fill(null)
+        .map((_, i) => ({
+          id: `id-${i}`,
+          data: `data-${i}`,
+        }));
 
       const mockJob = {
         id: 'job-123',

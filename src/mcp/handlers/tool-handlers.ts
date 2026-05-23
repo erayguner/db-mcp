@@ -418,11 +418,7 @@ export class QueryBigQueryHandler extends BaseToolHandler {
         schemaContext
       );
     } catch (error) {
-      recordToolError(
-        'QUERY_ERROR',
-        'query_bigquery',
-        this.context.tenantContext?.tenantId,
-      );
+      recordToolError('QUERY_ERROR', 'query_bigquery', this.context.tenantContext?.tenantId);
       return this.formatError(error as Error, 'QUERY_ERROR');
     }
   }
@@ -481,11 +477,7 @@ export class ListDatasetsHandler extends BaseToolHandler {
         provenance
       );
     } catch (error) {
-      recordToolError(
-        'LIST_DATASETS_ERROR',
-        'list_datasets',
-        this.context.tenantContext?.tenantId,
-      );
+      recordToolError('LIST_DATASETS_ERROR', 'list_datasets', this.context.tenantContext?.tenantId);
       return this.formatError(error as Error, 'LIST_DATASETS_ERROR');
     }
   }
@@ -555,7 +547,7 @@ export class ListTablesHandler extends BaseToolHandler {
         'LIST_TABLES_ERROR',
         'list_tables',
         this.context.tenantContext?.tenantId,
-        datasetIdForError,
+        datasetIdForError
       );
       return this.formatError(error as Error, 'LIST_TABLES_ERROR');
     }
@@ -649,11 +641,7 @@ export class GetTableSchemaHandler extends BaseToolHandler {
         schemaContext
       );
     } catch (error) {
-      recordToolError(
-        'GET_SCHEMA_ERROR',
-        'get_table_schema',
-        this.context.tenantContext?.tenantId,
-      );
+      recordToolError('GET_SCHEMA_ERROR', 'get_table_schema', this.context.tenantContext?.tenantId);
       return this.formatError(error as Error, 'GET_SCHEMA_ERROR');
     }
   }

@@ -52,7 +52,7 @@ class MCPTester {
     });
 
     // Wait for initialization
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 
   private handleOutput(output: string) {
@@ -183,7 +183,7 @@ class MCPTester {
   async stop() {
     console.log('\n🛑 Stopping MCP Server...');
     this.mcpProcess.kill();
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 }
 

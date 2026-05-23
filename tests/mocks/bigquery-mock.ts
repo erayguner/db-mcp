@@ -145,7 +145,10 @@ export class MockBigQuery {
 export class MockDataset {
   private tables: Map<string, MockTable> = new Map();
 
-  constructor(public id: string, public projectId: string) {}
+  constructor(
+    public id: string,
+    public projectId: string
+  ) {}
 
   addTable(tableId: string, schema: any[]) {
     this.tables.set(tableId, new MockTable(tableId, this.id, schema));

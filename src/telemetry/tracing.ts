@@ -21,7 +21,11 @@ import { logger } from '../utils/logger.js';
 let tracerProvider: NodeTracerProvider | null = null;
 let tracer: ReturnType<typeof trace.getTracer> | null = null;
 
-export function initializeTracing(serviceName: string, serviceVersion: string, projectId: string): void {
+export function initializeTracing(
+  serviceName: string,
+  serviceVersion: string,
+  projectId: string
+): void {
   try {
     // Create resource with service information
     const resource = resourceFromAttributes({
@@ -73,7 +77,9 @@ export function initializeTracing(serviceName: string, serviceVersion: string, p
       projectId,
     });
   } catch (err) {
-    logger.error('Failed to initialize tracing', { error: err instanceof Error ? err.message : err });
+    logger.error('Failed to initialize tracing', {
+      error: err instanceof Error ? err.message : err,
+    });
   }
 }
 
@@ -110,7 +116,7 @@ export function traced<TArgs extends unknown[], TReturn>(
         }
 
         // Execute function
-  const result = fn(...args);
+        const result = fn(...args);
 
         // Handle promises
         if (result instanceof Promise) {
@@ -153,7 +159,10 @@ export function traced<TArgs extends unknown[], TReturn>(
 /**
  * Add span event
  */
-export function addSpanEvent(name: string, attributes?: Record<string, string | number | boolean>): void {
+export function addSpanEvent(
+  name: string,
+  attributes?: Record<string, string | number | boolean>
+): void {
   const span = trace.getActiveSpan();
   if (span) {
     span.addEvent(name, attributes);
@@ -175,7 +184,10 @@ export function setSpanAttributes(attributes: Record<string, string | number | b
 /**
  * Record exception in current span
  */
-export function recordException(error: Error, attributes?: Record<string, string | number | boolean>): void {
+export function recordException(
+  error: Error,
+  attributes?: Record<string, string | number | boolean>
+): void {
   const span = trace.getActiveSpan();
   if (span) {
     span.recordException(error);
@@ -194,7 +206,10 @@ export function recordException(error: Error, attributes?: Record<string, string
 /**
  * Create a manual span
  */
-export function startSpan(name: string, attributes?: Record<string, string | number | boolean>): Span | null {
+export function startSpan(
+  name: string,
+  attributes?: Record<string, string | number | boolean>
+): Span | null {
   if (!tracer) {
     return null;
   }
@@ -216,7 +231,9 @@ export async function shutdownTracing(): Promise<void> {
       await tracerProvider.shutdown();
       logger.info('OpenTelemetry tracing shutdown complete');
     } catch (err) {
-      logger.error('Error shutting down tracing', { error: err instanceof Error ? err.message : err });
+      logger.error('Error shutting down tracing', {
+        error: err instanceof Error ? err.message : err,
+      });
     }
   }
 }

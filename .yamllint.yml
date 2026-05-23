@@ -97,5 +97,5 @@ rules:
 
   # Truthy values - allow yes/no, true/false, on/off
   truthy:
-    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    allowed-values: ["true", "false", "yes", "no", "on", "off"]
     check-keys: false

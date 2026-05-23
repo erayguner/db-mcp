@@ -11,8 +11,10 @@ export default {
     '^../../../src/(.*)\\.js$': '<rootDir>/src/$1.ts',
     '^../../src/(.*)$': '<rootDir>/src/$1',
     '^../../../src/(.*)$': '<rootDir>/src/$1',
-    '^@modelcontextprotocol/sdk/server/index$': '<rootDir>/__mocks__/@modelcontextprotocol/sdk/server/index.js',
-    '^@modelcontextprotocol/sdk/server/stdio$': '<rootDir>/__mocks__/@modelcontextprotocol/sdk/server/stdio.js',
+    '^@modelcontextprotocol/sdk/server/index$':
+      '<rootDir>/__mocks__/@modelcontextprotocol/sdk/server/index.js',
+    '^@modelcontextprotocol/sdk/server/stdio$':
+      '<rootDir>/__mocks__/@modelcontextprotocol/sdk/server/stdio.js',
     '^../../src/telemetry/(.*)$': '<rootDir>/src/telemetry/$1.ts',
     '^../../../src/bigquery/client$': '<rootDir>/__mocks__/src/bigquery/client.js',
     '^../../src/bigquery/client$': '<rootDir>/__mocks__/src/bigquery/client.js',
@@ -22,19 +24,19 @@ export default {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
-          useESM: true,
-          diagnostics: false,
-          tsconfig: {
-            module: 'ES2022',
-            moduleResolution: 'bundler',
-          },
+        useESM: true,
+        diagnostics: false,
+        tsconfig: {
+          module: 'ES2022',
+          moduleResolution: 'bundler',
         },
+      },
     ],
   },
   transformIgnorePatterns: ['/node_modules/(?!(@modelcontextprotocol)/)'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
-  testMatch: ['**/tests/**/*.test.ts','**/__tests__/**/*.ts','**/?(*.)+(spec|test).ts'],
-  testPathIgnorePatterns: ['/node_modules/','/dist/'],
+  testMatch: ['**/tests/**/*.test.ts', '**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',

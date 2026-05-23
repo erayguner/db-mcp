@@ -55,25 +55,23 @@ export const PermissionValidatorConfigSchema = z.object({
   auditRetentionDays: z.number().default(90),
 
   // Required IAM permissions
-  requiredPermissions: z.object({
-    query: z.array(z.string()).default([
-      'bigquery.jobs.create',
-      'bigquery.datasets.get',
-      'bigquery.tables.get',
-      'bigquery.tables.getData',
-    ]),
-    listDatasets: z.array(z.string()).default([
-      'bigquery.datasets.get',
-    ]),
-    listTables: z.array(z.string()).default([
-      'bigquery.datasets.get',
-      'bigquery.tables.list',
-    ]),
-    getSchema: z.array(z.string()).default([
-      'bigquery.tables.get',
-      'bigquery.tables.getMetadata',
-    ]),
-  }).optional(),
+  requiredPermissions: z
+    .object({
+      query: z
+        .array(z.string())
+        .default([
+          'bigquery.jobs.create',
+          'bigquery.datasets.get',
+          'bigquery.tables.get',
+          'bigquery.tables.getData',
+        ]),
+      listDatasets: z.array(z.string()).default(['bigquery.datasets.get']),
+      listTables: z.array(z.string()).default(['bigquery.datasets.get', 'bigquery.tables.list']),
+      getSchema: z
+        .array(z.string())
+        .default(['bigquery.tables.get', 'bigquery.tables.getMetadata']),
+    })
+    .optional(),
 });
 
 export type PermissionValidatorConfig = z.infer<typeof PermissionValidatorConfigSchema>;
@@ -135,22 +133,14 @@ class PermissionCache {
   /**
    * Generate cache key from permission check parameters
    */
-  private generateKey(params: {
-    principal: string;
-    action: string;
-    resource: string;
-  }): string {
+  private generateKey(params: { principal: string; action: string; resource: string }): string {
     return `${params.principal}:${params.action}:${params.resource}`;
   }
 
   /**
    * Get cached permission result
    */
-  get(params: {
-    principal: string;
-    action: string;
-    resource: string;
-  }): CachedPermission | null {
+  get(params: { principal: string; action: string; resource: string }): CachedPermission | null {
     const key = this.generateKey(params);
     const cached = this.cache.get(key);
 
@@ -323,24 +313,24 @@ class PermissionAuditLogger {
     let filtered = this.entries;
 
     if (options?.principal) {
-      filtered = filtered.filter(e => e.principal === options.principal);
+      filtered = filtered.filter((e) => e.principal === options.principal);
     }
 
     if (options?.action) {
-      filtered = filtered.filter(e => e.action === options.action);
+      filtered = filtered.filter((e) => e.action === options.action);
     }
 
     if (options?.resource) {
       const resource = options.resource;
-      filtered = filtered.filter(e => e.resource.includes(resource));
+      filtered = filtered.filter((e) => e.resource.includes(resource));
     }
 
     if (options?.allowedOnly) {
-      filtered = filtered.filter(e => e.allowed);
+      filtered = filtered.filter((e) => e.allowed);
     }
 
     if (options?.deniedOnly) {
-      filtered = filtered.filter(e => !e.allowed);
+      filtered = filtered.filter((e) => !e.allowed);
     }
 
     const limit = options?.limit || 100;
@@ -354,7 +344,7 @@ class PermissionAuditLogger {
     principal?: string
   ): { action: string; resource: string; count: number }[] {
     const deniedEntries = this.entries.filter(
-      e => !e.allowed && (!principal || e.principal === principal)
+      (e) => !e.allowed && (!principal || e.principal === principal)
     );
 
     const summary = new Map<string, number>();
@@ -379,9 +369,7 @@ class PermissionAuditLogger {
     const cutoff = Date.now() - this.retentionMs;
     const originalLength = this.entries.length;
 
-    this.entries = this.entries.filter(
-      e => e.timestamp.getTime() > cutoff
-    );
+    this.entries = this.entries.filter((e) => e.timestamp.getTime() > cutoff);
 
     const removed = originalLength - this.entries.length;
     if (removed > 0) {
@@ -396,14 +384,16 @@ class PermissionAuditLogger {
     if (format === 'csv') {
       const headers = 'timestamp,principal,action,resource,allowed,deniedReason\n';
       const rows = this.entries
-        .map(e => [
-          e.timestamp.toISOString(),
-          e.principal,
-          e.action,
-          e.resource,
-          e.allowed,
-          e.deniedReason || '',
-        ].join(','))
+        .map((e) =>
+          [
+            e.timestamp.toISOString(),
+            e.principal,
+            e.action,
+            e.resource,
+            e.allowed,
+            e.deniedReason || '',
+          ].join(',')
+        )
         .join('\n');
       return headers + rows;
     }
@@ -424,13 +414,8 @@ export class PermissionValidator {
 
   constructor(config: Partial<PermissionValidatorConfig> = {}) {
     this.config = this.parseConfig(config);
-    this.cache = new PermissionCache(
-      this.config.cacheSize,
-      this.config.cacheTTLMs
-    );
-    this.auditLogger = new PermissionAuditLogger(
-      this.config.auditRetentionDays
-    );
+    this.cache = new PermissionCache(this.config.cacheSize, this.config.cacheTTLMs);
+    this.auditLogger = new PermissionAuditLogger(this.config.auditRetentionDays);
     this.auth = new GoogleAuth({
       scopes: ['https://www.googleapis.com/auth/cloud-platform'],
     });
@@ -472,7 +457,7 @@ export class PermissionValidator {
     principal?: string;
     query?: string;
   }): Promise<PermissionCheckResult> {
-    const principal = params.principal || await this.getPrincipal();
+    const principal = params.principal || (await this.getPrincipal());
     const resource = this.buildResourceName(params);
     const action = 'bigquery.query';
 
@@ -536,7 +521,7 @@ export class PermissionValidator {
     action: 'list' | 'get' | 'query';
     principal?: string;
   }): Promise<PermissionCheckResult> {
-    const principal = params.principal || await this.getPrincipal();
+    const principal = params.principal || (await this.getPrincipal());
     const resource = `projects/${params.projectId}/datasets/${params.datasetId}`;
     const action = `bigquery.datasets.${params.action}`;
 
@@ -598,7 +583,7 @@ export class PermissionValidator {
     action: 'get' | 'getData' | 'getMetadata';
     principal?: string;
   }): Promise<PermissionCheckResult> {
-    const principal = params.principal || await this.getPrincipal();
+    const principal = params.principal || (await this.getPrincipal());
     const resource = `projects/${params.projectId}/datasets/${params.datasetId}/tables/${params.tableId}`;
     const action = `bigquery.tables.${params.action}`;
 
@@ -658,7 +643,7 @@ export class PermissionValidator {
     permissions: string[];
     principal?: string;
   }): Promise<PermissionCheckResult> {
-    const principal = params.principal || await this.getPrincipal();
+    const principal = params.principal || (await this.getPrincipal());
     const resource = `projects/${params.projectId}`;
 
     const result = await this.checkPermissions(
@@ -699,7 +684,7 @@ export class PermissionValidator {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken.token}`,
+          Authorization: `Bearer ${accessToken.token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -715,12 +700,12 @@ export class PermissionValidator {
         throw new Error(`Permission check failed: ${response.statusText}`);
       }
 
-      const data = await response.json() as { permissions?: string[] };
+      const data = (await response.json()) as { permissions?: string[] };
       const grantedPermissions = data.permissions || [];
 
       // Find missing permissions
       const missingPermissions = requiredPermissions.filter(
-        perm => !grantedPermissions.includes(perm)
+        (perm) => !grantedPermissions.includes(perm)
       );
 
       const allowed = missingPermissions.length === 0;
@@ -870,7 +855,7 @@ export class PermissionValidator {
 
     for (const chunk of chunks) {
       const chunkResults = await Promise.all(
-        chunk.map(check => this.validateQueryPermissions(check))
+        chunk.map((check) => this.validateQueryPermissions(check))
       );
       results.push(...chunkResults);
     }

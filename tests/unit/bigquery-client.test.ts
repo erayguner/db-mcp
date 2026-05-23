@@ -131,14 +131,16 @@ describeClient('BigQueryClient', () => {
       ];
 
       mockJob.getQueryResults.mockResolvedValue([mockRows]);
-      mockJob.getMetadata.mockResolvedValue([{
-        statistics: {
-          query: {
-            totalBytesProcessed: '50000',
-            cacheHit: false,
+      mockJob.getMetadata.mockResolvedValue([
+        {
+          statistics: {
+            query: {
+              totalBytesProcessed: '50000',
+              cacheHit: false,
+            },
           },
         },
-      }]);
+      ]);
       mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
       // Act
@@ -182,9 +184,7 @@ describeClient('BigQueryClient', () => {
       const error = new Error('Query failed');
       mockBQClient.createQueryJob.mockRejectedValue(error);
 
-      await expect(
-        client.query({ query: 'INVALID SQL' })
-      ).rejects.toThrow();
+      await expect(client.query({ query: 'INVALID SQL' })).rejects.toThrow();
     });
 
     it('should return empty results for empty query', async () => {
@@ -200,14 +200,16 @@ describeClient('BigQueryClient', () => {
 
     it('should include cache hit information', async () => {
       mockJob.getQueryResults.mockResolvedValue([[{ id: 1 }]]);
-      mockJob.getMetadata.mockResolvedValue([{
-        statistics: {
-          query: {
-            cacheHit: true,
-            totalBytesProcessed: '0',
+      mockJob.getMetadata.mockResolvedValue([
+        {
+          statistics: {
+            query: {
+              cacheHit: true,
+              totalBytesProcessed: '0',
+            },
           },
         },
-      }]);
+      ]);
       mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
       const result = await client.query({ query: 'SELECT 1' });
@@ -219,13 +221,15 @@ describeClient('BigQueryClient', () => {
 
   describe('dryRun', () => {
     it('should estimate query cost', async () => {
-      mockJob.getMetadata.mockResolvedValue([{
-        statistics: {
-          query: {
-            totalBytesProcessed: '1250000000000', // 1.25 TB
+      mockJob.getMetadata.mockResolvedValue([
+        {
+          statistics: {
+            query: {
+              totalBytesProcessed: '1250000000000', // 1.25 TB
+            },
           },
         },
-      }]);
+      ]);
       mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
       const result = await client.dryRun('SELECT * FROM large_table');
@@ -240,13 +244,15 @@ describeClient('BigQueryClient', () => {
     });
 
     it('should calculate cost for large query', async () => {
-      mockJob.getMetadata.mockResolvedValue([{
-        statistics: {
-          query: {
-            totalBytesProcessed: '5497558138880', // ~5 TB
+      mockJob.getMetadata.mockResolvedValue([
+        {
+          statistics: {
+            query: {
+              totalBytesProcessed: '5497558138880', // ~5 TB
+            },
           },
         },
-      }]);
+      ]);
       mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
       const result = await client.dryRun('SELECT * FROM huge_table');
@@ -255,14 +261,16 @@ describeClient('BigQueryClient', () => {
     });
 
     it('should return zero cost for cached query', async () => {
-      mockJob.getMetadata.mockResolvedValue([{
-        statistics: {
-          query: {
-            totalBytesProcessed: '0',
-            cacheHit: true,
+      mockJob.getMetadata.mockResolvedValue([
+        {
+          statistics: {
+            query: {
+              totalBytesProcessed: '0',
+              cacheHit: true,
+            },
           },
         },
-      }]);
+      ]);
       mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
 
       const result = await client.dryRun('SELECT 1');
@@ -330,7 +338,11 @@ describeClient('BigQueryClient', () => {
       const tables = await client.listTables('my_dataset');
 
       expect(tables).toEqual(mockTables);
-      expect(mockDatasetManager.listTables).toHaveBeenCalledWith(mockBQClient, 'my_dataset', undefined);
+      expect(mockDatasetManager.listTables).toHaveBeenCalledWith(
+        mockBQClient,
+        'my_dataset',
+        undefined
+      );
     });
   });
 
@@ -356,16 +368,21 @@ describeClient('BigQueryClient', () => {
       const table = await client.getTable('my_dataset', 'my_table');
 
       expect(table).toEqual(mockTable);
-      expect(mockDatasetManager.getTable).toHaveBeenCalledWith(mockBQClient, 'my_dataset', 'my_table', undefined);
+      expect(mockDatasetManager.getTable).toHaveBeenCalledWith(
+        mockBQClient,
+        'my_dataset',
+        'my_table',
+        undefined
+      );
     });
 
     it('should handle table not found error', async () => {
       const error = new Error('Table not found');
       mockDatasetManager.getTable.mockRejectedValue(error);
 
-      await expect(
-        client.getTable('my_dataset', 'nonexistent_table')
-      ).rejects.toThrow('Table not found');
+      await expect(client.getTable('my_dataset', 'nonexistent_table')).rejects.toThrow(
+        'Table not found'
+      );
     });
   });
 
@@ -436,9 +453,7 @@ describeClient('BigQueryClient', () => {
     it('should reject queries after shutdown', async () => {
       await client.shutdown();
 
-      await expect(
-        client.query({ query: 'SELECT 1' })
-      ).rejects.toThrow('shutting down');
+      await expect(client.query({ query: 'SELECT 1' })).rejects.toThrow('shutting down');
     });
   });
 });

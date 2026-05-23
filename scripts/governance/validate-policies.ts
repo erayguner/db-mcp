@@ -12,12 +12,14 @@ import { loadPolicies } from '../../src/governance/policy.js';
 async function validatePolicies(root: string): Promise<void> {
   const dir = join(root, 'config', 'policies');
   const loaded = await loadPolicies(dir);
-  console.log(`[policies] loaded tool-governance v${loaded.toolGovernance.version}, content-safety v${loaded.contentSafety.version}, data-classification v${loaded.dataClassification.version}`);
+  console.log(
+    `[policies] loaded tool-governance v${loaded.toolGovernance.version}, content-safety v${loaded.contentSafety.version}, data-classification v${loaded.dataClassification.version}`
+  );
 }
 
 async function validateContracts(root: string): Promise<void> {
   const dir = join(root, 'docs', 'governance', 'boundary-contracts');
-  const files = (await readdir(dir)).filter(f => f.endsWith('.json'));
+  const files = (await readdir(dir)).filter((f) => f.endsWith('.json'));
   if (files.length === 0) throw new Error(`no boundary contracts found in ${dir}`);
   for (const file of files) {
     const raw = JSON.parse(await readFile(join(dir, file), 'utf8'));
@@ -33,7 +35,7 @@ async function main(): Promise<void> {
   console.log('governance validation passed');
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('governance validation FAILED:', err);
   process.exit(1);
 });

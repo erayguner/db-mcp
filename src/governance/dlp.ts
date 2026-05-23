@@ -40,8 +40,11 @@ export class NoopDlpProvider implements DlpProvider {
  * Decide whether a dataset should have DLP applied based on classification.
  * Regulated → always; confidential → inspect only; internal/public → skip.
  */
-export function requiresDlp(classification: DataClassification, dataset: string): 'full' | 'inspect' | 'skip' {
-  const entry = classification.classifications.find(c => c.dataset === dataset);
+export function requiresDlp(
+  classification: DataClassification,
+  dataset: string
+): 'full' | 'inspect' | 'skip' {
+  const entry = classification.classifications.find((c) => c.dataset === dataset);
   if (!entry) return 'skip';
   if (entry.class === 'regulated') return 'full';
   if (entry.class === 'confidential') return 'inspect';
@@ -55,7 +58,10 @@ export interface CohortRow {
 }
 
 export class KAnonymityViolation extends Error {
-  constructor(public readonly k: number, public readonly offendingGroups: string[]) {
+  constructor(
+    public readonly k: number,
+    public readonly offendingGroups: string[]
+  ) {
     super(`k-anonymity violation: ${offendingGroups.length} groups below k=${k}`);
     this.name = 'KAnonymityViolation';
   }
@@ -69,16 +75,19 @@ export class KAnonymityViolation extends Error {
 export function enforceKAnonymity(
   rows: CohortRow[],
   k: number,
-  mode: 'suppress' | 'reject' = 'reject',
+  mode: 'suppress' | 'reject' = 'reject'
 ): CohortRow[] {
   if (k < 1) return rows;
-  const offending = rows.filter(r => r.count < k).map(r => r.groupKey);
+  const offending = rows.filter((r) => r.count < k).map((r) => r.groupKey);
   if (offending.length === 0) return rows;
   logger.warn('k-anonymity threshold breached', { k, offendingCount: offending.length, mode });
   if (mode === 'reject') throw new KAnonymityViolation(k, offending);
-  return rows.filter(r => r.count >= k);
+  return rows.filter((r) => r.count >= k);
 }
 
-export function kForDataset(classification: DataClassification, dataset: string): number | undefined {
-  return classification.classifications.find(c => c.dataset === dataset)?.kAnonymityK;
+export function kForDataset(
+  classification: DataClassification,
+  dataset: string
+): number | undefined {
+  return classification.classifications.find((c) => c.dataset === dataset)?.kAnonymityK;
 }

@@ -57,7 +57,7 @@ export function initializeMetrics(serviceName: string, serviceVersion: string, p
 
     // Create Prometheus exporter (pull via /metrics endpoint)
     prometheusExporter = new PrometheusExporter(
-      { preventServerStart: true }, // We mount the endpoint on our own Express app
+      { preventServerStart: true } // We mount the endpoint on our own Express app
     );
 
     // Initialize meter provider with both readers
@@ -163,7 +163,7 @@ export function recordToolCall(
   tool: string,
   outcome: 'allow' | 'block' | 'error',
   durationMs: number,
-  tenantId?: string,
+  tenantId?: string
 ) {
   if (!instruments) return;
   const attrs: Record<string, string> = { tool, outcome };
@@ -199,7 +199,7 @@ export function recordQueryLatency(
   queryType: string,
   success: boolean,
   tenantId?: string,
-  dataset?: string,
+  dataset?: string
 ) {
   if (instruments) {
     const attrs: Record<string, string> = {
@@ -224,7 +224,7 @@ export function recordBigQueryBytes(
   bytes: number,
   operation: string,
   tenantId?: string,
-  dataset?: string,
+  dataset?: string
 ) {
   if (instruments) {
     const attrs: Record<string, string> = { operation };
@@ -246,7 +246,7 @@ export function recordToolError(
   errorType: string,
   tool?: string,
   tenantId?: string,
-  dataset?: string,
+  dataset?: string
 ) {
   if (instruments) {
     const attrs: Record<string, string> = { errorType };

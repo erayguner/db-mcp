@@ -9,12 +9,14 @@ This document describes the enterprise security architecture implemented for the
 ### 1. Authentication Layer
 
 **Components:**
+
 - `/src/auth/credential-manager.ts` - Token lifecycle management
 - `/src/auth/wif-authenticator.ts` - WIF authentication and impersonation
 - `/src/auth/workload-identity.ts` - Token exchange
 - `/src/auth/google-workspace.ts` - Workspace OIDC validation
 
 **Features:**
+
 - ✅ Workload Identity Federation (WIF)
 - ✅ Service Account Impersonation
 - ✅ Token caching with TTL
@@ -24,12 +26,14 @@ This document describes the enterprise security architecture implemented for the
 ### 2. Authorization Layer
 
 **Components:**
+
 - `/src/security/permission-validator.ts` - IAM permission validation
 - `/src/auth/audit-logger.ts` - Security audit logging
 - `/src/tenancy/dataset-policy.ts` - Application-layer tenant allowlist
 - `terraform/modules/bigquery/main.tf` - IAM Conditions on dataset bindings
 
 **Features:**
+
 - ✅ Pre-query permission checks
 - ✅ IAM policy evaluation
 - ✅ Role-based access control (RBAC)
@@ -40,19 +44,20 @@ This document describes the enterprise security architecture implemented for the
 **Defense in depth — tenant dataset access:**
 
 1. YAML allowlist (`src/config/tenants.yaml`) evaluated by `DatasetPolicy` at the MCP layer.
-2. IAM Condition on each `google_bigquery_dataset_iam_member` binding, pinning
-   the tenant principal to `resource.name == "projects/.../datasets/{ds}_{env}"`.
-   Configured via `tenant_dataset_bindings` in Terraform.
+2. IAM Condition on each `google_bigquery_dataset_iam_member` binding, pinning the tenant principal to
+   `resource.name == "projects/.../datasets/{ds}_{env}"`. Configured via `tenant_dataset_bindings` in Terraform.
 
-A misconfigured app still cannot reach datasets outside the tenant scope because
-Google IAM rejects the request before BigQuery ever runs the query.
+A misconfigured app still cannot reach datasets outside the tenant scope because Google IAM rejects the request before
+BigQuery ever runs the query.
 
 ### Content Safety Layer
 
 **Components:**
+
 - `/src/security/model-armor.ts` - Model Armor pre-flight screening provider
 
 **Features:**
+
 - ✅ Screens user-supplied SQL/NL prompts before policy evaluation
 - ✅ Calls Google Cloud Model Armor's `sanitizeUserPrompt` REST endpoint via ADC
 - ✅ Heuristic fallback when upstream fails (returns `degraded: true`)
@@ -62,9 +67,11 @@ Google IAM rejects the request before BigQuery ever runs the query.
 ### 3. Audit & Compliance Layer
 
 **Components:**
+
 - `/src/auth/audit-logger.ts` - Security event logging
 
 **Features:**
+
 - ✅ Authentication/authorization event logging
 - ✅ Token operation tracking
 - ✅ Security violation detection
@@ -84,6 +91,7 @@ const result = await wifAuth.authenticate(oidcToken);
 ```
 
 **Flow:**
+
 1. Validate external OIDC token
 2. Exchange with WIF pool/provider
 3. Obtain GCP access token
@@ -94,14 +102,12 @@ const result = await wifAuth.authenticate(oidcToken);
 
 ```typescript
 // WIF Token → Impersonated Service Account Token
-const result = await wifAuth.authenticateAndImpersonate(
-  oidcToken,
-  'target-sa@project.iam.gserviceaccount.com'
-);
+const result = await wifAuth.authenticateAndImpersonate(oidcToken, 'target-sa@project.iam.gserviceaccount.com');
 // Result: { accessToken, principal, impersonated: true }
 ```
 
 **Flow:**
+
 1. Authenticate with WIF
 2. Validate target service account
 3. Call IAM Credentials API
@@ -122,6 +128,7 @@ const cleanup = credManager.enableAutoRefresh(1800); // 30 min
 ```
 
 **Flow:**
+
 1. Check token expiry in cache
 2. If within refresh buffer, refresh
 3. Obtain new token
@@ -145,6 +152,7 @@ if (!result.allowed) {
 ```
 
 **Flow:**
+
 1. Check permission cache
 2. If miss, call IAM testPermissions API
 3. Cache result (5-minute TTL)
@@ -169,6 +177,7 @@ auditLogger.logSecurityViolation({ principal, severity, message });
 ```
 
 **Storage:**
+
 - In-memory store (100K events)
 - 90-day retention
 - Automatic cleanup
@@ -275,17 +284,20 @@ auditLogger.logSecurityViolation({ principal, severity, message });
 ### Key Metrics
 
 **Authentication:**
+
 - `auth.success` - Successful authentications
 - `auth.failure` - Failed authentications
 - `token.refresh` - Token refreshes
 - `impersonation.success` - Successful impersonations
 
 **Authorization:**
+
 - `permission.check` - Permission checks
 - `permission.denied` - Permission denials
 - `permission.cache_hit` - Cache hits
 
 **Security:**
+
 - `security.violation` - Security violations
 - `security.rate_limit` - Rate limit exceeded
 - `security.invalid_token` - Invalid tokens
@@ -293,17 +305,20 @@ auditLogger.logSecurityViolation({ principal, severity, message });
 ### Alert Conditions
 
 **Critical Alerts:**
+
 - Multiple authentication failures (>5 in 5 min)
 - Security violations
 - Invalid token detections
 - Service account impersonation failures
 
 **Warning Alerts:**
+
 - Permission denials (>10 in 10 min)
 - Token refresh failures
 - Cache invalidation patterns
 
 **Info Alerts:**
+
 - High permission cache miss rate
 - Token expiration warnings
 - Audit log size warnings
@@ -328,6 +343,7 @@ await fs.writeFile('audit-2024-01.csv', csvExport);
 ### Compliance Reports
 
 **Required Reports:**
+
 1. Authentication audit trail
 2. Authorization decisions
 3. Permission denials summary
@@ -335,6 +351,7 @@ await fs.writeFile('audit-2024-01.csv', csvExport);
 5. Service account impersonation log
 
 **Report Frequency:**
+
 - Daily: Security violations
 - Weekly: Permission denials
 - Monthly: Full audit trail

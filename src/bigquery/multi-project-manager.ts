@@ -16,11 +16,13 @@ export const ProjectConfigSchema = z.object({
   labels: z.record(z.string()).optional(),
   priority: z.enum(['high', 'medium', 'low']).default('medium'),
   enabled: z.boolean().default(true),
-  quotas: z.object({
-    maxQueriesPerDay: z.number().optional(),
-    maxBytesProcessedPerDay: z.string().optional(),
-    maxConcurrentQueries: z.number().optional(),
-  }).optional(),
+  quotas: z
+    .object({
+      maxQueriesPerDay: z.number().optional(),
+      maxBytesProcessedPerDay: z.string().optional(),
+      maxConcurrentQueries: z.number().optional(),
+    })
+    .optional(),
 });
 
 export const MultiProjectManagerConfigSchema = z.object({
@@ -28,25 +30,33 @@ export const MultiProjectManagerConfigSchema = z.object({
   defaultProjectId: z.string().optional(),
   autoDiscovery: z.boolean().default(true),
   discoveryIntervalMs: z.number().min(60000).default(300000),
-  connectionPool: z.object({
-    minConnectionsPerProject: z.number().min(1).default(2),
-    maxConnectionsPerProject: z.number().min(1).default(10),
-    acquireTimeoutMs: z.number().min(100).default(30000),
-    idleTimeoutMs: z.number().min(1000).default(300000),
-  }).optional(),
-  datasetManager: z.object({
-    cacheSize: z.number().min(10).default(100),
-    cacheTTLMs: z.number().min(1000).default(3600000),
-  }).optional(),
-  crossProjectQueries: z.object({
-    enabled: z.boolean().default(true),
-    maxProjects: z.number().min(1).default(5),
-  }).optional(),
-  permissionValidation: z.object({
-    enabled: z.boolean().default(true),
-    cacheValidationResults: z.boolean().default(true),
-    validationTTLMs: z.number().min(60000).default(300000),
-  }).optional(),
+  connectionPool: z
+    .object({
+      minConnectionsPerProject: z.number().min(1).default(2),
+      maxConnectionsPerProject: z.number().min(1).default(10),
+      acquireTimeoutMs: z.number().min(100).default(30000),
+      idleTimeoutMs: z.number().min(1000).default(300000),
+    })
+    .optional(),
+  datasetManager: z
+    .object({
+      cacheSize: z.number().min(10).default(100),
+      cacheTTLMs: z.number().min(1000).default(3600000),
+    })
+    .optional(),
+  crossProjectQueries: z
+    .object({
+      enabled: z.boolean().default(true),
+      maxProjects: z.number().min(1).default(5),
+    })
+    .optional(),
+  permissionValidation: z
+    .object({
+      enabled: z.boolean().default(true),
+      cacheValidationResults: z.boolean().default(true),
+      validationTTLMs: z.number().min(60000).default(300000),
+    })
+    .optional(),
 });
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
@@ -199,11 +209,7 @@ export class MultiProjectManagerError extends Error {
 
 export class ProjectNotFoundError extends MultiProjectManagerError {
   constructor(projectId: string) {
-    super(
-      `Project not found: ${projectId}`,
-      'PROJECT_NOT_FOUND',
-      projectId
-    );
+    super(`Project not found: ${projectId}`, 'PROJECT_NOT_FOUND', projectId);
   }
 }
 
@@ -262,7 +268,9 @@ export class MultiProjectManager extends EventEmitter {
   /**
    * Parse and validate configuration
    */
-  private parseAndValidateConfig(config: MultiProjectManagerConfig): Required<MultiProjectManagerConfig> {
+  private parseAndValidateConfig(
+    config: MultiProjectManagerConfig
+  ): Required<MultiProjectManagerConfig> {
     const parsed = MultiProjectManagerConfigSchema.parse(config);
 
     return {
@@ -470,9 +478,7 @@ export class MultiProjectManager extends EventEmitter {
     this.emit('discovery:started');
 
     const discoveries = await Promise.allSettled(
-      Array.from(this.projects.values()).map(context =>
-        this.discoverProject(context)
-      )
+      Array.from(this.projects.values()).map((context) => this.discoverProject(context))
     );
 
     const results: ProjectDiscoveryResult[] = discoveries.map((result, index) => {
@@ -493,7 +499,7 @@ export class MultiProjectManager extends EventEmitter {
 
     this.emit('discovery:completed', {
       total: results.length,
-      accessible: results.filter(r => r.accessible).length,
+      accessible: results.filter((r) => r.accessible).length,
     });
 
     return results;
@@ -561,11 +567,7 @@ export class MultiProjectManager extends EventEmitter {
         dryRun: true,
       });
 
-      const permissions = [
-        'bigquery.jobs.create',
-        'bigquery.datasets.get',
-        'bigquery.tables.list',
-      ];
+      const permissions = ['bigquery.jobs.create', 'bigquery.datasets.get', 'bigquery.tables.list'];
 
       // Cache results
       if (this.config.permissionValidation.cacheValidationResults) {
@@ -605,7 +607,7 @@ export class MultiProjectManager extends EventEmitter {
 
     const projectPermissions = await this.getProjectPermissions(projectId);
     const missingPermissions = requiredPermissions.filter(
-      perm => !projectPermissions.includes(perm)
+      (perm) => !projectPermissions.includes(perm)
     );
 
     const hasAccess = missingPermissions.length === 0;
@@ -648,10 +650,7 @@ export class MultiProjectManager extends EventEmitter {
    */
   public getCurrentProject(): ProjectContext {
     if (!this.currentProjectId) {
-      throw new MultiProjectManagerError(
-        'No current project set',
-        'NO_CURRENT_PROJECT'
-      );
+      throw new MultiProjectManagerError('No current project set', 'NO_CURRENT_PROJECT');
     }
 
     return this.getProjectContext(this.currentProjectId);
@@ -690,15 +689,15 @@ export class MultiProjectManager extends EventEmitter {
 
     if (filters) {
       if (filters.enabled !== undefined) {
-        projects = projects.filter(p => p.enabled === filters.enabled);
+        projects = projects.filter((p) => p.enabled === filters.enabled);
       }
 
       if (filters.priority) {
-        projects = projects.filter(p => p.priority === filters.priority);
+        projects = projects.filter((p) => p.priority === filters.priority);
       }
 
       if (filters.hasLabel) {
-        projects = projects.filter(p => {
+        projects = projects.filter((p) => {
           if (!p.labels) return false;
           return Object.entries(filters.hasLabel!).every(
             ([key, value]) => p.labels![key] === value
@@ -751,7 +750,7 @@ export class MultiProjectManager extends EventEmitter {
           return {
             projectId,
             result: null,
-            error: error instanceof Error ? error : new Error(String(error))
+            error: error instanceof Error ? error : new Error(String(error)),
           };
         }
         throw error;
@@ -770,14 +769,14 @@ export class MultiProjectManager extends EventEmitter {
         resultMap.set(projectId, {
           projectId,
           result: null,
-          error: result.reason instanceof Error ? result.reason : new Error(String(result.reason))
+          error: result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
         });
       }
     });
 
     this.emit('cross-project:query:completed', {
       projectIds: options.projectIds,
-      successCount: Array.from(resultMap.values()).filter(r => !r.error).length,
+      successCount: Array.from(resultMap.values()).filter((r) => !r.error).length,
     });
 
     return resultMap;
@@ -801,8 +800,7 @@ export class MultiProjectManager extends EventEmitter {
 
     // Check quota limits
     if (quota.limits) {
-      if (quota.limits.maxQueriesPerDay &&
-        quota.queriesExecuted >= quota.limits.maxQueriesPerDay) {
+      if (quota.limits.maxQueriesPerDay && quota.queriesExecuted >= quota.limits.maxQueriesPerDay) {
         this.emit('quota:exceeded', {
           projectId,
           quotaType: 'queries',
@@ -811,8 +809,10 @@ export class MultiProjectManager extends EventEmitter {
         });
       }
 
-      if (quota.limits.maxBytesProcessedPerDay &&
-        BigInt(quota.bytesProcessed) >= BigInt(quota.limits.maxBytesProcessedPerDay)) {
+      if (
+        quota.limits.maxBytesProcessedPerDay &&
+        BigInt(quota.bytesProcessed) >= BigInt(quota.limits.maxBytesProcessedPerDay)
+      ) {
         this.emit('quota:exceeded', {
           projectId,
           quotaType: 'bytes',
@@ -907,9 +907,8 @@ export class MultiProjectManager extends EventEmitter {
       });
     });
 
-    metrics.avgQueriesPerProject = metrics.totalProjects > 0
-      ? metrics.totalQueries / metrics.totalProjects
-      : 0;
+    metrics.avgQueriesPerProject =
+      metrics.totalProjects > 0 ? metrics.totalQueries / metrics.totalProjects : 0;
 
     return {
       ...metrics,
@@ -980,7 +979,7 @@ export class MultiProjectManager extends EventEmitter {
     if (this.isShuttingDown) return false;
 
     const healthyProjects = Array.from(this.projects.values()).filter(
-      context => context.enabled && context.client.isHealthy()
+      (context) => context.enabled && context.client.isHealthy()
     );
 
     return healthyProjects.length > 0;

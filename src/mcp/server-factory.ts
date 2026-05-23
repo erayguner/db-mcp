@@ -31,12 +31,14 @@ export const ServerFactoryConfigSchema = z.object({
   name: z.string().default('mcp-server'),
   version: z.string().default('1.0.0'),
   description: z.string().optional(),
-  capabilities: z.object({
-    tools: z.boolean().default(true),
-    resources: z.boolean().default(true),
-    prompts: z.boolean().default(false),
-    logging: z.boolean().default(true),
-  }).default({}),
+  capabilities: z
+    .object({
+      tools: z.boolean().default(true),
+      resources: z.boolean().default(true),
+      prompts: z.boolean().default(false),
+      logging: z.boolean().default(true),
+    })
+    .default({}),
   transport: z.enum(['stdio', 'http', 'sse', 'websocket']).default('stdio'),
   gracefulShutdownTimeoutMs: z.number().min(1000).default(30000),
   healthCheckIntervalMs: z.number().min(1000).optional(),
@@ -136,20 +138,22 @@ export class MCPServerFactory extends EventEmitter {
    */
   public getServer(): Server {
     // In test environments, return a minimal adapter with setRequestHandler
-    const isTestEnv = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
+    const isTestEnv =
+      process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
     if (isTestEnv) {
       const handlers: Record<string | symbol, (req: unknown) => unknown> = {};
-      return ({
+      return {
         setRequestHandler: (schema: unknown, handler: (req: unknown) => unknown) => {
-          const keyCandidate = typeof schema === 'object' && schema !== null
-            ? ((schema as { method?: unknown }).method ??
-               (schema as { title?: unknown }).title ??
-               (schema as { name?: unknown }).name)
-            : undefined;
+          const keyCandidate =
+            typeof schema === 'object' && schema !== null
+              ? ((schema as { method?: unknown }).method ??
+                (schema as { title?: unknown }).title ??
+                (schema as { name?: unknown }).name)
+              : undefined;
           const key = typeof keyCandidate === 'string' ? keyCandidate : Symbol('handler');
           handlers[key] = handler;
-        }
-      } as unknown as Server);
+        },
+      } as unknown as Server;
     }
     return this.server;
   }
@@ -215,10 +219,7 @@ export class MCPServerFactory extends EventEmitter {
    */
   public async start(): Promise<void> {
     if (this.state !== ServerState.READY) {
-      throw new ServerFactoryError(
-        `Cannot start server in state: ${this.state}`,
-        'INVALID_STATE'
-      );
+      throw new ServerFactoryError(`Cannot start server in state: ${this.state}`, 'INVALID_STATE');
     }
 
     try {
@@ -277,10 +278,7 @@ export class MCPServerFactory extends EventEmitter {
       }
 
       // Close server with timeout
-      await Promise.race([
-        this.closeServer(),
-        this.shutdownTimeout(),
-      ]);
+      await Promise.race([this.closeServer(), this.shutdownTimeout()]);
 
       this.setState(ServerState.STOPPED);
       this.emit('shutdown:completed');
@@ -301,7 +299,10 @@ export class MCPServerFactory extends EventEmitter {
   private async closeServer(): Promise<void> {
     // MCP SDK Server currently doesn't have a close method
     // This is a placeholder for future implementation
-    if (this.transport && typeof (this.transport as { close?: () => Promise<void> }).close === 'function') {
+    if (
+      this.transport &&
+      typeof (this.transport as { close?: () => Promise<void> }).close === 'function'
+    ) {
       await (this.transport as { close: () => Promise<void> }).close();
     }
   }
@@ -312,10 +313,12 @@ export class MCPServerFactory extends EventEmitter {
   private shutdownTimeout(): Promise<never> {
     return new Promise((_, reject) => {
       const t = setTimeout(() => {
-        reject(new ServerFactoryError(
-          `Shutdown timeout after ${this.config.gracefulShutdownTimeoutMs}ms`,
-          'SHUTDOWN_TIMEOUT'
-        ));
+        reject(
+          new ServerFactoryError(
+            `Shutdown timeout after ${this.config.gracefulShutdownTimeoutMs}ms`,
+            'SHUTDOWN_TIMEOUT'
+          )
+        );
       }, this.config.gracefulShutdownTimeoutMs);
       // Prevent keeping the event loop alive in tests
       if (typeof t.unref === 'function') t.unref();
@@ -332,7 +335,7 @@ export class MCPServerFactory extends EventEmitter {
 
     const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT'];
 
-    signals.forEach(signal => {
+    signals.forEach((signal) => {
       process.on(signal, async () => {
         logger.info(`Received ${signal}, initiating graceful shutdown`);
         try {

@@ -24,7 +24,9 @@ describe.skip('MCPServerFactory', () => {
   let mockServer: jest.Mocked<Server>;
   let mockTransport: jest.Mocked<StdioServerTransport>;
 
-  const createDefaultConfig = (overrides: Partial<ServerFactoryConfig> = {}): ServerFactoryConfig => ({
+  const createDefaultConfig = (
+    overrides: Partial<ServerFactoryConfig> = {}
+  ): ServerFactoryConfig => ({
     name: 'test-server',
     version: '1.0.0',
     capabilities: {
@@ -53,7 +55,9 @@ describe.skip('MCPServerFactory', () => {
     } as any;
 
     (Server as jest.MockedClass<typeof Server>).mockImplementation(() => mockServer);
-    (StdioServerTransport as jest.MockedClass<typeof StdioServerTransport>).mockImplementation(() => mockTransport);
+    (StdioServerTransport as jest.MockedClass<typeof StdioServerTransport>).mockImplementation(
+      () => mockTransport
+    );
   });
 
   afterEach(() => {
@@ -329,9 +333,9 @@ describe.skip('MCPServerFactory', () => {
       const factory = new MCPServerFactory(config);
 
       mockServer.connect.mockResolvedValue(undefined);
-      mockTransport.close = jest.fn().mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 500))
-      );
+      mockTransport.close = jest
+        .fn()
+        .mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 500)));
 
       await factory.start();
 
@@ -519,9 +523,11 @@ describe.skip('MCPServerFactory', () => {
       const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
-      (StdioServerTransport as jest.MockedClass<typeof StdioServerTransport>).mockImplementation(() => {
-        throw new Error('Transport creation failed');
-      });
+      (StdioServerTransport as jest.MockedClass<typeof StdioServerTransport>).mockImplementation(
+        () => {
+          throw new Error('Transport creation failed');
+        }
+      );
 
       await expect(factory.start()).rejects.toThrow(ServerFactoryError);
     });
@@ -567,11 +573,7 @@ describe.skip('MCPServerFactory', () => {
 
   describe('ServerFactoryError', () => {
     it('should create error with all properties', () => {
-      const error = new ServerFactoryError(
-        'Test error',
-        'TEST_CODE',
-        { detail: 'extra info' }
-      );
+      const error = new ServerFactoryError('Test error', 'TEST_CODE', { detail: 'extra info' });
 
       expect(error).toBeInstanceOf(Error);
       expect(error).toBeInstanceOf(ServerFactoryError);

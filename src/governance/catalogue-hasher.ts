@@ -25,7 +25,7 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object') {
     const entries = Object.keys(value as Record<string, unknown>).sort();
-    return `{${entries.map(k => `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`).join(',')}}`;
+    return `{${entries.map((k) => `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`).join(',')}}`;
   }
   return JSON.stringify(value);
 }
@@ -36,7 +36,10 @@ function sha256(s: string): string {
 
 export function snapshotCatalogue(tools: ToolDescriptor[]): CatalogueSnapshot {
   const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
-  const entries = sorted.map(t => ({ name: t.name, schemaHash: sha256(canonicalJson({ d: t.description, s: t.inputSchema })) }));
+  const entries = sorted.map((t) => ({
+    name: t.name,
+    schemaHash: sha256(canonicalJson({ d: t.description, s: t.inputSchema })),
+  }));
   return {
     hash: sha256(canonicalJson(entries)),
     tools: entries,
@@ -53,15 +56,34 @@ export interface DriftReport {
   changed: string[];
 }
 
-export function diffCatalogue(baseline: CatalogueSnapshot | null, current: CatalogueSnapshot): DriftReport {
-  if (!baseline) return { matched: false, currentHash: current.hash, added: current.tools.map(t => t.name), removed: [], changed: [] };
-  const baseMap = new Map(baseline.tools.map(t => [t.name, t.schemaHash]));
-  const curMap = new Map(current.tools.map(t => [t.name, t.schemaHash]));
-  const added = [...curMap.keys()].filter(n => !baseMap.has(n));
-  const removed = [...baseMap.keys()].filter(n => !curMap.has(n));
-  const changed = [...curMap.keys()].filter(n => baseMap.has(n) && baseMap.get(n) !== curMap.get(n));
+export function diffCatalogue(
+  baseline: CatalogueSnapshot | null,
+  current: CatalogueSnapshot
+): DriftReport {
+  if (!baseline)
+    return {
+      matched: false,
+      currentHash: current.hash,
+      added: current.tools.map((t) => t.name),
+      removed: [],
+      changed: [],
+    };
+  const baseMap = new Map(baseline.tools.map((t) => [t.name, t.schemaHash]));
+  const curMap = new Map(current.tools.map((t) => [t.name, t.schemaHash]));
+  const added = [...curMap.keys()].filter((n) => !baseMap.has(n));
+  const removed = [...baseMap.keys()].filter((n) => !curMap.has(n));
+  const changed = [...curMap.keys()].filter(
+    (n) => baseMap.has(n) && baseMap.get(n) !== curMap.get(n)
+  );
   const matched = baseline.hash === current.hash;
-  return { matched, baselineHash: baseline.hash, currentHash: current.hash, added, removed, changed };
+  return {
+    matched,
+    baselineHash: baseline.hash,
+    currentHash: current.hash,
+    added,
+    removed,
+    changed,
+  };
 }
 
 /**
@@ -71,7 +93,7 @@ export function diffCatalogue(baseline: CatalogueSnapshot | null, current: Catal
 export function enforceCatalogue(
   baseline: CatalogueSnapshot | null,
   current: CatalogueSnapshot,
-  failClosed: boolean,
+  failClosed: boolean
 ): DriftReport {
   const report = diffCatalogue(baseline, current);
   if (!report.matched) {
@@ -83,7 +105,9 @@ export function enforceCatalogue(
 
 export class CatalogueDriftError extends Error {
   constructor(public readonly report: DriftReport) {
-    super(`MCP catalogue drift: +${report.added.length}/-${report.removed.length}/~${report.changed.length}`);
+    super(
+      `MCP catalogue drift: +${report.added.length}/-${report.removed.length}/~${report.changed.length}`
+    );
     this.name = 'CatalogueDriftError';
   }
 }

@@ -57,7 +57,8 @@ npm run dev
 npm start
 ```
 
-**Note**: All logs write to **stderr** for MCP protocol compatibility. You'll see logs in your terminal, but they won't interfere with the JSON-RPC messages on stdout.
+**Note**: All logs write to **stderr** for MCP protocol compatibility. You'll see logs in your terminal, but they won't
+interfere with the JSON-RPC messages on stdout.
 
 ## Step 6: Test MCP Tools
 
@@ -68,6 +69,7 @@ npm start
 ```
 
 This will:
+
 - Build the TypeScript code
 - Verify all MCP tools are available
 - Show test results
@@ -122,16 +124,19 @@ curl -N http://localhost:8080/mcp
 See [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md) for the full compliance matrix.
 
 **Capabilities declared at connection init**:
+
 - **Tools**: 4 BigQuery tools (query, list datasets, list tables, get schema)
 - **Resources**: Browse datasets and tables via `bigquery://` URIs
 - **Prompts**: 5 BigQuery-specific prompt templates
 - **Logging**: Structured logging to stderr
 
 **Transport options**:
+
 - `stdio` (default) — for local Claude/MCP client integration
 - `http` — Streamable HTTP with SSE for production (Cloud Run)
 
 **Security**:
+
 - OIDC authentication with JWT verification
 - Per-tenant dataset authorization (SQL-level enforcement)
 - Rate limiting, prompt injection detection
@@ -140,6 +145,7 @@ See [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md) for the full compliance matrix.
 - Comprehensive audit logging
 
 **Resilience**:
+
 - Circuit breaker with stale cache fallback
 - Connection pooling with health checks
 - Graceful shutdown with drain period
@@ -148,30 +154,30 @@ See [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md) for the full compliance matrix.
 
 ### Tools (4)
 
-| Tool | Description |
-|------|-------------|
-| `query_bigquery` | Execute SQL on BigQuery (supports dryRun, maxResults, timeout) |
-| `list_datasets` | List all accessible BigQuery datasets |
-| `list_tables` | List tables in a dataset |
-| `get_table_schema` | Get schema and metadata for a table |
+| Tool               | Description                                                    |
+| ------------------ | -------------------------------------------------------------- |
+| `query_bigquery`   | Execute SQL on BigQuery (supports dryRun, maxResults, timeout) |
+| `list_datasets`    | List all accessible BigQuery datasets                          |
+| `list_tables`      | List tables in a dataset                                       |
+| `get_table_schema` | Get schema and metadata for a table                            |
 
 ### Resources (browsable via `bigquery://` URIs)
 
-| URI Pattern | Description |
-|-------------|-------------|
-| `bigquery://datasets` | Catalog of all datasets |
-| `bigquery://datasets/{id}` | Dataset detail with table listing |
-| `bigquery://datasets/{id}/tables/{id}` | Table detail with schema |
+| URI Pattern                            | Description                       |
+| -------------------------------------- | --------------------------------- |
+| `bigquery://datasets`                  | Catalog of all datasets           |
+| `bigquery://datasets/{id}`             | Dataset detail with table listing |
+| `bigquery://datasets/{id}/tables/{id}` | Table detail with schema          |
 
 ### Prompts (5 AI guidance templates)
 
-| Prompt | Required Args | Description |
-|--------|--------------|-------------|
-| `analyze_table` | `datasetId`, `tableId` | Schema analysis + query suggestions |
-| `explore_dataset` | `datasetId` | Dataset exploration workflow |
-| `write_query` | `description` | Natural language to SQL |
-| `optimize_query` | `query` | Cost/performance optimization |
-| `data_quality_check` | `datasetId`, `tableId` | Data quality analysis |
+| Prompt               | Required Args          | Description                         |
+| -------------------- | ---------------------- | ----------------------------------- |
+| `analyze_table`      | `datasetId`, `tableId` | Schema analysis + query suggestions |
+| `explore_dataset`    | `datasetId`            | Dataset exploration workflow        |
+| `write_query`        | `description`          | Natural language to SQL             |
+| `optimize_query`     | `query`                | Cost/performance optimization       |
+| `data_quality_check` | `datasetId`, `tableId` | Data quality analysis               |
 
 ## Running with Real GCP Credentials
 
@@ -197,11 +203,13 @@ ls -la dist/
 ```
 
 Expected directories:
+
 - `index.js` — Main entry point
 - `auth/` — Authentication (OIDC, WIF, audit logger)
 - `bigquery/` — BigQuery client, connection pool, query cache, graceful degradation
 - `config/` — Environment and tenant configuration
-- `mcp/` — MCP server factory, handlers (tools, prompts, sessions, progress), schemas, transports, middleware (batch, compression)
+- `mcp/` — MCP server factory, handlers (tools, prompts, sessions, progress), schemas, transports, middleware (batch,
+  compression)
 - `security/` — Security middleware, anomaly detection, column masking
 - `tenancy/` — Multi-tenant config, registry, dataset policies, context
 - `telemetry/` — OpenTelemetry tracing and metrics
@@ -210,18 +218,16 @@ Expected directories:
 
 ### Common Issues
 
-**Issue**: `Cannot find module`
-**Solution**: Run `npm run build` again
+**Issue**: `Cannot find module` **Solution**: Run `npm run build` again
 
-**Issue**: `Permission denied` on test script
-**Solution**: `chmod +x scripts/test-mcp-server.sh`
+**Issue**: `Permission denied` on test script **Solution**: `chmod +x scripts/test-mcp-server.sh`
 
-**Issue**: TypeScript errors
-**Solution**: Run `npm run typecheck` to see details
+**Issue**: TypeScript errors **Solution**: Run `npm run typecheck` to see details
 
 ## CI/CD Testing
 
 The GitHub Actions workflow automatically:
+
 1. Installs dependencies
 2. Runs linter, type checking, and tests in parallel
 3. Builds Docker image
@@ -254,6 +260,7 @@ open coverage/lcov-report/index.html
 ## Next Steps
 
 After local testing succeeds:
+
 1. Review MCP protocol compliance: [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md)
 2. Deploy to GCP: [wif-deployment-guide.md](./wif-deployment-guide.md)
 3. Set up monitoring: [MONITORING-GUIDE.md](./MONITORING-GUIDE.md)

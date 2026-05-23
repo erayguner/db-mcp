@@ -1,2 +1,5 @@
-describe('sanity', () => { it('runs', () => { expect(true).toBe(true); }); });
-
+describe('sanity', () => {
+  it('runs', () => {
+    expect(true).toBe(true);
+  });
+});

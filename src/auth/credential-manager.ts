@@ -34,24 +34,28 @@ export const CredentialConfigSchema = z.object({
   authMethod: z.enum(['wif', 'service_account', 'oauth2', 'compute']).default('wif'),
 
   // Workload Identity Federation
-  wifConfig: z.object({
-    projectId: z.string(),
-    poolId: z.string(),
-    providerId: z.string(),
-    serviceAccountEmail: z.string(),
-    tokenLifetime: z.number().default(3600),
-  }).optional(),
+  wifConfig: z
+    .object({
+      projectId: z.string(),
+      poolId: z.string(),
+      providerId: z.string(),
+      serviceAccountEmail: z.string(),
+      tokenLifetime: z.number().default(3600),
+    })
+    .optional(),
 
   // Service Account
   serviceAccountKeyPath: z.string().optional(),
   serviceAccountEmail: z.string().optional(),
 
   // OAuth2
-  oauth2Config: z.object({
-    clientId: z.string(),
-    clientSecret: z.string(),
-    redirectUri: z.string(),
-  }).optional(),
+  oauth2Config: z
+    .object({
+      clientId: z.string(),
+      clientSecret: z.string(),
+      redirectUri: z.string(),
+    })
+    .optional(),
 
   // Token management
   tokenRefreshBuffer: z.number().default(300), // 5 minutes before expiry
@@ -63,10 +67,12 @@ export const CredentialConfigSchema = z.object({
   encryptionKey: z.string().optional(),
 
   // Scopes
-  scopes: z.array(z.string()).default([
-    'https://www.googleapis.com/auth/cloud-platform',
-    'https://www.googleapis.com/auth/bigquery',
-  ]),
+  scopes: z
+    .array(z.string())
+    .default([
+      'https://www.googleapis.com/auth/cloud-platform',
+      'https://www.googleapis.com/auth/bigquery',
+    ]),
 });
 
 export type CredentialConfig = z.infer<typeof CredentialConfigSchema>;
@@ -137,7 +143,7 @@ class TokenCache {
 
     // Check if token is expired or about to expire
     const now = Date.now();
-    const expiresWithBuffer = token.expiresAt - (bufferSeconds * 1000);
+    const expiresWithBuffer = token.expiresAt - bufferSeconds * 1000;
 
     if (now >= expiresWithBuffer) {
       this.tokens.delete(key);
@@ -147,7 +153,7 @@ class TokenCache {
 
     logger.debug('Token cache hit', {
       key,
-      expiresIn: Math.floor((token.expiresAt - now) / 1000)
+      expiresIn: Math.floor((token.expiresAt - now) / 1000),
     });
     return token;
   }
@@ -161,7 +167,7 @@ class TokenCache {
     this.tokens.set(key, token);
     logger.debug('Token cached', {
       key,
-      expiresAt: new Date(token.expiresAt).toISOString()
+      expiresAt: new Date(token.expiresAt).toISOString(),
     });
   }
 
@@ -317,7 +323,7 @@ export class CredentialManager {
 
       // Calculate expiration
       const expiresIn = this.config.maxTokenAge;
-      const expiresAt = Date.now() + (expiresIn * 1000);
+      const expiresAt = Date.now() + expiresIn * 1000;
 
       // Get principal
       const principal = await this.getPrincipal();
@@ -351,7 +357,7 @@ export class CredentialManager {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Failed to obtain access token', {
         error: err.message,
-        authMethod: this.config.authMethod
+        authMethod: this.config.authMethod,
       });
       recordError('token_acquisition_failed');
       recordException(err);
@@ -513,7 +519,7 @@ export class CredentialManager {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${wifToken.accessToken}`,
+          Authorization: `Bearer ${wifToken.accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -527,9 +533,9 @@ export class CredentialManager {
         throw new Error(`Impersonation failed: ${response.status} ${errorText}`);
       }
 
-      const data = await response.json() as {
+      const data = (await response.json()) as {
         accessToken: string;
-        expireTime: string
+        expireTime: string;
       };
 
       const expiresAt = new Date(data.expireTime).getTime();
@@ -557,7 +563,7 @@ export class CredentialManager {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Service account impersonation failed', {
         error: err.message,
-        targetServiceAccount
+        targetServiceAccount,
       });
       recordError('impersonation_failed');
       recordException(err);

@@ -36,14 +36,14 @@ export class OptimizedQueryExecutor {
     this.optimizer = new QueryOptimizer(client, {
       autoAddLimit: true,
       maxAutoLimit: 1000,
-      costThresholdUSD: 0.50,
+      costThresholdUSD: 0.5,
       enableQueryRewrite: true,
     });
 
     // Initialize metrics tracker
     this.metrics = new QueryMetricsTracker({
       slowQueryThresholdMs: 5000,
-      expensiveCostThresholdUSD: 0.50,
+      expensiveCostThresholdUSD: 0.5,
       retentionPeriodMs: 24 * 60 * 60 * 1000,
     });
 
@@ -53,7 +53,10 @@ export class OptimizedQueryExecutor {
   /**
    * Execute query with full optimization pipeline
    */
-  async executeQuery(query: string, parameters?: any[]): Promise<{
+  async executeQuery(
+    query: string,
+    parameters?: any[]
+  ): Promise<{
     rows: any[];
     metadata: {
       cached: boolean;
@@ -301,7 +304,6 @@ async function example() {
         console.log(`  - ${recommendation}`);
       }
     }
-
   } finally {
     await executor.shutdown();
   }

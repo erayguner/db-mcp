@@ -47,6 +47,7 @@ Each `terraform.tfvars` contains placeholders that MUST be set before applying:
 
 ## Notes
 
-- **Secrets** must NEVER be in tfvars. Use Secret Manager + module/data references, or pass via `-var` from a secure source.
+- **Secrets** must NEVER be in tfvars. Use Secret Manager + module/data references, or pass via `-var` from a secure
+  source.
 - **State bucket** is multi-region (default `EU`). Survives regional outages.
 - **Per-env state prefix** prevents one environment's apply from touching another.

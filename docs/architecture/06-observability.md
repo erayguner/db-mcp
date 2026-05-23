@@ -2,7 +2,8 @@
 
 ## Overview
 
-The BigQuery MCP Server implements comprehensive observability using the three pillars: Logs, Metrics, and Traces. All telemetry is exported to Google Cloud's operations suite for unified monitoring and debugging.
+The BigQuery MCP Server implements comprehensive observability using the three pillars: Logs, Metrics, and Traces. All
+telemetry is exported to Google Cloud's operations suite for unified monitoring and debugging.
 
 ## Logging Architecture
 
@@ -10,18 +11,18 @@ The BigQuery MCP Server implements comprehensive observability using the three p
 
 ```typescript
 enum LogLevel {
-  ERROR   = 0,  // System errors, failures requiring immediate attention
-  WARN    = 1,  // Degraded performance, retries, recoverable errors
-  INFO    = 2,  // Business events, query execution, auth success
-  DEBUG   = 3,  // Detailed flow, state changes, caching
-  TRACE   = 4,  // Everything including request/response payloads
+  ERROR = 0, // System errors, failures requiring immediate attention
+  WARN = 1, // Degraded performance, retries, recoverable errors
+  INFO = 2, // Business events, query execution, auth success
+  DEBUG = 3, // Detailed flow, state changes, caching
+  TRACE = 4, // Everything including request/response payloads
 }
 
 // Log level by environment
 const logLevelByEnv = {
   production: LogLevel.INFO,
   staging: LogLevel.DEBUG,
-  development: LogLevel.TRACE
+  development: LogLevel.TRACE,
 };
 ```
 
@@ -34,26 +35,23 @@ const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
     winston.format.timestamp({
-      format: 'YYYY-MM-DDTHH:mm:ss.SSSZ'
+      format: 'YYYY-MM-DDTHH:mm:ss.SSSZ',
     }),
     winston.format.errors({ stack: true }),
     winston.format.metadata({
-      fillExcept: ['message', 'level', 'timestamp', 'label']
+      fillExcept: ['message', 'level', 'timestamp', 'label'],
     }),
     winston.format.json()
   ),
   defaultMeta: {
     service: 'bigquery-mcp-server',
     version: process.env.npm_package_version,
-    environment: process.env.NODE_ENV
+    environment: process.env.NODE_ENV,
   },
   transports: [
     // Console transport for development
     new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      )
+      format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
     }),
 
     // File transport for errors
@@ -62,7 +60,7 @@ const logger = winston.createLogger({
       level: 'error',
       maxsize: 10485760, // 10MB
       maxFiles: 5,
-      tailable: true
+      tailable: true,
     }),
 
     // File transport for all logs
@@ -70,23 +68,25 @@ const logger = winston.createLogger({
       filename: 'logs/combined.log',
       maxsize: 10485760, // 10MB
       maxFiles: 10,
-      tailable: true
-    })
-  ]
+      tailable: true,
+    }),
+  ],
 });
 
 // Add Cloud Logging transport for production
 if (process.env.NODE_ENV === 'production') {
   const { LoggingWinston } = require('@google-cloud/logging-winston');
 
-  logger.add(new LoggingWinston({
-    projectId: process.env.GCP_PROJECT_ID,
-    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    labels: {
-      service: 'bigquery-mcp-server',
-      version: process.env.npm_package_version
-    }
-  }));
+  logger.add(
+    new LoggingWinston({
+      projectId: process.env.GCP_PROJECT_ID,
+      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      labels: {
+        service: 'bigquery-mcp-server',
+        version: process.env.npm_package_version,
+      },
+    })
+  );
 }
 
 export { logger };
@@ -128,7 +128,7 @@ function enrichLogger(req: Request, res: Response, next: NextFunction) {
   logger.info = (message: string, meta?: any) => {
     originalLog.call(logger, message, {
       ...meta,
-      ...LogContext.getAll()
+      ...LogContext.getAll(),
     });
   };
 
@@ -150,7 +150,7 @@ logger.info('Query execution started', {
   query: query.substring(0, 200), // Truncate for privacy
   parameters: Object.keys(params),
   dryRun: options.dryRun,
-  maxResults: options.maxResults
+  maxResults: options.maxResults,
 });
 
 logger.info('Query execution completed', {
@@ -159,7 +159,7 @@ logger.info('Query execution completed', {
   durationMs: elapsed,
   rowsReturned: result.totalRows,
   bytesScanned: result.totalBytesProcessed,
-  cacheHit: result.cacheHit
+  cacheHit: result.cacheHit,
 });
 
 // Authentication
@@ -167,14 +167,14 @@ logger.info('Authentication successful', {
   operation: 'auth_wif',
   principal: serviceAccount,
   tokenExpiresAt: expiryTime,
-  tokenSource: 'wif'
+  tokenSource: 'wif',
 });
 
 logger.error('Authentication failed', {
   operation: 'auth_wif',
   error: error.message,
   errorCode: error.code,
-  retryAttempt: attemptNumber
+  retryAttempt: attemptNumber,
 });
 
 // Schema operations
@@ -182,7 +182,7 @@ logger.debug('Schema cache hit', {
   operation: 'get_schema',
   resource: `${datasetId}.${tableId}`,
   cacheAge: cacheEntry.age,
-  ttl: cacheEntry.ttl
+  ttl: cacheEntry.ttl,
 });
 
 // Errors
@@ -192,7 +192,7 @@ logger.error('Query execution failed', {
   errorCode: error.code,
   query: query.substring(0, 200),
   jobId: job?.id,
-  stack: error.stack
+  stack: error.stack,
 });
 ```
 
@@ -211,16 +211,16 @@ const meterProvider = new MeterProvider({
   resource: new Resource({
     [SemanticResourceAttributes.SERVICE_NAME]: 'bigquery-mcp-server',
     [SemanticResourceAttributes.SERVICE_VERSION]: process.env.npm_package_version,
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV
+    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV,
   }),
   readers: [
     new PeriodicExportingMetricReader({
       exporter: new CloudMonitoringMetricExporter({
-        projectId: process.env.GCP_PROJECT_ID
+        projectId: process.env.GCP_PROJECT_ID,
       }),
-      exportIntervalMillis: 60000 // Export every 60s
-    })
-  ]
+      exportIntervalMillis: 60000, // Export every 60s
+    }),
+  ],
 });
 
 const meter = meterProvider.getMeter('bigquery-mcp-server');
@@ -232,51 +232,51 @@ const meter = meterProvider.getMeter('bigquery-mcp-server');
 // Counter: Total requests
 const requestCounter = meter.createCounter('mcp.requests.total', {
   description: 'Total number of MCP requests',
-  unit: '1'
+  unit: '1',
 });
 
 requestCounter.add(1, {
   method: 'query_bigquery',
-  status: 'success'
+  status: 'success',
 });
 
 // Counter: Query executions
 const queryCounter = meter.createCounter('bigquery.queries.total', {
   description: 'Total number of BigQuery queries executed',
-  unit: '1'
+  unit: '1',
 });
 
 queryCounter.add(1, {
   dataset: datasetId,
   status: result.error ? 'error' : 'success',
-  cached: result.cacheHit ? 'true' : 'false'
+  cached: result.cacheHit ? 'true' : 'false',
 });
 
 // Histogram: Query duration
 const queryDuration = meter.createHistogram('bigquery.query.duration', {
   description: 'BigQuery query execution duration',
-  unit: 'ms'
+  unit: 'ms',
 });
 
 queryDuration.record(elapsedMs, {
   dataset: datasetId,
-  complexity: estimateComplexity(query)
+  complexity: estimateComplexity(query),
 });
 
 // Histogram: Bytes scanned
 const bytesScanned = meter.createHistogram('bigquery.bytes.scanned', {
   description: 'Bytes scanned by BigQuery queries',
-  unit: 'By'
+  unit: 'By',
 });
 
 bytesScanned.record(result.totalBytesProcessed, {
-  dataset: datasetId
+  dataset: datasetId,
 });
 
 // Gauge: Active connections
 const activeConnections = meter.createObservableGauge('bigquery.connections.active', {
   description: 'Number of active BigQuery connections',
-  unit: '1'
+  unit: '1',
 });
 
 activeConnections.addCallback((observableResult) => {
@@ -286,7 +286,7 @@ activeConnections.addCallback((observableResult) => {
 // Gauge: Cache hit rate
 const cacheHitRate = meter.createObservableGauge('cache.hit.rate', {
   description: 'Cache hit rate percentage',
-  unit: '%'
+  unit: '%',
 });
 
 cacheHitRate.addCallback((observableResult) => {
@@ -295,53 +295,53 @@ cacheHitRate.addCallback((observableResult) => {
   const rate = total > 0 ? (hits / total) * 100 : 0;
 
   observableResult.observe(rate, {
-    cache_type: 'schema'
+    cache_type: 'schema',
   });
 });
 
 // Counter: Errors
 const errorCounter = meter.createCounter('errors.total', {
   description: 'Total number of errors',
-  unit: '1'
+  unit: '1',
 });
 
 errorCounter.add(1, {
   error_type: error.name,
   error_code: error.code,
   operation: 'query_execute',
-  retryable: isRetryable(error).toString()
+  retryable: isRetryable(error).toString(),
 });
 
 // Counter: Auth events
 const authCounter = meter.createCounter('auth.events.total', {
   description: 'Total number of authentication events',
-  unit: '1'
+  unit: '1',
 });
 
 authCounter.add(1, {
   event_type: 'token_acquired',
   token_source: 'wif',
-  principal: serviceAccount
+  principal: serviceAccount,
 });
 
 // Histogram: Token lifetime
 const tokenLifetime = meter.createHistogram('auth.token.lifetime', {
   description: 'Token lifetime in seconds',
-  unit: 's'
+  unit: 's',
 });
 
 tokenLifetime.record(3600, {
-  token_type: 'service_account'
+  token_type: 'service_account',
 });
 
 // Tenant-scoped tool metrics (GEAP-style topology view)
 const toolCallCounter = meter.createCounter('mcp.tool.calls.total', {
   description: 'Total MCP tool calls, labeled by tool and tenant',
-  unit: '1'
+  unit: '1',
 });
 const toolCallLatency = meter.createHistogram('mcp.tool.call.duration', {
   description: 'End-to-end MCP tool call latency',
-  unit: 'ms'
+  unit: 'ms',
 });
 
 // recordToolCall(tool, outcome, durationMs, tenantId) emits both.
@@ -352,6 +352,7 @@ toolCallLatency.record(124, { tool: 'query_bigquery', outcome: 'allow', tenant_i
 ### Metric Dashboards
 
 **BigQuery Operations Dashboard:**
+
 ```
 ┌────────────────────────────────────────────────────────────┐
 │ BigQuery MCP Server - Operations                          │
@@ -399,20 +400,22 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 const provider = new NodeTracerProvider({
   resource: new Resource({
     [SemanticResourceAttributes.SERVICE_NAME]: 'bigquery-mcp-server',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.npm_package_version
-  })
+    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.npm_package_version,
+  }),
 });
 
 // Configure exporter
 const exporter = new CloudTraceExporter({
-  projectId: process.env.GCP_PROJECT_ID
+  projectId: process.env.GCP_PROJECT_ID,
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-  maxQueueSize: 100,
-  maxExportBatchSize: 10,
-  scheduledDelayMillis: 500
-}));
+provider.addSpanProcessor(
+  new BatchSpanProcessor(exporter, {
+    maxQueueSize: 100,
+    maxExportBatchSize: 10,
+    scheduledDelayMillis: 500,
+  })
+);
 
 provider.register();
 
@@ -422,9 +425,9 @@ registerInstrumentations({
     getNodeAutoInstrumentations({
       '@opentelemetry/instrumentation-http': { enabled: true },
       '@opentelemetry/instrumentation-grpc': { enabled: true },
-      '@opentelemetry/instrumentation-fs': { enabled: false } // Noisy
-    })
-  ]
+      '@opentelemetry/instrumentation-fs': { enabled: false }, // Noisy
+    }),
+  ],
 });
 
 const tracer = trace.getTracer('bigquery-mcp-server', '1.0.0');
@@ -442,8 +445,8 @@ async function executeQuery(query: string, options: QueryOptions): Promise<Query
       'db.operation': 'SELECT',
       'db.statement': query.substring(0, 500),
       'bigquery.dry_run': options.dryRun || false,
-      'bigquery.max_results': options.maxResults
-    }
+      'bigquery.max_results': options.maxResults,
+    },
   });
 
   try {
@@ -513,17 +516,15 @@ async function executeQuery(query: string, options: QueryOptions): Promise<Query
     span.setStatus({ code: SpanStatusCode.OK });
 
     return result!;
-
   } catch (error) {
     // Record error in span
     span.recordException(error);
     span.setStatus({
       code: SpanStatusCode.ERROR,
-      message: error.message
+      message: error.message,
     });
 
     throw error;
-
   } finally {
     span.end();
   }
@@ -584,23 +585,18 @@ class HealthChecker {
     const startTime = Date.now();
 
     // Run all health checks in parallel
-    const [
-      bigqueryHealth,
-      authHealth,
-      cacheHealth,
-      diskHealth
-    ] = await Promise.all([
+    const [bigqueryHealth, authHealth, cacheHealth, diskHealth] = await Promise.all([
       this.checkBigQuery(),
       this.checkAuth(),
       this.checkCache(),
-      this.checkDisk()
+      this.checkDisk(),
     ]);
 
     const checks = {
       bigquery: bigqueryHealth,
       auth: authHealth,
       cache: cacheHealth,
-      disk: diskHealth
+      disk: diskHealth,
     };
 
     // Determine overall status
@@ -611,7 +607,7 @@ class HealthChecker {
       version: process.env.npm_package_version!,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
-      checks
+      checks,
     };
   }
 
@@ -622,17 +618,17 @@ class HealthChecker {
       // Simple query to test connectivity
       await this.bigquery.query({
         query: 'SELECT 1',
-        location: 'EU'
+        location: 'EU',
       });
 
       return {
         status: 'up',
-        latency: Date.now() - start
+        latency: Date.now() - start,
       };
     } catch (error) {
       return {
         status: 'down',
-        message: error.message
+        message: error.message,
       };
     }
   }
@@ -653,13 +649,13 @@ class HealthChecker {
         latency: Date.now() - start,
         details: {
           expiresIn: Math.floor(expiresIn / 1000),
-          tokenSource: token.source
-        }
+          tokenSource: token.source,
+        },
       };
     } catch (error) {
       return {
         status: 'down',
-        message: error.message
+        message: error.message,
       };
     }
   }
@@ -676,13 +672,13 @@ class HealthChecker {
         details: {
           size: stats.size,
           maxSize: stats.maxSize,
-          hitRate: stats.hitRate
-        }
+          hitRate: stats.hitRate,
+        },
       };
     } catch (error) {
       return {
         status: 'down',
-        message: error.message
+        message: error.message,
       };
     }
   }
@@ -699,19 +695,19 @@ class HealthChecker {
         status,
         details: {
           usagePercent: Math.round(usagePercent),
-          freeGB: Math.round(diskUsage.free / 1024 / 1024 / 1024)
-        }
+          freeGB: Math.round(diskUsage.free / 1024 / 1024 / 1024),
+        },
       };
     } catch (error) {
       return {
         status: 'down',
-        message: error.message
+        message: error.message,
       };
     }
   }
 
   private aggregateStatus(checks: Record<string, ComponentHealth>): HealthCheck['status'] {
-    const statuses = Object.values(checks).map(c => c.status);
+    const statuses = Object.values(checks).map((c) => c.status);
 
     if (statuses.includes('down')) {
       return 'unhealthy';
@@ -730,9 +726,9 @@ app.get('/health', async (req, res) => {
   const health = await healthChecker.check();
 
   const statusCode = {
-    'healthy': 200,
-    'degraded': 200,
-    'unhealthy': 503
+    healthy: 200,
+    degraded: 200,
+    unhealthy: 503,
   }[health.status];
 
   res.status(statusCode).json(health);
@@ -753,8 +749,8 @@ app.get('/health', async (req, res) => {
   labels:
     severity: warning
   annotations:
-    summary: "High error rate detected"
-    description: "Error rate for {{ $labels.operation }} is {{ $value }}/sec"
+    summary: 'High error rate detected'
+    description: 'Error rate for {{ $labels.operation }} is {{ $value }}/sec'
 
 # Alert: Query latency
 - alert: HighQueryLatency
@@ -766,8 +762,8 @@ app.get('/health', async (req, res) => {
   labels:
     severity: warning
   annotations:
-    summary: "High query latency detected"
-    description: "P95 latency is {{ $value }}ms"
+    summary: 'High query latency detected'
+    description: 'P95 latency is {{ $value }}ms'
 
 # Alert: Authentication failures
 - alert: AuthFailures
@@ -778,8 +774,8 @@ app.get('/health', async (req, res) => {
   labels:
     severity: critical
   annotations:
-    summary: "Authentication failures detected"
-    description: "{{ $value }} auth failures per second"
+    summary: 'Authentication failures detected'
+    description: '{{ $value }} auth failures per second'
 
 # Alert: Low cache hit rate
 - alert: LowCacheHitRate
@@ -789,8 +785,8 @@ app.get('/health', async (req, res) => {
   labels:
     severity: warning
   annotations:
-    summary: "Low cache hit rate"
-    description: "Schema cache hit rate is {{ $value }}%"
+    summary: 'Low cache hit rate'
+    description: 'Schema cache hit rate is {{ $value }}%'
 
 # Alert: Service unhealthy
 - alert: ServiceUnhealthy
@@ -800,8 +796,8 @@ app.get('/health', async (req, res) => {
   labels:
     severity: critical
   annotations:
-    summary: "Service is down"
-    description: "BigQuery MCP Server is not responding to health checks"
+    summary: 'Service is down'
+    description: 'BigQuery MCP Server is not responding to health checks'
 ```
 
 ## Debugging Tools

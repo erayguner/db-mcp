@@ -25,7 +25,8 @@ Federation** authentication. Provides secure, keyless access to BigQuery through
 - **Model Armor Pre-flight** - Optional content-safety screening before tool execution
 - **Private Service Connect** - Optional private ingress for enterprise consumers
 - **Customer-Managed Encryption** - CMEK for BigQuery datasets
-- **Comprehensive Audit Logging** - 2555-day (7-year) retention via Cloud Logging log bucket with linked BigQuery dataset for compliance
+- **Comprehensive Audit Logging** - 2555-day (7-year) retention via Cloud Logging log bucket with linked BigQuery
+  dataset for compliance
 - **Terraform Infrastructure** - Complete IaC for reproducible deployments
 - **Cloud Run Deployment** - Serverless, auto-scaling architecture
 - **OpenTelemetry** - Distributed tracing and per-tenant metrics
@@ -107,9 +108,8 @@ npm run typecheck
 
 ### Production Deployment
 
-All production infrastructure — including the Cloud Run service — is managed by Terraform.
-Container images are stored in Artifact Registry (`europe-west2-docker.pkg.dev`). Direct
-`gcloud run deploy` commands are not used in production.
+All production infrastructure — including the Cloud Run service — is managed by Terraform. Container images are stored
+in Artifact Registry (`europe-west2-docker.pkg.dev`). Direct `gcloud run deploy` commands are not used in production.
 
 ```bash
 # Build and push container image to Artifact Registry

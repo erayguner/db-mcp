@@ -22,7 +22,7 @@ build:
 
 deploy:
   cloudrun:
-    projectid: ""   # Resolved at deploy time by Cloud Deploy from the Target's run.location.
+    projectid: "" # Resolved at deploy time by Cloud Deploy from the Target's run.location.
     region: europe-west2
 
 profiles:

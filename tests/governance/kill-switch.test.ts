@@ -18,7 +18,8 @@ describe('KillSwitch', () => {
   });
 
   it('emits hook events', () => {
-    let halted = 0, resumed = 0;
+    let halted = 0,
+      resumed = 0;
     const ks = new KillSwitch({ onHalt: () => halted++, onResume: () => resumed++ });
     ks.halt('s', 'r', 'a');
     ks.resume('s', 'a');

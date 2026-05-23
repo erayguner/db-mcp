@@ -31,40 +31,44 @@ export const BigQueryClientConfigSchema = z.object({
   location: z.string().optional(),
   keyFilename: z.string().optional(),
   credentials: z.record(z.unknown()).optional(),
-  connectionPool: z.object({
-    minConnections: z.number().min(1).default(2),
-    maxConnections: z.number().min(1).default(10),
-    acquireTimeoutMs: z.number().min(100).default(30000),
-    idleTimeoutMs: z.number().min(1000).default(300000),
-    healthCheckIntervalMs: z.number().min(1000).default(60000),
-    maxRetries: z.number().min(0).default(3),
-    retryDelayMs: z.number().min(100).default(1000),
-  }).default({}),
-  datasetManager: z.object({
-    cacheSize: z.number().min(10).default(100),
-    cacheTTLMs: z.number().min(1000).default(3600000),
-    autoDiscovery: z.boolean().default(true),
-    discoveryIntervalMs: z.number().min(60000).default(300000),
-  }).default({}),
-  retry: z.object({
-    maxRetries: z.number().min(0).default(3),
-    initialDelayMs: z.number().min(100).default(1000),
-    maxDelayMs: z.number().min(1000).default(32000),
-    backoffMultiplier: z.number().min(1).default(2),
-    retryableErrors: z.array(z.string()).default([
-      'ECONNRESET',
-      'ETIMEDOUT',
-      'ENOTFOUND',
-      'RATE_LIMIT_EXCEEDED',
-      'BACKEND_ERROR',
-    ]),
-  }).default({}),
-  queryDefaults: z.object({
-    useLegacySql: z.boolean().default(false),
-    location: z.string().optional(),
-    maximumBytesBilled: z.string().optional(),
-    timeoutMs: z.number().optional(),
-  }).default({}),
+  connectionPool: z
+    .object({
+      minConnections: z.number().min(1).default(2),
+      maxConnections: z.number().min(1).default(10),
+      acquireTimeoutMs: z.number().min(100).default(30000),
+      idleTimeoutMs: z.number().min(1000).default(300000),
+      healthCheckIntervalMs: z.number().min(1000).default(60000),
+      maxRetries: z.number().min(0).default(3),
+      retryDelayMs: z.number().min(100).default(1000),
+    })
+    .default({}),
+  datasetManager: z
+    .object({
+      cacheSize: z.number().min(10).default(100),
+      cacheTTLMs: z.number().min(1000).default(3600000),
+      autoDiscovery: z.boolean().default(true),
+      discoveryIntervalMs: z.number().min(60000).default(300000),
+    })
+    .default({}),
+  retry: z
+    .object({
+      maxRetries: z.number().min(0).default(3),
+      initialDelayMs: z.number().min(100).default(1000),
+      maxDelayMs: z.number().min(1000).default(32000),
+      backoffMultiplier: z.number().min(1).default(2),
+      retryableErrors: z
+        .array(z.string())
+        .default(['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'RATE_LIMIT_EXCEEDED', 'BACKEND_ERROR']),
+    })
+    .default({}),
+  queryDefaults: z
+    .object({
+      useLegacySql: z.boolean().default(false),
+      location: z.string().optional(),
+      maximumBytesBilled: z.string().optional(),
+      timeoutMs: z.number().optional(),
+    })
+    .default({}),
 });
 
 export type BigQueryClientConfig = z.infer<typeof BigQueryClientConfigSchema>;
@@ -194,9 +198,8 @@ export class BigQueryClient extends EventEmitter {
       } catch (error) {
         lastError = error as Error;
 
-        const isRetryable = shouldRetry &&
-          attempt < maxRetries &&
-          this.isRetryableError(error as Error);
+        const isRetryable =
+          shouldRetry && attempt < maxRetries && this.isRetryableError(error as Error);
 
         if (!isRetryable) {
           throw this.wrapError(error as Error, false);
@@ -281,7 +284,10 @@ export class BigQueryClient extends EventEmitter {
   /**
    * Execute a dry run query to estimate costs
    */
-  public async dryRun(query: string, options?: Partial<QueryOptions>): Promise<{
+  public async dryRun(
+    query: string,
+    options?: Partial<QueryOptions>
+  ): Promise<{
     totalBytesProcessed: string;
     estimatedCostUSD: number;
   }> {
@@ -301,7 +307,7 @@ export class BigQueryClient extends EventEmitter {
 
       // BigQuery on-demand pricing: $6.25 per TB (as of 2025)
       const bytesProcessed = parseInt(totalBytesProcessed);
-      const terabytesProcessed = bytesProcessed / (1024 ** 4);
+      const terabytesProcessed = bytesProcessed / 1024 ** 4;
       const estimatedCostUSD = terabytesProcessed * 6.25;
 
       return {
@@ -421,7 +427,11 @@ export class BigQueryClient extends EventEmitter {
   /**
    * Get table schema
    */
-  public async getTableSchema(datasetId: string, tableId: string, projectId?: string): Promise<SchemaField[]> {
+  public async getTableSchema(
+    datasetId: string,
+    tableId: string,
+    projectId?: string
+  ): Promise<SchemaField[]> {
     const table = await this.getTable(datasetId, tableId, projectId);
     return table.schema;
   }
@@ -435,8 +445,7 @@ export class BigQueryClient extends EventEmitter {
 
     // Check against configured retryable errors
     for (const retryableError of this.config.retry.retryableErrors) {
-      if (errorMessage.includes(retryableError.toLowerCase()) ||
-        errorCode === retryableError) {
+      if (errorMessage.includes(retryableError.toLowerCase()) || errorCode === retryableError) {
         return true;
       }
     }
@@ -478,19 +487,14 @@ export class BigQueryClient extends EventEmitter {
   private wrapError(error: Error, retryable: boolean): BigQueryClientError {
     const code = (error as BigQueryError).code?.toString() || 'UNKNOWN_ERROR';
 
-    return new BigQueryClientError(
-      error.message,
-      code,
-      error,
-      retryable
-    );
+    return new BigQueryClientError(error.message, code, error, retryable);
   }
 
   /**
    * Sleep utility for retry delays
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -513,13 +517,8 @@ export class BigQueryClient extends EventEmitter {
 
       this.emit('shutdown:completed');
     } catch (error) {
-      this.emit('error', new BigQueryClientError(
-        'Error during shutdown',
-        'SHUTDOWN_ERROR',
-        error
-      ));
+      this.emit('error', new BigQueryClientError('Error during shutdown', 'SHUTDOWN_ERROR', error));
       throw error;
     }
   }
-
 }

@@ -176,9 +176,10 @@ export class SessionManager {
       return sum + BigInt(q.bytesProcessed ?? '0');
     }, 0n);
 
-    const lastEntry = session.queryHistory.length > 0
-      ? session.queryHistory[session.queryHistory.length - 1]
-      : undefined;
+    const lastEntry =
+      session.queryHistory.length > 0
+        ? session.queryHistory[session.queryHistory.length - 1]
+        : undefined;
 
     return {
       totalQueries: session.queryHistory.length,

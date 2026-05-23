@@ -50,9 +50,9 @@ describePerf('Performance Tests', () => {
     });
 
     it('should handle 100 concurrent queries', async () => {
-      const queries = Array(100).fill(null).map((_, i) =>
-        client.query({ query: `SELECT ${i} as num` })
-      );
+      const queries = Array(100)
+        .fill(null)
+        .map((_, i) => client.query({ query: `SELECT ${i} as num` }));
 
       const start = Date.now();
       const results = await Promise.all(queries);
@@ -82,9 +82,9 @@ describePerf('Performance Tests', () => {
 
   describe('Connection Pool Performance', () => {
     it('should reuse connections efficiently', async () => {
-      const queries = Array(20).fill(null).map(() =>
-        client.query({ query: 'SELECT 1' })
-      );
+      const queries = Array(20)
+        .fill(null)
+        .map(() => client.query({ query: 'SELECT 1' }));
 
       await Promise.all(queries);
 
@@ -95,9 +95,9 @@ describePerf('Performance Tests', () => {
 
     it('should handle connection pool exhaustion', async () => {
       // Create more concurrent queries than max pool size
-      const queries = Array(50).fill(null).map((_, i) =>
-        client.query({ query: `SELECT ${i}` })
-      );
+      const queries = Array(50)
+        .fill(null)
+        .map((_, i) => client.query({ query: `SELECT ${i}` }));
 
       const results = await Promise.all(queries);
       expect(results).toHaveLength(50);
@@ -107,21 +107,21 @@ describePerf('Performance Tests', () => {
       // Cause some failures
       mockBQ.setShouldFail(true);
 
-      const failingQueries = Array(5).fill(null).map(() =>
-        client.query({ query: 'SELECT 1' }).catch(() => null)
-      );
+      const failingQueries = Array(5)
+        .fill(null)
+        .map(() => client.query({ query: 'SELECT 1' }).catch(() => null));
 
       await Promise.all(failingQueries);
 
       // Reset and verify recovery
       mockBQ.setShouldFail(false);
 
-      const successfulQueries = Array(5).fill(null).map(() =>
-        client.query({ query: 'SELECT 1' })
-      );
+      const successfulQueries = Array(5)
+        .fill(null)
+        .map(() => client.query({ query: 'SELECT 1' }));
 
       const results = await Promise.all(successfulQueries);
-      expect(results.every(r => r !== null)).toBe(true);
+      expect(results.every((r) => r !== null)).toBe(true);
     });
   });
 
@@ -144,13 +144,15 @@ describePerf('Performance Tests', () => {
       const datasets = ['ds1', 'ds2', 'ds3', 'ds4', 'ds5'];
 
       // Populate cache
-      await Promise.all(datasets.map(ds => client.getDataset(ds)));
+      await Promise.all(datasets.map((ds) => client.getDataset(ds)));
 
       // Concurrent cache hits
-      const queries = Array(100).fill(null).map(() => {
-        const randomDs = datasets[Math.floor(Math.random() * datasets.length)];
-        return client.getDataset(randomDs);
-      });
+      const queries = Array(100)
+        .fill(null)
+        .map(() => {
+          const randomDs = datasets[Math.floor(Math.random() * datasets.length)];
+          return client.getDataset(randomDs);
+        });
 
       const start = Date.now();
       await Promise.all(queries);
@@ -202,11 +204,13 @@ describePerf('Performance Tests', () => {
 
     it('should handle large result sets efficiently', async () => {
       // Mock large result set
-      const largeResults = Array(10000).fill(null).map((_, i) => ({
-        id: i,
-        name: `Record ${i}`,
-        data: 'x'.repeat(100),
-      }));
+      const largeResults = Array(10000)
+        .fill(null)
+        .map((_, i) => ({
+          id: i,
+          name: `Record ${i}`,
+          data: 'x'.repeat(100),
+        }));
 
       mockBQ.generateMockResults = () => largeResults;
 
@@ -262,14 +266,19 @@ describePerf('Performance Tests', () => {
           throw error;
         }
 
-        return Promise.resolve([{
-          id: 'job-id',
-          getQueryResults: () => Promise.resolve([[], {}, {}]),
-          getMetadata: () => Promise.resolve([{
-            statistics: { query: {} },
-            configuration: { query: { destinationTable: { schema: { fields: [] } } } },
-          }]),
-        }]);
+        return Promise.resolve([
+          {
+            id: 'job-id',
+            getQueryResults: () => Promise.resolve([[], {}, {}]),
+            getMetadata: () =>
+              Promise.resolve([
+                {
+                  statistics: { query: {} },
+                  configuration: { query: { destinationTable: { schema: { fields: [] } } } },
+                },
+              ]),
+          },
+        ]);
       });
 
       await client.query({

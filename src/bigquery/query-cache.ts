@@ -155,7 +155,7 @@ export class QueryCache<T = unknown> {
     // Check if we need to evict entries
     while (
       (this.currentSize + size > this.config.maxSize ||
-       this.cache.size >= this.config.maxEntries) &&
+        this.cache.size >= this.config.maxEntries) &&
       this.cache.size > 0
     ) {
       this.evictLRU();
@@ -233,9 +233,7 @@ export class QueryCache<T = unknown> {
    */
   invalidate(pattern: RegExp | string): number {
     let count = 0;
-    const regex = typeof pattern === 'string'
-      ? new RegExp(pattern, 'i')
-      : pattern;
+    const regex = typeof pattern === 'string' ? new RegExp(pattern, 'i') : pattern;
 
     for (const [key, entry] of this.cache.entries()) {
       if (regex.test(key)) {
@@ -279,17 +277,10 @@ export class QueryCache<T = unknown> {
    */
   getStats(): CacheStats {
     const totalRequests = this.stats.hits + this.stats.misses;
-    const hitRate = totalRequests > 0
-      ? (this.stats.hits / totalRequests) * 100
-      : 0;
+    const hitRate = totalRequests > 0 ? (this.stats.hits / totalRequests) * 100 : 0;
 
-    const totalHits = Array.from(this.cache.values()).reduce(
-      (sum, entry) => sum + entry.hits,
-      0
-    );
-    const averageHits = this.cache.size > 0
-      ? totalHits / this.cache.size
-      : 0;
+    const totalHits = Array.from(this.cache.values()).reduce((sum, entry) => sum + entry.hits, 0);
+    const averageHits = this.cache.size > 0 ? totalHits / this.cache.size : 0;
 
     return {
       totalHits: this.stats.hits,

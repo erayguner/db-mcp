@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { OIDCAuthenticator, OIDCConfigSchema, AuthenticatedPrincipal, OIDCAuthenticationError } from './oidc-authenticator.js';
+import {
+  OIDCAuthenticator,
+  OIDCConfigSchema,
+  AuthenticatedPrincipal,
+  OIDCAuthenticationError,
+} from './oidc-authenticator.js';
 import { logger } from '../utils/logger.js';
 import { recordAuthAttempt } from '../telemetry/metrics.js';
 

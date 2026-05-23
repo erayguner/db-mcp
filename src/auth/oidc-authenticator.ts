@@ -4,10 +4,10 @@ import { logger } from '../utils/logger.js';
 import type { OAuthMetadataConfig } from './oauth-metadata.js';
 
 export const OIDCConfigSchema = z.object({
-  issuer: z.string().url().refine(
-    (url) => url.startsWith('https://'),
-    { message: 'Issuer must use HTTPS' }
-  ),
+  issuer: z
+    .string()
+    .url()
+    .refine((url) => url.startsWith('https://'), { message: 'Issuer must use HTTPS' }),
   /**
    * Expected `aud` claim value.  Must equal the server's own resource URI
    * (i.e. OAUTH_RESOURCE_AUDIENCE / OAUTH_RESOURCE_URL) so that tokens minted
@@ -88,14 +88,23 @@ export class OIDCAuthenticator {
       const tokenScopes = typeof payload.scope === 'string' ? payload.scope.split(' ') : [];
       for (const required of this.config.requiredScopes) {
         if (!tokenScopes.includes(required)) {
-          throw new OIDCAuthenticationError(`Missing required scope: ${required}`, 'INSUFFICIENT_SCOPE', 403);
+          throw new OIDCAuthenticationError(
+            `Missing required scope: ${required}`,
+            'INSUFFICIENT_SCOPE',
+            403
+          );
         }
       }
       return {
         subject: payload.sub || '',
         email: (payload.email as string) || '',
         issuer: payload.iss || '',
-        audience: typeof payload.aud === 'string' ? payload.aud : Array.isArray(payload.aud) ? payload.aud[0] : '',
+        audience:
+          typeof payload.aud === 'string'
+            ? payload.aud
+            : Array.isArray(payload.aud)
+              ? payload.aud[0]
+              : '',
         scopes: tokenScopes,
         claims: payload,
         authenticatedAt: new Date(),

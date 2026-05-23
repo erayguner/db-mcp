@@ -40,7 +40,8 @@ The BigQuery MCP Server implements comprehensive enterprise-grade authentication
 
 ## OIDC Authentication (New)
 
-The server now supports generic OIDC JWT authentication with any compliant identity provider (Google, Okta, Auth0, Azure AD).
+The server now supports generic OIDC JWT authentication with any compliant identity provider (Google, Okta, Auth0, Azure
+AD).
 
 ### Configuration
 
@@ -85,6 +86,7 @@ if (!result.authenticated) {
 ### Tenant Resolution
 
 Authenticated principals are automatically resolved to tenants via the `TenantContextFactory`:
+
 - Email patterns in `tenants.yaml` (`oidcSubjectPattern`) match against JWT claims
 - Falls back to a default tenant if no pattern matches
 - Each tenant gets isolated dataset access policies
@@ -113,9 +115,7 @@ const wifAuth = createWIFAuthenticator({
 
   // Impersonation
   allowImpersonation: true,
-  allowedServiceAccounts: [
-    'bigquery-reader@my-project.iam.gserviceaccount.com',
-  ],
+  allowedServiceAccounts: ['bigquery-reader@my-project.iam.gserviceaccount.com'],
 });
 ```
 
@@ -134,10 +134,7 @@ console.log('Principal:', result.principal);
 
 ```typescript
 // Authenticate and impersonate service account
-const result = await wifAuth.authenticateAndImpersonate(
-  oidcToken,
-  'bigquery-admin@my-project.iam.gserviceaccount.com'
-);
+const result = await wifAuth.authenticateAndImpersonate(oidcToken, 'bigquery-admin@my-project.iam.gserviceaccount.com');
 
 console.log('Impersonated:', result.impersonated); // true
 console.log('Principal:', result.principal); // bigquery-admin@...
@@ -182,10 +179,7 @@ const credManager = createCredentialManager({
   enableEncryption: false,
 
   // Scopes
-  scopes: [
-    'https://www.googleapis.com/auth/cloud-platform',
-    'https://www.googleapis.com/auth/bigquery',
-  ],
+  scopes: ['https://www.googleapis.com/auth/cloud-platform', 'https://www.googleapis.com/auth/bigquery'],
 });
 ```
 
@@ -378,7 +372,7 @@ const results = await validator.validateBatchPermissions([
   { projectId: 'p2', datasetId: 'd1', action: 'query' },
 ]);
 
-results.forEach(result => {
+results.forEach((result) => {
   console.log(`${result.resource}: ${result.allowed}`);
 });
 ```
@@ -388,10 +382,7 @@ results.forEach(result => {
 ### Complete Authentication Flow
 
 ```typescript
-import {
-  createWIFAuthenticator,
-  getAuditLogger,
-} from './src/auth/index.js';
+import { createWIFAuthenticator, getAuditLogger } from './src/auth/index.js';
 import { PermissionValidator } from './src/security/permission-validator.js';
 
 // 1. Setup
@@ -438,9 +429,7 @@ async function executeQuery(principal: string, query: string) {
   });
 
   if (!permResult.allowed) {
-    throw new Error(
-      `Permission denied. Missing: ${permResult.missingPermissions?.join(', ')}`
-    );
+    throw new Error(`Permission denied. Missing: ${permResult.missingPermissions?.join(', ')}`);
   }
 
   // Execute query
@@ -569,9 +558,7 @@ GOOGLE_WORKSPACE_ALLOWED_GROUPS=bigquery-users,data-analysts
 
 The enterprise authentication system provides:
 
-✅ **Secure Authentication** - WIF, service accounts, OAuth2
-✅ **Token Management** - Caching, refresh, rotation
-✅ **Audit Logging** - Complete security audit trail
-✅ **Permission Validation** - Pre-query authorization
-✅ **Service Account Impersonation** - Secure privilege delegation
-✅ **Production-Ready** - Comprehensive error handling and monitoring
+✅ **Secure Authentication** - WIF, service accounts, OAuth2 ✅ **Token Management** - Caching, refresh, rotation ✅
+**Audit Logging** - Complete security audit trail ✅ **Permission Validation** - Pre-query authorization ✅ **Service
+Account Impersonation** - Secure privilege delegation ✅ **Production-Ready** - Comprehensive error handling and
+monitoring
