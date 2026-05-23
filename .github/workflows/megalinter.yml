@@ -219,7 +219,7 @@ jobs:
       # Optional: Upload SARIF results for GitHub Security tab
       - name: Upload SARIF Results
         if: always() && hashFiles('megalinter-reports/megalinter.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: megalinter-reports/megalinter.sarif
           category: megalinter
@@ -255,8 +255,11 @@ jobs:
           trivyignores: ".trivyignore"
 
       - name: Upload Trivy Results to Security Tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        # Guard on file existence: when the trivy scan step fails before
+        # writing the SARIF (e.g. docker build error, trivy timeout), this
+        # step would otherwise abort with "Path does not exist".
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: "trivy-results.sarif"
           category: trivy
@@ -272,7 +275,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy Reports
-        if: always()
+        if: always() && hashFiles('trivy-results.sarif') != ''
         uses: actions/upload-artifact@v4
         with:
           name: trivy-scan-results-${{ github.run_number }}
