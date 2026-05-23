@@ -1,205 +1,234 @@
 /**
- * Cloud Run Module - MCP BigQuery Server Deployment
+ * Cloud Run Module — MCP BigQuery Server (Cloud Run API v2)
  *
- * Deploys the MCP server on Cloud Run with:
- * - Security-hardened configuration
- * - Auto-scaling based on demand
- * - Environment-specific settings
- * - VPC egress control
- * - Cloud Armor protection
+ * Migrated from google_cloud_run_service (v1 / Knative) to
+ * google_cloud_run_v2_service. The v2 resource is required to express
+ * Direct VPC egress, Secret Manager volume mounts, startup CPU boost
+ * and native scaling — none of which the v1 resource supports.
+ *
+ * STATE MIGRATION (non-destructive — Cloud Run is stateless):
+ *   terraform state rm 'module.cloud_run.google_cloud_run_service.mcp_server'
+ *   terraform import 'module.cloud_run.google_cloud_run_v2_service.mcp_server' \
+ *     projects/PROJECT/locations/REGION/services/mcp-bigquery-server-ENV
+ *   terraform plan   # expect no changes
  */
 
-# Cloud Run Service
-resource "google_cloud_run_service" "mcp_server" {
-  name     = "mcp-bigquery-server-${var.environment}"
+locals {
+  service_name = "mcp-bigquery-server-${var.environment}"
+  network_tag  = "mcp-server-${var.environment}"
+
+  ingress_map = {
+    "all"                               = "INGRESS_TRAFFIC_ALL"
+    "internal"                          = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+    "internal-and-cloud-load-balancing" = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  }
+  ingress = local.ingress_map[var.ingress_mode]
+
+  # Runtime environment variables rendered as dynamic env blocks.
+  env_vars = {
+    MCP_TRANSPORT                       = "http"
+    MCP_HTTP_PORT                       = "8080"
+    MCP_HTTP_HOST                       = "0.0.0.0"
+    MCP_TRANSPORT_STRICT                = "streamable" # Gemini Enterprise: Streamable HTTP only, no SSE
+    TENANT_CONFIG_PATH                  = "/config/tenants.yaml"
+    NODE_ENV                            = var.environment == "prod" ? "production" : var.environment
+    GCP_PROJECT_ID                      = var.project_id
+    BIGQUERY_LOCATION                   = var.bigquery_location
+    SECURITY_RATE_LIMIT_ENABLED         = "true"
+    SECURITY_RATE_LIMIT_MAX_REQUESTS    = var.environment == "prod" ? "100" : "1000"
+    SECURITY_PROMPT_INJECTION_DETECTION = "true"
+    SECURITY_TOOL_VALIDATION_ENABLED    = "true"
+    SECURITY_LOGGING_ENABLED            = "true"
+    OTEL_SERVICE_NAME                   = "mcp-bigquery-server"
+    OTEL_TRACES_EXPORTER                = "google_cloud_trace"
+    OTEL_METRICS_EXPORTER               = "google_cloud_monitoring"
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Tenant configuration secret
+# ---------------------------------------------------------------------------
+# Mounted into the container as /config/tenants.yaml so the application can
+# load and hot-reload per-tenant dataset policy.
+resource "google_secret_manager_secret" "tenant_config" {
+  project   = var.project_id
+  secret_id = "mcp-tenant-config-${var.environment}"
+
+  replication {
+    auto {}
+  }
+
+  labels = {
+    environment = var.environment
+    component   = "mcp-bigquery-server"
+  }
+}
+
+# Initial placeholder version so the secret is mountable on first apply.
+# Real tenant configuration is managed out-of-band; Terraform ignores
+# subsequent payload changes.
+resource "google_secret_manager_secret_version" "tenant_config_initial" {
+  secret      = google_secret_manager_secret.tenant_config.id
+  secret_data = var.tenant_config_initial_content
+
+  lifecycle {
+    ignore_changes = [secret_data, enabled]
+  }
+}
+
+# Least-privilege: grant the runtime service account access to this secret
+# only (replaces a broad project-level secretAccessor grant).
+resource "google_secret_manager_secret_iam_member" "tenant_config_accessor" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.tenant_config.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.service_account_email}"
+}
+
+# ---------------------------------------------------------------------------
+# Cloud Run v2 service
+# ---------------------------------------------------------------------------
+resource "google_cloud_run_v2_service" "mcp_server" {
+  name     = local.service_name
   location = var.region
   project  = var.project_id
 
+  ingress             = local.ingress
+  deletion_protection = var.environment == "prod"
+
   template {
-    spec {
-      service_account_name = var.service_account_email
+    service_account                  = var.service_account_email
+    timeout                          = var.request_timeout
+    execution_environment            = "EXECUTION_ENVIRONMENT_GEN2"
+    max_instance_request_concurrency = var.environment == "prod" ? 80 : 100
 
-      containers {
-        image = var.image
-
-        resources {
-          limits = {
-            cpu    = var.cpu
-            memory = var.memory
-          }
-        }
-
-        # Transport configuration
-        env {
-          name  = "MCP_TRANSPORT"
-          value = "http"
-        }
-
-        env {
-          name  = "MCP_HTTP_PORT"
-          value = "8080"
-        }
-
-        env {
-          name  = "TENANT_CONFIG_PATH"
-          value = "/config/tenants.yaml"
-        }
-
-        # Environment variables for security configuration
-        env {
-          name  = "NODE_ENV"
-          value = var.environment
-        }
-
-        env {
-          name  = "GCP_PROJECT_ID"
-          value = var.project_id
-        }
-
-        env {
-          name  = "BIGQUERY_LOCATION"
-          value = var.bigquery_location
-        }
-
-        # Security settings
-        env {
-          name  = "SECURITY_RATE_LIMIT_ENABLED"
-          value = "true"
-        }
-
-        env {
-          name  = "SECURITY_RATE_LIMIT_MAX_REQUESTS"
-          value = var.environment == "production" ? "100" : "1000"
-        }
-
-        env {
-          name  = "SECURITY_PROMPT_INJECTION_DETECTION"
-          value = "true"
-        }
-
-        env {
-          name  = "SECURITY_TOOL_VALIDATION_ENABLED"
-          value = "true"
-        }
-
-        env {
-          name  = "SECURITY_LOGGING_ENABLED"
-          value = "true"
-        }
-
-        # OpenTelemetry settings
-        env {
-          name  = "OTEL_SERVICE_NAME"
-          value = "mcp-bigquery-server"
-        }
-
-        env {
-          name  = "OTEL_TRACES_EXPORTER"
-          value = "google_cloud_trace"
-        }
-
-        env {
-          name  = "OTEL_METRICS_EXPORTER"
-          value = "google_cloud_monitoring"
-        }
-
-        # Port configuration
-        ports {
-          name           = "h2c"
-          container_port = 8080
-        }
-
-        # Startup probe
-        startup_probe {
-          http_get {
-            path = "/health"
-            port = 8080
-          }
-          initial_delay_seconds = 10
-          timeout_seconds       = 5
-          period_seconds        = 10
-          failure_threshold     = 3
-        }
-
-        # Liveness probe
-        liveness_probe {
-          http_get {
-            path = "/health"
-            port = 8080
-          }
-          initial_delay_seconds = 30
-          timeout_seconds       = 5
-          period_seconds        = 30
-          failure_threshold     = 3
-        }
-      }
-
-      # Container concurrency - limit requests per container
-      container_concurrency = var.environment == "production" ? 80 : 100
-
-      # Timeout for requests
-      timeout_seconds = 300 # 5 minutes
+    scaling {
+      min_instance_count = var.min_instances
+      max_instance_count = var.max_instances
     }
 
-    metadata {
-      annotations = {
-        # VPC egress through connector
-        "run.googleapis.com/vpc-access-connector" = var.vpc_connector_id
-        "run.googleapis.com/vpc-access-egress"    = "private-ranges-only"
+    # Direct VPC egress — replaces the always-on Serverless VPC connector.
+    vpc_access {
+      network_interfaces {
+        network    = var.network_id
+        subnetwork = var.subnetwork_id
+        tags       = [local.network_tag]
+      }
+      egress = var.vpc_egress
+    }
 
-        # Ingress scope — restrict to internal/LB traffic when PSC is enabled
-        "run.googleapis.com/ingress" = var.ingress_mode
+    volumes {
+      name = "tenant-config"
+      secret {
+        secret = google_secret_manager_secret.tenant_config.secret_id
+        items {
+          version = "latest"
+          path    = "tenants.yaml"
+        }
+      }
+    }
 
-        # Auto-scaling configuration
-        "autoscaling.knative.dev/minScale" = tostring(var.min_instances)
-        "autoscaling.knative.dev/maxScale" = tostring(var.max_instances)
+    containers {
+      image = var.image
 
-        # CPU throttling - only allocate CPU during requests
-        "run.googleapis.com/cpu-throttling" = var.environment == "production" ? "false" : "true"
-
-        # Execution environment (second generation)
-        "run.googleapis.com/execution-environment" = "gen2"
-
-        # Binary authorization
-        "run.googleapis.com/binary-authorization" = var.enable_binary_authorization ? "default" : "disabled"
+      # h2c enables end-to-end HTTP/2 for the Streamable HTTP transport.
+      ports {
+        name           = "h2c"
+        container_port = 8080
       }
 
-      labels = {
-        environment = var.environment
-        service     = "mcp-bigquery-server"
-        managed-by  = "terraform"
+      resources {
+        limits = {
+          cpu    = var.cpu
+          memory = var.memory
+        }
+        # cpu_idle=false => CPU always allocated (instance billing) in prod.
+        cpu_idle          = var.environment != "prod"
+        startup_cpu_boost = var.startup_cpu_boost
       }
+
+      dynamic "env" {
+        for_each = local.env_vars
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
+      volume_mounts {
+        name       = "tenant-config"
+        mount_path = "/config"
+      }
+
+      startup_probe {
+        http_get {
+          path = "/health"
+          port = 8080
+        }
+        initial_delay_seconds = 10
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 3
+      }
+
+      liveness_probe {
+        http_get {
+          path = "/health"
+          port = 8080
+        }
+        initial_delay_seconds = 30
+        timeout_seconds       = 5
+        period_seconds        = 30
+        failure_threshold     = 3
+      }
+    }
+
+    labels = {
+      environment = var.environment
+      service     = "mcp-bigquery-server"
+      managed-by  = "terraform"
     }
   }
 
   traffic {
-    percent         = 100
-    latest_revision = true
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    percent = 100
   }
 
-  autogenerate_revision_name = true
+  dynamic "binary_authorization" {
+    for_each = var.enable_binary_authorization ? [1] : []
+    content {
+      use_default = true
+    }
+  }
 
   lifecycle {
+    # CI updates the container image via gcloud / Cloud Deploy. Terraform
+    # ignores image changes so it does not revert deployments; it still
+    # owns every other aspect of the service configuration.
     ignore_changes = [
-      template[0].metadata[0].annotations["run.googleapis.com/client-name"],
-      template[0].metadata[0].annotations["run.googleapis.com/client-version"],
+      template[0].containers[0].image,
+      client,
+      client_version,
     ]
   }
+
+  depends_on = [google_secret_manager_secret_version.tenant_config_initial]
 }
 
-# IAM policy for Cloud Run service
-resource "google_cloud_run_service_iam_member" "invoker" {
+# Public invoker binding (kept false by default — auth is enforced in-app
+# and/or by IAP at the load balancer).
+resource "google_cloud_run_v2_service_iam_member" "invoker" {
   count = var.allow_unauthenticated ? 1 : 0
 
-  service  = google_cloud_run_service.mcp_server.name
-  location = google_cloud_run_service.mcp_server.location
+  project  = var.project_id
+  location = google_cloud_run_v2_service.mcp_server.location
+  name     = google_cloud_run_v2_service.mcp_server.name
   role     = "roles/run.invoker"
   member   = "allUsers"
-
-  project = var.project_id
 }
 
-# Cloud Run domain mapping (if custom domain provided)
+# Optional custom domain mapping.
 resource "google_cloud_run_domain_mapping" "mcp_domain" {
   count = var.custom_domain != "" ? 1 : 0
 
@@ -215,159 +244,6 @@ resource "google_cloud_run_domain_mapping" "mcp_domain" {
   }
 
   spec {
-    route_name = google_cloud_run_service.mcp_server.name
-  }
-}
-
-# Load Balancer (if Cloud Armor is enabled)
-resource "google_compute_region_network_endpoint_group" "mcp_neg" {
-  count = var.cloud_armor_policy_id != null ? 1 : 0
-
-  name                  = "mcp-bigquery-neg-${var.environment}"
-  network_endpoint_type = "SERVERLESS"
-  region                = var.region
-  project               = var.project_id
-
-  cloud_run {
-    service = google_cloud_run_service.mcp_server.name
-  }
-}
-
-resource "google_compute_backend_service" "mcp_backend" {
-  count = var.cloud_armor_policy_id != null ? 1 : 0
-
-  name    = "mcp-bigquery-backend-${var.environment}"
-  project = var.project_id
-
-  protocol    = "HTTP"
-  port_name   = "http"
-  timeout_sec = 300
-
-  backend {
-    group = google_compute_region_network_endpoint_group.mcp_neg[0].id
-  }
-
-  security_policy = var.cloud_armor_policy_id
-
-  log_config {
-    enable      = true
-    sample_rate = var.environment == "production" ? 0.5 : 1.0
-  }
-
-  iap {
-    enabled              = true
-    oauth2_client_id     = var.iap_client_id
-    oauth2_client_secret = var.iap_client_secret
-  }
-}
-
-resource "google_compute_url_map" "mcp_url_map" {
-  count = var.cloud_armor_policy_id != null ? 1 : 0
-
-  name            = "mcp-bigquery-urlmap-${var.environment}"
-  project         = var.project_id
-  default_service = google_compute_backend_service.mcp_backend[0].id
-}
-
-resource "google_compute_target_https_proxy" "mcp_https_proxy" {
-  count = var.cloud_armor_policy_id != null && var.ssl_certificate_id != "" ? 1 : 0
-
-  name    = "mcp-bigquery-https-proxy-${var.environment}"
-  project = var.project_id
-  url_map = google_compute_url_map.mcp_url_map[0].id
-
-  ssl_certificates = [var.ssl_certificate_id]
-}
-
-resource "google_compute_global_forwarding_rule" "mcp_https" {
-  count = var.cloud_armor_policy_id != null && var.ssl_certificate_id != "" ? 1 : 0
-
-  name       = "mcp-bigquery-https-${var.environment}"
-  project    = var.project_id
-  target     = google_compute_target_https_proxy.mcp_https_proxy[0].id
-  port_range = "443"
-  ip_address = var.static_ip_address
-}
-
-# Service logs sink (for security audit logging)
-resource "google_logging_project_sink" "mcp_security_logs" {
-  name        = "mcp-bigquery-security-logs-${var.environment}"
-  project     = var.project_id
-  destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/mcp_security_logs_${var.environment}"
-
-  filter = <<-EOT
-    resource.type="cloud_run_revision"
-    resource.labels.service_name="${google_cloud_run_service.mcp_server.name}"
-    (
-      jsonPayload.securityEvent=true OR
-      jsonPayload.severity="critical" OR
-      jsonPayload.severity="high"
-    )
-  EOT
-
-  unique_writer_identity = true
-
-  bigquery_options {
-    use_partitioned_tables = true
-  }
-}
-
-# Create BigQuery dataset for security logs
-resource "google_bigquery_dataset" "security_logs" {
-  dataset_id  = "mcp_security_logs_${var.environment}"
-  project     = var.project_id
-  location    = var.bigquery_location
-  description = "Security audit logs for MCP BigQuery server - ${var.environment}"
-
-  default_table_expiration_ms = 7776000000 # 90 days
-
-  labels = {
-    environment = var.environment
-    purpose     = "security-logs"
-  }
-}
-
-# Grant log sink permission to write to BigQuery
-resource "google_bigquery_dataset_iam_member" "log_sink_writer" {
-  dataset_id = google_bigquery_dataset.security_logs.dataset_id
-  role       = "roles/bigquery.dataEditor"
-  member     = google_logging_project_sink.mcp_security_logs.writer_identity
-  project    = var.project_id
-}
-
-# Private Service Connect — service attachment fronting the Cloud Run backend.
-# Consumer projects connect to this attachment via PSC endpoints, keeping
-# tenant traffic off the public internet. Requires the internal HTTPS LB
-# (var.cloud_armor_policy_id != null) and a PSC NAT subnet from networking.
-resource "google_compute_service_attachment" "mcp_psc" {
-  count = var.enable_private_service_connect && var.cloud_armor_policy_id != null && var.ssl_certificate_id != "" ? 1 : 0
-
-  name        = "mcp-bigquery-psc-${var.environment}"
-  project     = var.project_id
-  region      = var.region
-  description = "PSC service attachment for MCP BigQuery server (${var.environment})"
-
-  enable_proxy_protocol = false
-  connection_preference = length(var.psc_accepted_projects) > 0 ? "ACCEPT_MANUAL" : "ACCEPT_AUTOMATIC"
-
-  nat_subnets    = [var.psc_nat_subnet_id]
-  target_service = google_compute_global_forwarding_rule.mcp_https[0].id
-
-  dynamic "consumer_accept_lists" {
-    for_each = length(var.psc_accepted_projects) > 0 ? var.psc_accepted_projects : []
-    content {
-      project_id_or_num = consumer_accept_lists.value
-      connection_limit  = 10
-    }
-  }
-}
-
-# Secret Manager resource for tenant config
-resource "google_secret_manager_secret" "tenant_config" {
-  project   = var.project_id
-  secret_id = "mcp-tenant-config-${var.environment}"
-
-  replication {
-    auto {}
+    route_name = google_cloud_run_v2_service.mcp_server.name
   }
 }

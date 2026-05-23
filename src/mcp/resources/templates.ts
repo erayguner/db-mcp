@@ -5,7 +5,7 @@
  * resource URIs without the server enumerating every dataset/table. This is a
  * native MCP feature distinct from `resources/list` static resources.
  *
- * Spec: https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/
+ * Spec: https://spec.modelcontextprotocol.io/specification/2025-11-25/server/resources/
  */
 
 export interface BigQueryResourceTemplate {

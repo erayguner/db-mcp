@@ -4,56 +4,112 @@ variable "project_id" {
 }
 
 variable "region" {
-  description = "GCP Region"
+  description = "GCP region"
   type        = string
 }
 
 variable "environment" {
-  description = "Environment (development, staging, production)"
+  description = "Environment name (dev, staging, prod)"
   type        = string
 }
 
 variable "vpc_cidr" {
-  description = "CIDR range for VPC"
+  description = "CIDR range for the primary subnet (Direct VPC egress; /26 or larger)"
   type        = string
   default     = "10.0.0.0/24"
 }
 
-variable "enable_vpc_service_controls" {
-  description = "Enable VPC Service Controls"
+variable "psc_nat_subnet_cidr" {
+  description = "CIDR for the PSC NAT subnet (disjoint from vpc_cidr)"
+  type        = string
+  default     = "10.0.1.0/24"
+}
+
+variable "proxy_only_subnet_cidr" {
+  description = "CIDR for the REGIONAL_MANAGED_PROXY subnet (PSC internal LB; disjoint from other subnets)"
+  type        = string
+  default     = "10.0.2.0/24"
+}
+
+variable "enable_private_service_connect" {
+  description = "Provision PSC NAT + proxy-only subnets for private ingress"
   type        = bool
   default     = false
 }
 
+# --- Cloud Armor ---
 variable "enable_cloud_armor" {
-  description = "Enable Cloud Armor security policy"
+  description = "Create the Cloud Armor security policy"
   type        = bool
   default     = true
 }
 
-variable "allowed_ip_ranges" {
-  description = "List of allowed IP ranges for Cloud Armor"
-  type        = list(string)
-  default     = ["0.0.0.0/0"] # Allow all by default, restrict in production
-}
-
-variable "access_policy_name" {
-  description = "Access Context Manager policy name for VPC Service Controls"
-  type        = string
-  default     = ""
-}
-
-# Private Service Connect (PSC) — optional private ingress path.
-# When enabled, a PSC NAT subnet is provisioned; consumers attach to the
-# service attachment produced by the cloud-run module (see cloud-run/main.tf).
-variable "enable_private_service_connect" {
-  description = "Provision PSC NAT subnet for private ingress to Cloud Run"
+variable "restrict_to_allowlist" {
+  description = "Default-deny and only allow allowed_ip_ranges (keep false for a public service)"
   type        = bool
   default     = false
 }
 
-variable "psc_nat_subnet_cidr" {
-  description = "CIDR for the PSC NAT subnet (must be disjoint from vpc_cidr)"
+variable "allowed_ip_ranges" {
+  description = "IP ranges allowed when restrict_to_allowlist = true"
+  type        = list(string)
+  default     = []
+}
+
+variable "waf_ruleset_version" {
+  description = "OWASP CRS rule version suffix (v33 = CRS 3.3 GA; v422 = CRS 4.22 once GA)"
   type        = string
-  default     = "10.0.1.0/24"
+  default     = "v33"
+}
+
+variable "waf_sensitivity" {
+  description = "Cloud Armor preconfigured WAF sensitivity (1 = high-confidence only, up to 4)"
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.waf_sensitivity >= 1 && var.waf_sensitivity <= 4
+    error_message = "waf_sensitivity must be between 1 and 4."
+  }
+}
+
+# --- VPC Service Controls ---
+variable "enable_vpc_service_controls" {
+  description = "Create a VPC Service Controls perimeter (requires access_policy_name)"
+  type        = bool
+  default     = false
+}
+
+variable "access_policy_name" {
+  description = "Access Context Manager policy ID. Required for the VPC-SC perimeter."
+  type        = string
+  default     = ""
+}
+
+variable "vpc_sc_restricted_services" {
+  description = "Services protected by the VPC-SC perimeter"
+  type        = list(string)
+  default     = ["bigquery.googleapis.com", "storage.googleapis.com"]
+}
+
+variable "vpc_sc_allowed_services" {
+  description = "Services reachable from within the perimeter"
+  type        = list(string)
+  default = [
+    "bigquery.googleapis.com",
+    "storage.googleapis.com",
+    "monitoring.googleapis.com",
+    "logging.googleapis.com",
+  ]
+}
+
+variable "vpc_sc_egress_to_projects" {
+  description = "Project IDs in-perimeter identities may call BigQuery in (egress rule)"
+  type        = list(string)
+  default     = []
+}
+
+variable "vpc_sc_ingress_from_projects" {
+  description = "Project IDs allowed to manage Cloud Run from outside the perimeter (e.g. CI/CD)"
+  type        = list(string)
+  default     = []
 }

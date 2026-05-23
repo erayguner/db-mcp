@@ -1,5 +1,6 @@
 # Build stage
-FROM node:22-alpine AS builder
+# Pinned digest ensures reproducible builds; update with: docker pull node:22-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:22-alpine
+FROM node:22-alpine@sha256:968df39aedcea65eeb078fb336ed7191baf48f972b4479711397108be0966920 AS builder  # node:22-alpine
 RUN apk upgrade --no-cache
 WORKDIR /app
 COPY package*.json ./
@@ -9,7 +10,7 @@ COPY src/ ./src/
 RUN npm run build
 
 # Production stage
-FROM node:22-alpine
+FROM node:22-alpine@sha256:968df39aedcea65eeb078fb336ed7191baf48f972b4479711397108be0966920  # node:22-alpine
 RUN apk upgrade --no-cache
 WORKDIR /app
 

@@ -19,8 +19,16 @@ concurrency:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: us-central1
-  SERVICE_NAME: mcp-bigquery-server
+  # gcr.io was shut down 2025-03-18; all images now live in Artifact Registry (europe-west2).
+  REGION: europe-west2
+  AR_REGISTRY: europe-west2-docker.pkg.dev
+  AR_REPO: db-mcp
+  IMAGE_NAME: mcp-bigquery-server
+  # Cloud Run service name managed by Terraform (mcp-bigquery-server-<env>).
+  SERVICE_NAME: mcp-bigquery-server-prod
+  # KMS key used for cosign signing; public half is referenced by the BinAuth policy
+  # managed in terraform/. See ADR-031 for policy details.
+  COSIGN_KMS_KEY: gcpkms://projects/${{ secrets.GCP_PROJECT_ID }}/locations/europe-west2/keyRings/binauth/cryptoKeys/cosign
 
 jobs:
   # Run lint, typecheck, and tests in parallel
@@ -80,16 +88,22 @@ jobs:
         with:
           files: ./coverage/lcov.info
 
-  build-and-deploy:
+  build-sign-push:
     needs: [lint, typecheck, test]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    # Outputs the fully-qualified image reference (registry/repo/image@sha256:...)
+    # consumed by the cloud-deploy job.
+    outputs:
+      image_with_digest: ${{ steps.image_ref.outputs.image_with_digest }}
+      digest: ${{ steps.push.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        # Bumped to v3 — required before Node 24 deadline 2026-06-02.
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
@@ -97,25 +111,34 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker
-        run: gcloud auth configure-docker
+      - name: Configure Docker for Artifact Registry
+        # Artifact Registry replaced gcr.io (shut down 2025-03-18).
+        run: gcloud auth configure-docker ${{ env.AR_REGISTRY }}
 
       - name: Build Docker image
         id: build
         run: |
-          IMAGE=gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}
-          docker build -t $IMAGE .
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE || echo "")
+          IMAGE=${{ env.AR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker build -t "$IMAGE" .
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Push Docker image
         id: push
         run: |
-          docker push ${{ steps.build.outputs.image }}
-          DIGEST=$(gcloud container images describe ${{ steps.build.outputs.image }} --format='value(image_summary.digest)')
+          docker push "${{ steps.build.outputs.image }}"
+          # Retrieve the immutable content-addressable digest; deploy always pins to this.
+          DIGEST=$(gcloud artifacts docker images describe \
+            "${{ steps.build.outputs.image }}" \
+            --format='value(image_summary.digest)')
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      # §12.3 Sigstore cosign keyless signing + SLSA build provenance.
+      - name: Compute pinned image reference
+        id: image_ref
+        run: |
+          BASE=${{ env.AR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}
+          echo "image_with_digest=${BASE}@${{ steps.push.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+      # §12.3  SBOM → scan → sign → provenance pipeline
       - name: Generate SBOM (CycloneDX via syft)
         uses: anchore/sbom-action@v0
         with:
@@ -136,24 +159,54 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
-      - name: Sign image (keyless, OIDC)
-        env:
-          COSIGN_EXPERIMENTAL: '1'
-        run: cosign sign --yes gcr.io/$PROJECT_ID/$SERVICE_NAME@${{ steps.push.outputs.digest }}
+      - name: Sign image with KMS key (Binary Authorization)
+        # KMS-key signing (replaces keyless/COSIGN_EXPERIMENTAL).
+        # The BinAuth policy in terraform/ requires the public half of
+        # gcpkms://…/keyRings/binauth/cryptoKeys/cosign to be present on
+        # every deployed image. The Terraform agent created that key and the
+        # attestor; do NOT change the key path without coordinating that side.
+        run: |
+          cosign sign --yes \
+            --key "${{ env.COSIGN_KMS_KEY }}" \
+            "${{ steps.image_ref.outputs.image_with_digest }}"
 
       - name: Generate SLSA build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}
+          subject-name: ${{ env.AR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      - name: Deploy to Cloud Run (pinned to signed digest)
+  # Default deploy path: image-only update on the Terraform-managed Cloud
+  # Run service. Terraform owns every other aspect of the service (env vars,
+  # scaling, VPC egress, secret mounts, IAM, etc.) and ignores image changes
+  # via lifecycle.ignore_changes, so this CI step never fights `terraform
+  # apply`. The service must already exist (created by `terraform apply`
+  # of the cloud_run module).
+  #
+  # Cloud Deploy progressive delivery is provided as scaffolding in
+  # clouddeploy.yaml + skaffold.yaml; activate it by replacing this job
+  # with `gcloud deploy releases create` once the pipeline + targets have
+  # been registered in GCP (see deployment/README.md).
+  deploy:
+    needs: build-sign-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Update Cloud Run service image (pinned to signed digest)
         run: |
-          gcloud run deploy $SERVICE_NAME \
-            --image gcr.io/$PROJECT_ID/$SERVICE_NAME@${{ steps.push.outputs.digest }} \
-            --region $REGION \
-            --platform managed \
-            --service-account ${{ secrets.GCP_SA_EMAIL }} \
-            --min-instances 1 \
-            --max-instances 10
+          gcloud run services update "${{ env.SERVICE_NAME }}" \
+            --image "${{ needs.build-sign-push.outputs.image_with_digest }}" \
+            --region "${{ env.REGION }}" \
+            --quiet
+          echo "Deployed ${{ needs.build-sign-push.outputs.image_with_digest }} to ${{ env.SERVICE_NAME }} in ${{ env.REGION }}."

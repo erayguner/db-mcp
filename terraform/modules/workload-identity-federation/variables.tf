@@ -57,3 +57,12 @@ variable "generic_oidc_attribute_condition" {
   type        = string
   default     = null
 }
+
+# Numeric GitHub owner ID for cybersquatting-resistant scoping.
+# Find it via: gh api /users/<owner> --jq .id
+# When set, the GitHub provider's attribute_condition also pins this ID.
+variable "github_repository_owner_id" {
+  description = "Numeric GitHub repository owner ID (immutable). Empty = name-based scoping only."
+  type        = string
+  default     = ""
+}

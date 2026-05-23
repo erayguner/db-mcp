@@ -148,8 +148,8 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 ### Observability
 - **@opentelemetry/sdk-trace-node**: ^2.6.1 - Distributed tracing
 - **@opentelemetry/sdk-metrics**: ^2.6.1 - Metrics collection
-- **@google-cloud/opentelemetry-cloud-monitoring-exporter**: ^0.18.0
-- **@google-cloud/opentelemetry-cloud-trace-exporter**: ^2.3.0
+- **@google-cloud/opentelemetry-cloud-monitoring-exporter**: ^0.21.0
+- **@google-cloud/opentelemetry-cloud-trace-exporter**: ^3.0.0
 
 ### Development
 - **tsx**: Development server with hot reload
@@ -159,10 +159,15 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 
 ## Deployment Architecture
 
-### Container-Based Deployment
+### Container-Based Deployment on Cloud Run (v2)
+
+The server runs exclusively on **Google Cloud Run** (serverless). There is no GKE cluster.
+Infrastructure is managed by Terraform using the `google_cloud_run_service` resource with
+`run.googleapis.com/execution-environment = gen2` (second-generation runtime).
+
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Cloud Run / GKE                       │
+│               Cloud Run (europe-west2)                   │
 │                                                          │
 │  ┌────────────────────────────────────────────────┐    │
 │  │         MCP Server Container                   │    │
@@ -175,21 +180,33 @@ The BigQuery MCP Server is an enterprise-grade Model Context Protocol (MCP) serv
 │  │                                                 │    │
 │  │  Environment Variables:                        │    │
 │  │  - GCP_PROJECT_ID                              │    │
-│  │  - WIF_POOL_ID                                 │    │
-│  │  - WIF_PROVIDER_ID                             │    │
-│  │  - SERVICE_ACCOUNT_EMAIL                       │    │
+│  │  - BIGQUERY_LOCATION                           │    │
+│  │  - NODE_ENV                                    │    │
+│  │  - OTEL_SERVICE_NAME                           │    │
+│  │  - SECURITY_RATE_LIMIT_*                       │    │
 │  │                                                 │    │
-│  │  Mounted Secrets:                              │    │
-│  │  - /secrets/wif-config.json                    │    │
+│  │  Auth: keyless Workload Identity Federation    │    │
+│  │  (runtime service account — no key files)      │    │
 │  └────────────────────────────────────────────────┘    │
 │                                                          │
-│  Resources:                                             │
-│  - CPU: 1-2 vCPU                                        │
-│  - Memory: 512MB - 2GB                                  │
-│  - Concurrency: 1000 requests                           │
-│  - Auto-scaling: 1-10 instances                         │
+│  Resources (defaults):                                  │
+│  - CPU: 1 vCPU (always allocated in production)         │
+│  - Memory: 512 MB                                       │
+│  - Per-instance concurrency: 80 (production)            │
+│  - Auto-scaling: 0–10 instances                         │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**Authentication** is fully keyless. The Cloud Run service runs as a dedicated GCP service account
+and obtains short-lived access tokens from the Workload Identity Federation pool at runtime.
+No credential files are mounted into the container; the `google-auth-library` uses Application
+Default Credentials, which on Cloud Run resolve automatically via the metadata server.
+
+**Container images** are stored in Artifact Registry (`europe-west2-docker.pkg.dev`). The
+legacy Container Registry (`gcr.io`) was shut down on 2025-03-18 and is no longer used.
+
+**Deployment** is handled entirely through Terraform. Direct `gcloud run deploy` commands are
+not used in production; see the Terraform `modules/cloud-run` module.
 
 ### Local Development
 ```

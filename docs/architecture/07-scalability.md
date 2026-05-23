@@ -2,719 +2,181 @@
 
 ## Overview
 
-The BigQuery MCP Server is designed for horizontal scalability to handle thousands of concurrent requests while maintaining low latency and high reliability.
+The BigQuery MCP Server runs on **Google Cloud Run** (serverless), which handles scaling automatically
+at the platform level. There is no Kubernetes cluster or HorizontalPodAutoscaler. The server is
+stateless by design: each Cloud Run instance is independent, shares no local state with peers, and
+can be started or stopped on demand.
 
-## Scaling Dimensions
+## Cloud Run Autoscaling
 
-### Horizontal Scaling
+Cloud Run scales by adding or removing container instances in response to incoming request traffic.
+The Terraform configuration exposes two instance controls:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Load Balancer                            │
-│                  (Cloud Load Balancing)                     │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-      ┌───────────────┼───────────────┬───────────────┐
-      │               │               │               │
-      ▼               ▼               ▼               ▼
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ Instance │    │ Instance │    │ Instance │    │ Instance │
-│    1     │    │    2     │    │    3     │    │    N     │
-│          │    │          │    │          │    │          │
-│ CPU: 1   │    │ CPU: 1   │    │ CPU: 1   │    │ CPU: 1   │
-│ RAM: 2GB │    │ RAM: 2GB │    │ RAM: 2GB │    │ RAM: 2GB │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
-```
+| Parameter | Terraform variable | Default |
+|---|---|---|
+| Minimum instances | `mcp_server_min_instances` | `0` (scale to zero when idle) |
+| Maximum instances | `mcp_server_max_instances` | `10` |
+| Per-instance concurrency | `container_concurrency` | `80` (production) / `100` (other) |
 
-**Characteristics:**
-- Stateless instances (no local state)
-- Shared nothing architecture
-- Auto-scaling based on CPU/memory/requests
-- Scale from 1 to 100+ instances
+When idle, the service scales to zero and incurs no compute cost. On the first request after a cold
+start, Cloud Run starts a new instance within a few seconds. Setting `min_instances > 0` keeps at
+least one warm instance available to eliminate cold-start latency for latency-sensitive deployments.
 
-**Auto-Scaling Configuration:**
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: bigquery-mcp-server
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: bigquery-mcp-server
-  minReplicas: 2
-  maxReplicas: 50
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-  - type: Pods
-    pods:
-      metric:
-        name: requests_per_second
-      target:
-        type: AverageValue
-        averageValue: "100"
-  behavior:
-    scaleDown:
-      stabilizationWindowSeconds: 300
-      policies:
-      - type: Percent
-        value: 50
-        periodSeconds: 60
-    scaleUp:
-      stabilizationWindowSeconds: 0
-      policies:
-      - type: Percent
-        value: 100
-        periodSeconds: 30
-      - type: Pods
-        value: 4
-        periodSeconds: 30
-      selectPolicy: Max
-```
+Cloud Run scales up when active instances approach their concurrency limit. New instances are
+typically ready within 5–30 seconds. Scale-down happens gradually after sustained low traffic,
+subject to a built-in stabilization window.
 
-### Vertical Scaling
+**CPU allocation**: Production runs with CPU always allocated
+(`run.googleapis.com/cpu-throttling = false`) so the Node.js process is not throttled between
+requests. Non-production environments use the default CPU-throttling mode to reduce cost.
+
+**Execution environment**: All revisions use the second-generation execution environment
+(`run.googleapis.com/execution-environment = gen2`), which provides better performance and
+full Linux kernel compatibility.
+
+### Scaling Diagram
 
 ```
-Small Instance          Medium Instance        Large Instance
-┌──────────────┐       ┌──────────────┐       ┌──────────────┐
-│ CPU: 1 vCPU  │       │ CPU: 2 vCPU  │       │ CPU: 4 vCPU  │
-│ RAM: 512MB   │       │ RAM: 2GB     │       │ RAM: 8GB     │
-│              │       │              │       │              │
-│ QPS: ~50     │       │ QPS: ~200    │       │ QPS: ~500    │
-│ Latency: 100ms│      │ Latency: 80ms│       │ Latency: 50ms│
-└──────────────┘       └──────────────┘       └──────────────┘
+Incoming Requests
+      │
+      ▼
+┌─────────────────────────────────────────────────┐
+│           Cloud Run (serverless)                 │
+│                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │ Instance │  │ Instance │  │ Instance │  ...  │
+│  │    1     │  │    2     │  │    N     │       │
+│  │ ≤80 reqs │  │ ≤80 reqs │  │ ≤80 reqs │       │
+│  └──────────┘  └──────────┘  └──────────┘       │
+│                                                  │
+│  Auto-scaled by platform (0 – 10 instances)      │
+└─────────────────────────────────────────────────┘
 ```
 
-**Resource Recommendations:**
-- **Development**: 0.5 vCPU, 512MB RAM
-- **Staging**: 1 vCPU, 1GB RAM
-- **Production (low)**: 1 vCPU, 2GB RAM
-- **Production (medium)**: 2 vCPU, 4GB RAM
-- **Production (high)**: 4 vCPU, 8GB RAM
+## In-Process Caching (No Redis)
 
-## Caching Strategy
+There is no Redis cluster or any distributed external cache. Each Cloud Run instance runs an
+in-process LRU cache implemented in `src/bigquery/query-cache.ts`. Because instances are
+independent, cache state is not shared across instances; each instance builds its own warm cache
+from BigQuery responses.
 
-### Multi-Level Cache Architecture
+### Cache Behaviour
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Request Flow                            │
-└─────────────────────────────────────────────────────────────┘
-
-Request
-   │
-   ▼
-┌────────────────────┐
-│   L1: Memory Cache │  ◄── In-process, LRU, 100MB max
-│   (per instance)   │      TTL: 5-15min
-└────────┬───────────┘
-         │
-         │ Miss
-         ▼
-┌────────────────────┐
-│  L2: Redis Cache   │  ◄── Shared, distributed
-│  (shared cluster)  │      TTL: 30min
-└────────┬───────────┘
-         │
-         │ Miss
-         ▼
-┌────────────────────┐
-│  BigQuery API      │  ◄── Fetch from source
-└────────────────────┘
-```
-
-### Cache Implementation
-
-```typescript
-interface CacheConfig {
-  l1: {
-    enabled: boolean;
-    maxSize: number;      // bytes
-    ttl: number;          // seconds
-    algorithm: 'LRU' | 'LFU';
-  };
-  l2: {
-    enabled: boolean;
-    host: string;
-    port: number;
-    ttl: number;
-    prefix: string;
-  };
-}
-
-class MultiLevelCache {
-  private l1Cache: LRUCache;
-  private l2Cache?: RedisClient;
-
-  constructor(private config: CacheConfig) {
-    // L1: In-memory LRU cache
-    if (config.l1.enabled) {
-      this.l1Cache = new LRUCache({
-        max: config.l1.maxSize,
-        ttl: config.l1.ttl * 1000,
-        updateAgeOnGet: true,
-        updateAgeOnHas: true
-      });
-    }
-
-    // L2: Redis cache
-    if (config.l2.enabled) {
-      this.l2Cache = createClient({
-        host: config.l2.host,
-        port: config.l2.port,
-        retry_strategy: (options) => {
-          return Math.min(options.attempt * 100, 3000);
-        }
-      });
-    }
-  }
-
-  async get<T>(key: string): Promise<T | null> {
-    // Try L1 cache
-    if (this.config.l1.enabled) {
-      const l1Value = this.l1Cache.get(key);
-      if (l1Value !== undefined) {
-        cacheHitCounter.add(1, { level: 'l1', key_type: this.getKeyType(key) });
-        return l1Value as T;
-      }
-    }
-
-    // Try L2 cache
-    if (this.config.l2.enabled && this.l2Cache) {
-      const l2Value = await this.l2Cache.get(this.prefixKey(key));
-      if (l2Value !== null) {
-        const parsed = JSON.parse(l2Value) as T;
-
-        // Populate L1 cache
-        if (this.config.l1.enabled) {
-          this.l1Cache.set(key, parsed);
-        }
-
-        cacheHitCounter.add(1, { level: 'l2', key_type: this.getKeyType(key) });
-        return parsed;
-      }
-    }
-
-    cacheMissCounter.add(1, { key_type: this.getKeyType(key) });
-    return null;
-  }
-
-  async set<T>(key: string, value: T, ttl?: number): Promise<void> {
-    const effectiveTtl = ttl || this.config.l1.ttl;
-
-    // Set in L1 cache
-    if (this.config.l1.enabled) {
-      this.l1Cache.set(key, value, { ttl: effectiveTtl * 1000 });
-    }
-
-    // Set in L2 cache
-    if (this.config.l2.enabled && this.l2Cache) {
-      await this.l2Cache.setex(
-        this.prefixKey(key),
-        ttl || this.config.l2.ttl,
-        JSON.stringify(value)
-      );
-    }
-  }
-
-  async invalidate(pattern: string): Promise<void> {
-    // Invalidate L1 cache
-    if (this.config.l1.enabled) {
-      for (const key of this.l1Cache.keys()) {
-        if (key.match(pattern)) {
-          this.l1Cache.delete(key);
-        }
-      }
-    }
-
-    // Invalidate L2 cache
-    if (this.config.l2.enabled && this.l2Cache) {
-      const keys = await this.l2Cache.keys(`${this.config.l2.prefix}:${pattern}`);
-      if (keys.length > 0) {
-        await this.l2Cache.del(...keys);
-      }
-    }
-
-    cacheInvalidationCounter.add(1, { pattern });
-  }
-
-  private prefixKey(key: string): string {
-    return `${this.config.l2.prefix}:${key}`;
-  }
-
-  private getKeyType(key: string): string {
-    if (key.startsWith('datasets:')) return 'datasets';
-    if (key.startsWith('tables:')) return 'tables';
-    if (key.startsWith('schema:')) return 'schema';
-    return 'other';
-  }
-}
-```
+- **Implementation**: in-process LRU, bounded by a maximum entry count and configurable TTLs
+- **Scope**: per-instance only — cache entries are lost when an instance is recycled
+- **Cached resources**: dataset lists, table lists, table schemas, and optionally recent
+  query results (configurable, disabled by default)
 
 ### Cache Key Patterns
 
 ```typescript
 const cacheKeys = {
-  // Datasets: project-scoped
-  datasets: (projectId: string) => `datasets:${projectId}`,
-
-  // Tables: dataset-scoped
-  tables: (datasetId: string) => `tables:${datasetId}`,
-
-  // Schema: table-scoped
-  schema: (datasetId: string, tableId: string) => `schema:${datasetId}.${tableId}`,
-
-  // Query results: query hash (optional, careful with memory)
+  datasets:    (projectId: string) => `datasets:${projectId}`,
+  tables:      (datasetId: string) => `tables:${datasetId}`,
+  schema:      (datasetId: string, tableId: string) => `schema:${datasetId}.${tableId}`,
   queryResult: (queryHash: string) => `query:${queryHash}`
 };
 
-// Cache TTLs by resource type
+// TTLs by resource type
 const cacheTTLs = {
-  datasets: 900,    // 15 minutes
-  tables: 900,      // 15 minutes
-  schema: 1800,     // 30 minutes
-  queryResult: 300  // 5 minutes (if enabled)
+  datasets:    900,   // 15 minutes
+  tables:      900,   // 15 minutes
+  schema:      1800,  // 30 minutes
+  queryResult: 300    // 5 minutes (when enabled)
 };
 ```
 
-## Connection Pooling
+### Cache Hit Rate Expectation
 
-### BigQuery Client Pool
+Schema and metadata operations (dataset/table/schema lookups) benefit most from caching; a
+60–80 % hit rate is typical for workloads that repeatedly inspect the same tables. Query-result
+caching is off by default because BigQuery results can be large and stale results can be
+misleading.
 
-```typescript
-class BigQueryConnectionPool {
-  private pool: BigQuery[] = [];
-  private activeConnections = 0;
+> **Potential future state**: A shared Redis or Memorystore layer could improve cache efficiency
+> across instances for high-instance-count deployments, but this is not currently implemented.
 
-  private readonly config = {
-    minConnections: 2,
-    maxConnections: 10,
-    idleTimeoutMs: 30000,
-    acquireTimeoutMs: 5000
-  };
+## Connection Management
 
-  constructor() {
-    // Pre-create minimum connections
-    for (let i = 0; i < this.config.minConnections; i++) {
-      this.pool.push(this.createConnection());
-    }
-  }
+BigQuery client lifecycle is managed in `src/bigquery/connection-pool.ts`. Because the BigQuery
+Node.js client is HTTP-based (not a persistent TCP socket pool like a relational database driver),
+"pooling" here refers to reusing initialized `BigQuery` client objects across requests within the
+same instance rather than maintaining a fixed pool of open network connections.
 
-  async acquire(): Promise<BigQuery> {
-    const startTime = Date.now();
+Each instance initialises a small number of `BigQuery` client objects at startup and reuses them
+across concurrent requests, avoiding the overhead of re-initialising the Google auth library on
+every call. This is an in-process concern only; no pooling infrastructure exists outside the
+container.
 
-    // Try to get idle connection
-    const connection = this.pool.pop();
-    if (connection) {
-      this.activeConnections++;
-      connectionPoolGauge.set(this.activeConnections, { state: 'active' });
-      return connection;
-    }
+## BigQuery Elastic Compute
 
-    // Create new connection if under max
-    if (this.activeConnections < this.config.maxConnections) {
-      this.activeConnections++;
-      connectionPoolGauge.set(this.activeConnections, { state: 'active' });
-      return this.createConnection();
-    }
+BigQuery itself provides elastic compute capacity. Interactive queries are processed using shared
+or reserved slot pools managed by Google. The MCP server does not need to provision or manage
+BigQuery workers; it submits jobs and polls for results. Per-project quotas apply:
 
-    // Wait for connection to become available
-    return this.waitForConnection(startTime);
-  }
+| Quota | Limit |
+|---|---|
+| Interactive queries per day | 100,000 per project |
+| Concurrent interactive queries | 100 per user |
+| Maximum query execution time | 6 hours |
 
-  async release(connection: BigQuery): Promise<void> {
-    this.activeConnections--;
-    connectionPoolGauge.set(this.activeConnections, { state: 'active' });
-
-    // Return to pool if under max pool size
-    if (this.pool.length < this.config.maxConnections) {
-      this.pool.push(connection);
-    }
-  }
-
-  private createConnection(): BigQuery {
-    return new BigQuery({
-      projectId: process.env.GCP_PROJECT_ID,
-      credentials: this.getCredentials(),
-      maxRetries: 3,
-      autoRetry: true
-    });
-  }
-
-  private async waitForConnection(startTime: number): Promise<BigQuery> {
-    return new Promise((resolve, reject) => {
-      const checkInterval = setInterval(() => {
-        // Check for timeout
-        if (Date.now() - startTime > this.config.acquireTimeoutMs) {
-          clearInterval(checkInterval);
-          reject(new Error('Connection acquire timeout'));
-          return;
-        }
-
-        // Check for available connection
-        const connection = this.pool.pop();
-        if (connection) {
-          clearInterval(checkInterval);
-          this.activeConnections++;
-          resolve(connection);
-        }
-      }, 100);
-    });
-  }
-
-  async close(): Promise<void> {
-    // Close all connections
-    for (const connection of this.pool) {
-      await connection.close();
-    }
-    this.pool = [];
-    this.activeConnections = 0;
-  }
-}
-```
+The server enforces a per-query dry-run cost gate before submitting interactive queries, surfacing
+estimated byte-scan cost to the MCP client before execution.
 
 ## Rate Limiting
 
-### Token Bucket Algorithm
+Rate limiting is enforced in-process by the security middleware (token bucket algorithm) and
+optionally at the network layer by Cloud Armor. Key limits:
 
-```typescript
-class TokenBucket {
-  private tokens: number;
-  private lastRefill: number;
+| Limit | Value |
+|---|---|
+| Global QPS (in-process) | 100 req/s |
+| Per-client QPM | 60 req/min |
+| Per-client burst capacity | 10 requests |
+| Max-requests (production) | 100 (env var `SECURITY_RATE_LIMIT_MAX_REQUESTS`) |
 
-  constructor(
-    private capacity: number,
-    private refillRate: number // tokens per second
-  ) {
-    this.tokens = capacity;
-    this.lastRefill = Date.now();
-  }
+## Vertical Sizing
 
-  tryConsume(tokens: number = 1): boolean {
-    this.refill();
+Cloud Run resource allocation is controlled by Terraform variables:
 
-    if (this.tokens >= tokens) {
-      this.tokens -= tokens;
-      return true;
-    }
+| Variable | Default |
+|---|---|
+| `mcp_server_cpu` | `"1"` vCPU |
+| `mcp_server_memory` | `"512Mi"` |
 
-    return false;
-  }
+Recommended production sizing:
 
-  private refill(): void {
-    const now = Date.now();
-    const elapsedSeconds = (now - this.lastRefill) / 1000;
-    const tokensToAdd = elapsedSeconds * this.refillRate;
+| Profile | CPU | Memory | Notes |
+|---|---|---|---|
+| Development | 0.5 vCPU | 512 MB | Default, cost-efficient |
+| Staging | 1 vCPU | 1 GB | Matches prod behaviour |
+| Production (standard) | 1 vCPU | 2 GB | Comfortable for most workloads |
+| Production (high throughput) | 2 vCPU | 4 GB | When schema cache grows large |
 
-    this.tokens = Math.min(this.capacity, this.tokens + tokensToAdd);
-    this.lastRefill = now;
-  }
+## Performance Targets
 
-  getTokens(): number {
-    this.refill();
-    return this.tokens;
-  }
-
-  getResetTime(): number {
-    this.refill();
-    if (this.tokens >= this.capacity) {
-      return Date.now();
-    }
-
-    const tokensNeeded = this.capacity - this.tokens;
-    const secondsNeeded = tokensNeeded / this.refillRate;
-    return Date.now() + (secondsNeeded * 1000);
-  }
-}
-
-class RateLimiter {
-  private buckets = new Map<string, TokenBucket>();
-
-  private readonly limits = {
-    globalQPS: 100,           // 100 queries/sec globally
-    perClientQPM: 60,         // 60 queries/min per client
-    perClientBurst: 10,       // 10 burst capacity
-    maxConcurrent: 1000       // 1000 concurrent queries
-  };
-
-  async checkLimit(clientId: string): Promise<RateLimitResult> {
-    // Global rate limit
-    const globalBucket = this.getGlobalBucket();
-    if (!globalBucket.tryConsume(1)) {
-      return {
-        allowed: false,
-        reason: 'Global rate limit exceeded',
-        retryAfter: Math.ceil((globalBucket.getResetTime() - Date.now()) / 1000)
-      };
-    }
-
-    // Per-client rate limit
-    const clientBucket = this.getClientBucket(clientId);
-    if (!clientBucket.tryConsume(1)) {
-      return {
-        allowed: false,
-        reason: 'Client rate limit exceeded',
-        retryAfter: Math.ceil((clientBucket.getResetTime() - Date.now()) / 1000)
-      };
-    }
-
-    return { allowed: true };
-  }
-
-  private getGlobalBucket(): TokenBucket {
-    if (!this.buckets.has('global')) {
-      this.buckets.set('global', new TokenBucket(
-        this.limits.globalQPS,
-        this.limits.globalQPS
-      ));
-    }
-    return this.buckets.get('global')!;
-  }
-
-  private getClientBucket(clientId: string): TokenBucket {
-    const key = `client:${clientId}`;
-    if (!this.buckets.has(key)) {
-      this.buckets.set(key, new TokenBucket(
-        this.limits.perClientBurst,
-        this.limits.perClientQPM / 60 // per second
-      ));
-    }
-    return this.buckets.get(key)!;
-  }
-}
-```
-
-## Load Testing
-
-### Performance Benchmarks
-
-```typescript
-import { check, sleep } from 'k6';
-import http from 'k6/http';
-
-export const options = {
-  stages: [
-    { duration: '2m', target: 100 },   // Ramp up to 100 users
-    { duration: '5m', target: 100 },   // Stay at 100 users
-    { duration: '2m', target: 200 },   // Ramp up to 200 users
-    { duration: '5m', target: 200 },   // Stay at 200 users
-    { duration: '2m', target: 0 }      // Ramp down to 0 users
-  ],
-  thresholds: {
-    http_req_duration: ['p(95)<2000'], // 95% of requests < 2s
-    http_req_failed: ['rate<0.01'],    // <1% failure rate
-  }
-};
-
-export default function() {
-  const url = 'http://localhost:8080/query';
-
-  const payload = JSON.stringify({
-    tool: 'query_bigquery',
-    arguments: {
-      query: 'SELECT * FROM `project.dataset.table` LIMIT 100'
-    }
-  });
-
-  const params = {
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${__ENV.AUTH_TOKEN}`
-    }
-  };
-
-  const response = http.post(url, payload, params);
-
-  check(response, {
-    'status is 200': (r) => r.status === 200,
-    'response time < 2000ms': (r) => r.timings.duration < 2000,
-    'has result': (r) => JSON.parse(r.body).result !== undefined
-  });
-
-  sleep(1);
-}
-```
-
-### Expected Performance
-
-```
-┌──────────────────────────────────────────────────────────┐
-│             Performance Targets                          │
-├──────────────────────────────────────────────────────────┤
-│                                                          │
-│  Latency (P50):         < 500ms                          │
-│  Latency (P95):         < 2000ms                         │
-│  Latency (P99):         < 5000ms                         │
-│                                                          │
-│  Throughput:            100+ QPS per instance            │
-│  Concurrent Queries:    1000+ per instance               │
-│                                                          │
-│  Cache Hit Rate:        60-80% (schema operations)       │
-│  Error Rate:            < 0.1%                           │
-│                                                          │
-│  Resource Usage:                                         │
-│    CPU:                 < 70% average                    │
-│    Memory:              < 80% average                    │
-│    Network:             < 100 Mbps                       │
-│                                                          │
-│  Auto-Scaling:                                           │
-│    Scale Up Time:       < 30 seconds                     │
-│    Scale Down Time:     < 5 minutes                      │
-└──────────────────────────────────────────────────────────┘
-```
-
-## Database Quotas and Limits
-
-### BigQuery Quotas
-
-```typescript
-const bigQueryQuotas = {
-  // API Quotas
-  queriesPerDay: 100000,           // Per project
-  queriesPerSecond: 100,           // Per project
-  concurrentQueries: 100,          // Per user
-
-  // Query Limits
-  maxQuerySize: 1024 * 1024,       // 1 MB
-  maxResultSize: 10 * 1024 * 1024, // 10 GB
-  maxExecutionTime: 6 * 3600,      // 6 hours
-
-  // Interactive Query Quotas
-  interactiveQueriesPerDay: 100000,
-  interactiveQueriesPerUser: 2000,
-
-  // Batch Query Quotas
-  batchQueriesPerDay: 100000,
-
-  // Rate Limits
-  tableDataListPerSecond: 100,
-  jobsInsertPerSecond: 100,
-  jobsGetPerSecond: 1000
-};
-
-class QuotaManager {
-  async checkQuota(operation: string): Promise<QuotaResult> {
-    const usage = await this.getQuotaUsage(operation);
-    const limit = bigQueryQuotas[operation];
-
-    if (usage >= limit * 0.9) {
-      logger.warn('Approaching quota limit', {
-        operation,
-        usage,
-        limit,
-        percent: (usage / limit) * 100
-      });
-    }
-
-    if (usage >= limit) {
-      return {
-        allowed: false,
-        reason: 'Quota exceeded',
-        usage,
-        limit,
-        resetTime: this.getQuotaResetTime(operation)
-      };
-    }
-
-    return {
-      allowed: true,
-      usage,
-      limit,
-      remaining: limit - usage
-    };
-  }
-}
-```
+| Metric | Target |
+|---|---|
+| P50 latency | < 500 ms |
+| P95 latency | < 2000 ms |
+| P99 latency | < 5000 ms |
+| Throughput per instance | 100+ QPS |
+| Error rate | < 0.1 % |
+| Cache hit rate (schema ops) | 60–80 % |
+| Scale-up time | < 30 seconds |
+| Scale-down stabilisation | ~5 minutes |
 
 ## Deployment Strategies
 
-### Blue-Green Deployment
+Cloud Run supports traffic splitting natively. Rolling out a new revision safely:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Load Balancer                        │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-            ┌─────────┴─────────┐
-            │                   │
-            ▼                   ▼
-      ┌──────────┐        ┌──────────┐
-      │  Blue    │        │  Green   │
-      │ (v1.0.0) │        │ (v1.1.0) │
-      │          │        │          │
-      │ Active   │        │ Standby  │
-      └──────────┘        └──────────┘
-
-1. Deploy new version to Green
-2. Run health checks and smoke tests
-3. Gradually shift traffic: 10% → 50% → 100%
-4. Monitor error rates and latency
-5. Rollback if issues detected
-6. Decommission Blue when stable
+1. Deploy new revision (receives 0 % traffic by default when using Terraform)
+2. Run health checks and smoke tests against the new revision URL
+3. Shift traffic gradually: 10 % → 50 % → 100 % via Terraform traffic block
+4. Monitor error rates and P95 latency during the shift
+5. Roll back by redirecting 100 % traffic back to the previous revision
 ```
 
-### Canary Deployment
-
-```
-┌─────────────────────────────────────────────────────────┐
-│              Load Balancer (Weighted)                   │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-            ┌─────────┴─────────┬──────────────┐
-            │                   │              │
-          95%                  5%            0%
-            │                   │              │
-            ▼                   ▼              ▼
-      ┌──────────┐        ┌──────────┐  ┌──────────┐
-      │ Stable   │        │  Canary  │  │  Backup  │
-      │ (v1.0.0) │        │ (v1.1.0) │  │ (v0.9.0) │
-      │          │        │          │  │          │
-      │ 19 pods  │        │  1 pod   │  │  0 pods  │
-      └──────────┘        └──────────┘  └──────────┘
-
-1. Deploy canary with 5% traffic
-2. Monitor metrics for 30 minutes
-3. If healthy, increase to 25%
-4. Monitor for 1 hour
-5. If healthy, increase to 100%
-6. Decommission old version
-```
-
-## Architecture Decision Records (ADRs)
-
-### ADR Summary
-
-Created comprehensive ADR documents in memory with the following key decisions:
-
-1. **Component Architecture**: Layered architecture with clear separation between MCP protocol, business logic, and BigQuery client
-2. **Security**: Workload Identity Federation for keyless authentication, IAM-based authorization
-3. **Data Flow**: Request validation → Authentication → Authorization → Query execution → Response formatting
-4. **Error Handling**: Retry with exponential backoff, circuit breaker pattern, graceful degradation
-5. **Observability**: OpenTelemetry for metrics and traces, Winston for structured logging
-6. **Scalability**: Horizontal auto-scaling, multi-level caching, connection pooling, rate limiting
-
-## Next Steps
-
-The architecture documentation is complete. Key deliverables:
-
-1. ✅ System Overview with component diagrams
-2. ✅ Component Architecture (C4 Level 2)
-3. ✅ Data Flow Diagrams for all major operations
-4. ✅ Security Architecture with WIF integration
-5. ✅ Error Handling Strategy with retry patterns
-6. ✅ Observability Design with logs, metrics, traces
-7. ✅ Scalability Patterns for horizontal scaling
-
-All architectural decisions have been documented and stored in memory for cross-team coordination.
+Terraform manages traffic weight via the `traffic` block in the Cloud Run service resource. No
+external load balancer reconfiguration is needed for a basic revision rollout.

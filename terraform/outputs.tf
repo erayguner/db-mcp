@@ -1,122 +1,108 @@
-# Workload Identity Federation Outputs
+# --- Workload Identity Federation ---
 output "workload_identity_pool_id" {
-  description = "The ID of the Workload Identity Pool"
+  description = "Workload Identity Pool ID"
   value       = module.workload_identity_federation.pool_id
 }
 
 output "workload_identity_pool_name" {
-  description = "The name of the Workload Identity Pool"
+  description = "Workload Identity Pool resource name"
   value       = module.workload_identity_federation.pool_name
 }
 
 output "workspace_provider_id" {
-  description = "The ID of the Google Workspace OIDC provider"
+  description = "Google Workspace OIDC provider ID"
   value       = module.workload_identity_federation.workspace_provider_id
 }
 
 output "github_provider_id" {
-  description = "The ID of the GitHub Actions OIDC provider"
+  description = "GitHub Actions OIDC provider ID"
   value       = module.workload_identity_federation.github_provider_id
 }
 
 output "workspace_provider_name" {
-  description = "The name of the Google Workspace OIDC provider"
+  description = "Google Workspace OIDC provider name"
   value       = module.workload_identity_federation.workspace_provider_name
 }
 
-# Service Account Outputs
+# --- Service Accounts ---
 output "mcp_service_account_email" {
-  description = "Email of the MCP server service account"
+  description = "Runtime / deployer SA email"
   value       = module.iam.mcp_service_account_email
 }
 
-output "mcp_service_account_id" {
-  description = "ID of the MCP server service account"
-  value       = module.iam.mcp_service_account_id
-}
-
 output "bigquery_service_account_email" {
-  description = "Email of the BigQuery service account"
+  description = "Data-tier SA email"
   value       = module.iam.bigquery_service_account_email
 }
 
-# BigQuery Outputs
+# --- BigQuery ---
 output "bigquery_dataset_ids" {
   description = "Map of BigQuery dataset IDs"
   value       = module.bigquery.dataset_ids
 }
 
-output "bigquery_dataset_self_links" {
-  description = "Map of BigQuery dataset self links"
-  value       = module.bigquery.dataset_self_links
+output "bigquery_kms_key_id" {
+  description = "KMS key used for BigQuery CMEK"
+  value       = module.bigquery.kms_key_id
 }
 
-# Cloud Run Outputs
+# --- Cloud Run ---
 output "cloud_run_service_url" {
-  description = "URL of the Cloud Run service"
+  description = "Primary Cloud Run service URL"
   value       = module.cloud_run.service_url
-  sensitive   = false
 }
 
 output "cloud_run_service_name" {
-  description = "Name of the Cloud Run service"
+  description = "Primary Cloud Run service name"
   value       = module.cloud_run.service_name
 }
 
-output "cloud_run_service_id" {
-  description = "ID of the Cloud Run service"
-  value       = module.cloud_run.service_id
+output "cloud_run_dr_service_url" {
+  description = "DR Cloud Run service URL (null when DR disabled)"
+  value       = try(module.cloud_run_dr[0].service_url, null)
 }
 
-# Networking Outputs
+output "tenant_config_secret_id" {
+  description = "Secret Manager secret ID for tenant configuration"
+  value       = module.cloud_run.tenant_config_secret_id
+}
+
+# --- Artifact Registry ---
+output "artifact_registry_repository" {
+  description = "Artifact Registry repository path"
+  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.db_mcp.repository_id}"
+}
+
+# --- Networking ---
 output "vpc_id" {
-  description = "ID of the VPC network"
+  description = "Primary VPC network ID"
   value       = module.networking.vpc_id
 }
 
-output "vpc_connector_id" {
-  description = "ID of the VPC Serverless Connector"
-  value       = module.networking.vpc_connector_id
-}
-
 output "cloud_armor_policy_id" {
-  description = "ID of the Cloud Armor security policy"
+  description = "Cloud Armor policy ID"
   value       = module.networking.cloud_armor_policy_id
 }
 
-# Monitoring Outputs
+output "global_lb_ip_address" {
+  description = "Global external ALB IP address (null when LB disabled)"
+  value       = module.cloud_run.global_ip_address
+}
+
+# --- Binary Authorization ---
+output "cosign_kms_key" {
+  description = "KMS key URI for cosign signing (use with: cosign sign --key gcpkms://...)"
+  value       = "gcpkms://${google_kms_crypto_key.cosign.id}"
+}
+
+# --- Audit ---
+output "audit_log_bucket" {
+  description = "Cloud Logging bucket retaining audit logs for 7 years"
+  value       = google_logging_project_bucket_config.audit_7yr.id
+}
+
+# --- Monitoring ---
 output "monitoring_dashboard_url" {
-  description = "URL of the Cloud Monitoring dashboard"
+  description = "Cloud Monitoring dashboard URL"
   value       = module.monitoring.dashboard_url
-}
-
-output "alert_policy_ids" {
-  description = "List of alert policy IDs"
-  value       = module.monitoring.alert_policy_ids
-}
-
-# Authentication Instructions
-output "authentication_instructions" {
-  description = "Instructions for authenticating with Workload Identity Federation"
-  value       = <<-EOT
-    # Authenticate using Workload Identity Federation
-
-    ## Google Workspace Users:
-    gcloud auth login --enable-gdrive-access
-    gcloud config set project ${var.project_id}
-
-    ## GitHub Actions:
-    Use the following in your workflow:
-
-    - uses: google-github-actions/auth@v2
-      with:
-        workload_identity_provider: ${module.workload_identity_federation.workspace_provider_name}
-        service_account: ${module.iam.mcp_service_account_email}
-
-    ## MCP Server URL:
-    ${module.cloud_run.service_url}
-
-    ## BigQuery Datasets:
-    ${jsonencode(module.bigquery.dataset_ids)}
-  EOT
 }

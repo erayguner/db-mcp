@@ -1,0 +1,82 @@
+# Cloud Deploy delivery pipeline for db-mcp (BigQuery MCP Server).
+# Terraform creates the matching Cloud Run services; this file defines the
+# promotion flow: dev → staging → prod (canary).
+#
+# Apply once with:
+#   gcloud deploy apply --file=clouddeploy.yaml --region=europe-west2 --project=<PROJECT_ID>
+#
+# IAM required by the GitHub Actions SA:
+#   roles/clouddeploy.releaser   (create releases)
+# IAM required by the Cloud Deploy SA (default: <PROJECT_NUMBER>-compute@developer.gserviceaccount.com):
+#   roles/run.developer          (deploy Cloud Run revisions)
+#   roles/iam.serviceAccountUser (act-as the Cloud Run service SA)
+
+apiVersion: deploy.cloud.google.com/v1
+kind: DeliveryPipeline
+metadata:
+  name: db-mcp
+  labels:
+    app: mcp-bigquery-server
+  annotations:
+    description: "Progressive delivery pipeline for the BigQuery MCP Server"
+serialPipeline:
+  stages:
+    - targetId: db-mcp-dev
+      profiles: [dev]
+
+    - targetId: db-mcp-staging
+      profiles: [staging]
+
+    - targetId: db-mcp-prod
+      profiles: [prod]
+      strategy:
+        canary:
+          runtimeConfig:
+            cloudRun:
+              automaticTrafficControl: true
+          canaryDeployment:
+            percentages: [25, 50, 100]
+            verify: false
+            predeploy:
+              actions: []
+            postdeploy:
+              actions: []
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: db-mcp-dev
+  labels:
+    env: dev
+  annotations:
+    description: "Development Cloud Run service — auto-promoted on every release"
+run:
+  location: projects/PROJECT_ID/locations/europe-west2
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: db-mcp-staging
+  labels:
+    env: staging
+  annotations:
+    description: "Staging Cloud Run service — requires manual promotion from dev"
+requireApproval: false
+run:
+  location: projects/PROJECT_ID/locations/europe-west2
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: db-mcp-prod
+  labels:
+    env: prod
+  annotations:
+    description: "Production Cloud Run service — canary 25/50/100 with auto-rollback"
+# Production promotions require a human approval gate in the Cloud Deploy UI / API.
+requireApproval: true
+run:
+  location: projects/PROJECT_ID/locations/europe-west2

@@ -658,7 +658,7 @@ export class MCPBigQueryServer {
     }
 
     // ==========================================
-    // List Resource Templates Handler (MCP 2025-06-18)
+    // List Resource Templates Handler (MCP 2025-11-25)
     // ==========================================
     try {
       server.setRequestHandler(ListResourceTemplatesRequestSchema, () => {

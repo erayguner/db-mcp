@@ -241,12 +241,22 @@ export class StreamableHttpTransport {
     });
 
     // --- CORS ---
+    // MCP spec 2025-11-25 §6.4: reject disallowed origins with HTTP 403.
+    // When no corsOrigins are configured all origins are permitted (open mode).
     app.use((req: Request, res: Response, next: NextFunction) => {
       const origin = req.headers.origin;
-      if (
-        origin &&
-        (this.config.corsOrigins.includes('*') || this.config.corsOrigins.includes(origin))
-      ) {
+      if (origin && this.config.corsOrigins.length > 0) {
+        const allowed =
+          this.config.corsOrigins.includes('*') || this.config.corsOrigins.includes(origin);
+        if (!allowed) {
+          res.status(403).json({
+            error: 'forbidden',
+            error_description: 'Origin not allowed by CORS policy',
+          });
+          return;
+        }
+      }
+      if (origin) {
         res.setHeader('Access-Control-Allow-Origin', origin);
         res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -299,14 +309,21 @@ export class StreamableHttpTransport {
    * Register all HTTP routes on the given Express app.
    */
   private registerRoutes(app: express.Application): void {
-    // Health / readiness probes
-    app.get('/health', (_req: Request, res: Response) => {
+    // Health / readiness probes + deployment-probe aliases.
+    // /health and /health/live both return the liveness payload (full+live).
+    // /readiness and /health/ready both return the readiness payload.
+    // This satisfies all probe configurations used by Terraform and Cloud Run.
+    const handleHealth = (_req: Request, res: Response): void => {
       res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-    });
-
-    app.get('/readiness', (_req: Request, res: Response) => {
+    };
+    const handleReadiness = (_req: Request, res: Response): void => {
       res.json({ ready: true, timestamp: new Date().toISOString() });
-    });
+    };
+
+    app.get('/health', handleHealth);
+    app.get('/health/live', handleHealth);
+    app.get('/readiness', handleReadiness);
+    app.get('/health/ready', handleReadiness);
 
     // Prometheus metrics
     app.get('/metrics', (_req: Request, res: Response) => {
@@ -338,7 +355,7 @@ export class StreamableHttpTransport {
       this.handleSseConnect(req, res);
     });
 
-    const endpoints = ['/health', '/readiness', '/metrics', 'POST /mcp'];
+    const endpoints = ['/health', '/health/live', '/readiness', '/health/ready', '/metrics', 'POST /mcp'];
     if (this.config.oauthMetadata) {
       endpoints.push(
         'GET /.well-known/oauth-authorization-server',
@@ -364,7 +381,7 @@ export class StreamableHttpTransport {
    * - `/.well-known/oauth-authorization-server` (RFC 8414)
    * - `/.well-known/oauth-protected-resource`   (RFC 9728)
    *
-   * Required by MCP 2025-06-18 auth flow and by Gemini Enterprise custom MCP
+   * Required by MCP 2025-11-25 auth flow and by Gemini Enterprise custom MCP
    * connector registration.
    */
   private registerOAuthDiscoveryRoutes(app: express.Application): void {
@@ -393,7 +410,7 @@ export class StreamableHttpTransport {
   }
 
   /**
-   * Emit an RFC 6750 / MCP 2025-06-18-compliant 401 response.
+   * Emit an RFC 6750 / MCP 2025-11-25-compliant 401 response.
    *
    * Sets `WWW-Authenticate: Bearer ... resource_metadata="..."` so MCP clients
    * can discover the bound authorization server.

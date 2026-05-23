@@ -28,7 +28,12 @@ output "bigquery_service_account_name" {
   value       = google_service_account.bigquery.name
 }
 
-output "custom_role_id" {
-  description = "ID of the custom BigQuery IAM role"
-  value       = google_project_iam_custom_role.bigquery_mcp_role.id
+output "deny_policy_id" {
+  description = "Deny policy ID (null when disabled)"
+  value       = var.enable_deny_policies ? google_iam_deny_policy.bq_sa_no_writes[0].id : null
+}
+
+output "pab_policy_id" {
+  description = "PAB policy ID (null when no organization_id)"
+  value       = var.organization_id != "" ? google_iam_principal_access_boundary_policy.home_project_only[0].id : null
 }

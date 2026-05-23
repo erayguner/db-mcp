@@ -65,19 +65,34 @@ interface HttpModelArmorOptions {
   projectId: string;
   location: string;
   templateId: string;
+  /**
+   * When 'fail-closed', an unreachable API blocks the request.
+   * When 'fail-open' (default), a warning is logged and the request proceeds.
+   */
+  onError?: 'fail-open' | 'fail-closed';
   fallback?: ModelArmorProvider;
   endpoint?: string;
 }
 
 /**
- * Calls the Model Armor REST API using ADC from google-auth-library.
- * Endpoint shape: https://modelarmor.{location}.rep.googleapis.com/v1/
- *                 projects/{project}/locations/{location}/templates/{template}:sanitizeUserPrompt
+ * Calls the Google Cloud Model Armor REST API using ADC from google-auth-library.
+ *
+ * Endpoint: https://modelarmor.{location}.rep.googleapis.com/v1/
+ *           projects/{project}/locations/{location}/templates/{template}:sanitizeUserPrompt
+ *
+ * Graceful degradation is controlled by `onError`:
+ *   - 'fail-open'  (default) — logs a warning and allows the request through.
+ *   - 'fail-closed'          — returns a block verdict so the request is denied.
+ *
+ * Human follow-up: the Model Armor template must be created in GCP before
+ * enabling MODEL_ARMOR_ENABLED=true.  Template format:
+ *   projects/{project}/locations/{location}/templates/{template}
  */
 export class HttpModelArmorProvider implements ModelArmorProvider {
   private readonly auth: GoogleAuth;
   private readonly resource: string;
   private readonly endpoint: string;
+  private readonly onError: 'fail-open' | 'fail-closed';
   private readonly fallback: ModelArmorProvider;
 
   constructor(opts: HttpModelArmorOptions) {
@@ -85,6 +100,7 @@ export class HttpModelArmorProvider implements ModelArmorProvider {
     this.resource = `projects/${opts.projectId}/locations/${opts.location}/templates/${opts.templateId}`;
     this.endpoint = opts.endpoint
       ?? `https://modelarmor.${opts.location}.rep.googleapis.com`;
+    this.onError = opts.onError ?? 'fail-open';
     this.fallback = opts.fallback ?? new HeuristicModelArmorProvider();
   }
 
@@ -100,8 +116,21 @@ export class HttpModelArmorProvider implements ModelArmorProvider {
 
       return interpretSanitizeResponse(response.data, metadata);
     } catch (err) {
-      logger.warn('Model Armor upstream failed; falling back to heuristics', {
-        error: err instanceof Error ? err.message : String(err),
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (this.onError === 'fail-closed') {
+        logger.error('Model Armor upstream failed; fail-closed — blocking request', {
+          error: errMsg,
+          ...metadata,
+        });
+        return {
+          verdict: 'block',
+          reason: 'Model Armor API unreachable (fail-closed policy)',
+          degraded: true,
+        };
+      }
+      // fail-open: log warning, apply heuristic fallback, mark as degraded
+      logger.warn('Model Armor upstream failed; fail-open — falling back to heuristics', {
+        error: errMsg,
         ...metadata,
       });
       const fallbackResult = await this.fallback.screenUserPrompt(text, metadata);
@@ -140,17 +169,46 @@ function interpretSanitizeResponse(
 
 /**
  * Factory — builds a provider from environment config.
- * MODEL_ARMOR_TEMPLATE=projects/{p}/locations/{l}/templates/{t} enables live mode.
+ *
+ * Env vars (all defined in src/config/environment.ts):
+ *   MODEL_ARMOR_ENABLED   — must be 'true' to activate live API screening
+ *   MODEL_ARMOR_TEMPLATE  — full resource name (projects/…/locations/…/templates/…)
+ *   MODEL_ARMOR_LOCATION  — region override (default: europe-west2)
+ *   MODEL_ARMOR_ON_ERROR  — 'fail-open' (default) | 'fail-closed'
+ *
+ * HUMAN FOLLOW-UP: Create the Model Armor template in GCP before setting
+ * MODEL_ARMOR_ENABLED=true.  See:
+ * https://cloud.google.com/security/ai/docs/model-armor/create-templates
  */
 export function createModelArmorProvider(env: NodeJS.ProcessEnv = process.env): ModelArmorProvider {
+  const enabled = (env.MODEL_ARMOR_ENABLED ?? '').toLowerCase() === 'true';
+  if (!enabled) {
+    // Feature flag off — use heuristic screen so offline envs still get
+    // basic protection without any GCP dependency.
+    return new HeuristicModelArmorProvider();
+  }
+
   const template = env.MODEL_ARMOR_TEMPLATE;
-  if (!template) return new NoopModelArmorProvider();
+  if (!template) {
+    logger.error(
+      'MODEL_ARMOR_ENABLED=true but MODEL_ARMOR_TEMPLATE is not set; ' +
+      'falling back to heuristics'
+    );
+    return new HeuristicModelArmorProvider();
+  }
 
   const match = /^projects\/([^/]+)\/locations\/([^/]+)\/templates\/([^/]+)$/.exec(template);
   if (!match) {
-    logger.error('Invalid MODEL_ARMOR_TEMPLATE; expected projects/{p}/locations/{l}/templates/{t}', { template });
+    logger.error(
+      'Invalid MODEL_ARMOR_TEMPLATE; expected projects/{p}/locations/{l}/templates/{t}',
+      { template }
+    );
     return new HeuristicModelArmorProvider();
   }
+
   const [, projectId, location, templateId] = match;
-  return new HttpModelArmorProvider({ projectId, location, templateId });
+  const onError = (env.MODEL_ARMOR_ON_ERROR ?? 'fail-open') as 'fail-open' | 'fail-closed';
+
+  logger.info('Model Armor enabled', { projectId, location, templateId, onError });
+  return new HttpModelArmorProvider({ projectId, location, templateId, onError });
 }
