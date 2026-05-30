@@ -192,10 +192,13 @@ export class MCPServerFactory extends EventEmitter {
         return new StdioServerTransport();
 
       case 'http':
-        // HTTP transport is handled externally by HttpTransportServer.
-        // Return a no-op transport that satisfies the interface for init.
-        logger.info('HTTP transport selected — server will be connected externally');
-        return new StdioServerTransport(); // placeholder; overridden by HttpTransportServer
+        // HTTP is served by StreamableHttpTransport (owned by MCPBigQueryServer),
+        // not via the SDK Server message pump. start() must not call this for
+        // 'http'; throwing here surfaces any accidental misuse.
+        throw new ServerFactoryError(
+          'HTTP transport is managed externally by StreamableHttpTransport',
+          'HTTP_TRANSPORT_EXTERNAL'
+        );
 
       case 'sse':
       case 'websocket':
@@ -225,11 +228,16 @@ export class MCPServerFactory extends EventEmitter {
     try {
       this.setState(ServerState.RUNNING);
 
-      // Create transport
-      this.transport = this.createTransport();
-
-      // Connect server to transport
-      await this.server.connect(this.transport);
+      // For HTTP, the listener is owned externally by StreamableHttpTransport
+      // (see MCPBigQueryServer). The factory only manages lifecycle/health in
+      // that mode and must NOT open a stdio transport.
+      if (this.config.transport === 'http') {
+        logger.info('HTTP transport is managed externally; factory will not open a transport');
+      } else {
+        // Create transport and connect server to it
+        this.transport = this.createTransport();
+        await this.server.connect(this.transport);
+      }
 
       // Register shutdown handlers
       this.registerShutdownHandlers();

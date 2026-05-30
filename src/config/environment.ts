@@ -54,6 +54,30 @@ export const EnvironmentSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('true'),
+  /**
+   * Tenant resolved when an authenticated principal matches no tenant
+   * subject pattern. Must exist in the tenant registry.
+   */
+  DEFAULT_TENANT_ID: z.string().default('default'),
+
+  // Authentication (HTTP transport only)
+  /**
+   * When 'false', the HTTP transport accepts unauthenticated requests even if
+   * an OIDC issuer is configured (local development only). Defaults to true:
+   * if OIDC is configured, a valid Bearer token is required.
+   */
+  MCP_AUTH_REQUIRED: z
+    .string()
+    .transform((v) => v !== 'false')
+    .default('true'),
+  /**
+   * OIDC issuer / audience used to verify inbound Bearer tokens when the
+   * OAUTH_* metadata env vars are not set. Leave empty to disable OIDC
+   * verification (the server then logs a prominent warning at startup).
+   */
+  OIDC_ISSUER: z.string().default(''),
+  OIDC_AUDIENCE: z.string().default(''),
+  OIDC_JWKS_URI: z.string().default(''),
 
   // Model Armor
   /**

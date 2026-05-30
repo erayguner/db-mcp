@@ -34,6 +34,12 @@ export const HttpTransportConfigSchema = z.object({
   enableCompression: z.boolean().default(true),
   maxRequestBodyBytes: z.number().int().positive().default(1_048_576),
   /**
+   * Allow-list of acceptable `Host` header values (host[:port]). When non-empty,
+   * requests with any other Host are rejected with 403 — a DNS-rebinding defense
+   * (cf. the MCP HTTP SDK CVE class, e.g. CVE-2025-66414). Empty = disabled.
+   */
+  allowedHosts: z.array(z.string()).default([]),
+  /**
    * When `true`, GET /mcp returns 405 instead of opening an SSE stream.
    * Required by Gemini Enterprise custom MCP connectors, which only support
    * Streamable HTTP and explicitly reject SSE.
@@ -50,6 +56,7 @@ export interface HttpTransportConfig {
   port: number;
   host: string;
   corsOrigins: string[];
+  allowedHosts: string[];
   enableCompression: boolean;
   maxRequestBodyBytes: number;
   strictStreamableHttp: boolean;
@@ -61,6 +68,10 @@ const DEFAULT_CONFIG: HttpTransportConfig = {
   port: 8080,
   host: '0.0.0.0',
   corsOrigins: [],
+  allowedHosts: (process.env.MCP_ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean),
   enableCompression: true,
   maxRequestBodyBytes: 1_048_576, // 1 MiB
   strictStreamableHttp: process.env.MCP_TRANSPORT_STRICT === 'streamable',
@@ -75,6 +86,42 @@ export interface TransportMetrics {
   totalRequests: number;
   totalErrors: number;
 }
+
+/**
+ * Opaque per-request context produced by the {@link AuthResolver} and passed
+ * to the JSON-RPC handler. Kept structurally loose so the transport stays
+ * decoupled from the auth/tenancy modules (the handler casts as needed).
+ */
+export interface McpRequestContext {
+  principal?: unknown;
+  tenantContext?: unknown;
+}
+
+/**
+ * JSON-RPC request handler. Receives the validated request plus the optional
+ * authenticated context resolved for the connection.
+ */
+export type JsonRpcHandler = (
+  request: JsonRpcRequest,
+  context?: McpRequestContext
+) => Promise<JsonRpcResponse>;
+
+/**
+ * Outcome of authenticating/authorizing an inbound HTTP request.
+ * `context` is forwarded to the handler only when `authorized` is true.
+ */
+export interface AuthResolution {
+  authorized: boolean;
+  error?: string;
+  errorCode?: string;
+  context?: McpRequestContext;
+}
+
+/**
+ * Resolves authentication + tenant context from request headers. Returning
+ * `{ authorized: false }` causes an RFC 6750 / MCP 2025-11-25 401 response.
+ */
+export type AuthResolver = (headers: Record<string, string | undefined>) => Promise<AuthResolution>;
 
 /**
  * Represents a connected SSE client.
@@ -99,7 +146,8 @@ interface SseClient {
  */
 export class StreamableHttpTransport {
   private readonly config: HttpTransportConfig;
-  private readonly handler: (request: JsonRpcRequest) => Promise<JsonRpcResponse>;
+  private readonly handler: JsonRpcHandler;
+  private readonly authResolver?: AuthResolver;
   private readonly app: express.Application;
   private server: HttpServer | null = null;
   private sseClients: Map<string, SseClient> = new Map();
@@ -110,11 +158,13 @@ export class StreamableHttpTransport {
   private totalErrors = 0;
 
   constructor(
-    handler: (request: JsonRpcRequest) => Promise<JsonRpcResponse>,
-    config?: Partial<HttpTransportConfig>
+    handler: JsonRpcHandler,
+    config?: Partial<HttpTransportConfig>,
+    authResolver?: AuthResolver
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.handler = handler;
+    this.authResolver = authResolver;
     this.app = this.buildApp();
   }
 
@@ -237,6 +287,23 @@ export class StreamableHttpTransport {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('X-Frame-Options', 'DENY');
       res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+      next();
+    });
+
+    // --- Host allow-list (DNS-rebinding protection) ---
+    // When MCP_ALLOWED_HOSTS is configured, reject requests whose Host header
+    // is not allow-listed. Mitigates the MCP HTTP DNS-rebinding CVE class.
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (this.config.allowedHosts.length > 0) {
+        const host = (req.headers.host ?? '').toLowerCase();
+        if (!this.config.allowedHosts.includes(host)) {
+          res.status(403).json({
+            error: 'forbidden',
+            error_description: 'Host header not allowed',
+          });
+          return;
+        }
+      }
       next();
     });
 
@@ -476,19 +543,59 @@ export class StreamableHttpTransport {
       return;
     }
 
+    // Authentication / tenant resolution (when an auth resolver is wired).
+    // The resolved context is forwarded to the handler so tool execution can
+    // enforce per-tenant policy. The inbound token is never forwarded
+    // downstream to BigQuery (no token passthrough).
+    let context: McpRequestContext | undefined;
+    if (this.authResolver) {
+      let resolution: AuthResolution;
+      try {
+        resolution = await this.authResolver(req.headers as Record<string, string | undefined>);
+      } catch (err) {
+        this.totalErrors++;
+        logger.error('Auth resolver threw', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        this.sendUnauthorized(res, {
+          error: 'invalid_token',
+          errorDescription: 'Authentication failed',
+        });
+        return;
+      }
+      if (!resolution.authorized) {
+        this.totalErrors++;
+        this.sendUnauthorized(res, {
+          error: resolution.errorCode ?? 'invalid_token',
+          errorDescription: resolution.error,
+        });
+        return;
+      }
+      context = resolution.context;
+    }
+
     try {
       let responses: JsonRpcResponse[];
 
       if (isBatchRequest(req.body)) {
-        responses = await processBatch(validation.requests, this.handler);
+        responses = await processBatch(validation.requests, (r) => this.handler(r, context));
       } else {
         // Single request — still use the first validated request
-        const single = await this.handler(validation.requests[0]);
+        const single = await this.handler(validation.requests[0], context);
         responses = [single];
       }
 
+      // JSON-RPC: notifications (requests without an `id`) get no response.
+      // MCP Streamable HTTP: a POST consisting solely of notifications/responses
+      // is acknowledged with 202 Accepted and an empty body.
+      const answerable = responses.filter((r) => r.id !== undefined);
+      if (answerable.length === 0) {
+        res.status(202).end();
+        return;
+      }
+
       // If the incoming body was a single object, return a single response.
-      const body = isBatchRequest(req.body) ? responses : responses[0];
+      const body = isBatchRequest(req.body) ? answerable : answerable[0];
       const serialized = JSON.stringify(body);
 
       // Optional gzip compression
