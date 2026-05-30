@@ -84,8 +84,26 @@ resource "google_bigquery_dataset" "datasets" {
 }
 
 # Dataset IAM Bindings
-resource "google_bigquery_dataset_iam_member" "service_account_data_editor" {
+#
+# READ-ONLY BY DEFAULT (least privilege): the runtime SA gets dataViewer +
+# user. The dataEditor grant is opt-in via var.grant_data_editor because write
+# access contradicts the read-only MCP design. Writes should be enabled
+# explicitly, per tenant/dataset, never blanket-on.
+
+# Read-only data access (always granted) — lets the SA read tables/views.
+resource "google_bigquery_dataset_iam_member" "service_account_data_viewer" {
   for_each = google_bigquery_dataset.datasets
+
+  project    = var.project_id
+  dataset_id = each.value.dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${var.service_account}"
+}
+
+# Write access (OPT-IN). Gated on grant_data_editor (default false) so existing
+# read-only deployments are unaffected. Enable only where writes are required.
+resource "google_bigquery_dataset_iam_member" "service_account_data_editor" {
+  for_each = var.grant_data_editor ? google_bigquery_dataset.datasets : {}
 
   project    = var.project_id
   dataset_id = each.value.dataset_id
@@ -93,6 +111,7 @@ resource "google_bigquery_dataset_iam_member" "service_account_data_editor" {
   member     = "serviceAccount:${var.service_account}"
 }
 
+# Job/query execution capability (run queries, no implicit data write).
 resource "google_bigquery_dataset_iam_member" "service_account_user" {
   for_each = google_bigquery_dataset.datasets
 

@@ -365,6 +365,65 @@
             }]
           }
         }
+      },
+      {
+        "yPos": 23,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Tool-Call Volume (by tenant / tool)",
+          "xyChart": {
+            "dataSets": [{
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${service_name}\" metric.type=\"logging.googleapis.com/user/mcp_bigquery_tool_calls_${environment}\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "groupByFields": ["metric.label.tenant_id", "metric.label.tool_name"]
+                  }
+                }
+              },
+              "plotType": "STACKED_BAR",
+              "targetAxis": "Y1"
+            }],
+            "yAxis": {
+              "label": "Calls/sec",
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 23,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Token Usage (by tenant)",
+          "xyChart": {
+            "dataSets": [{
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${service_name}\" metric.type=\"logging.googleapis.com/user/mcp_bigquery_token_usage_${environment}\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "groupByFields": ["metric.label.tenant_id"]
+                  }
+                }
+              },
+              "plotType": "LINE",
+              "targetAxis": "Y1"
+            }],
+            "yAxis": {
+              "label": "Tokens/sec",
+              "scale": "LINEAR"
+            }
+          }
+        }
       }
     ]
   }

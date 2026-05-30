@@ -48,6 +48,7 @@
     "@opentelemetry/semantic-conventions": "^1.40.0",
     "dotenv": "^17.4.0",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
     "google-auth-library": "^10.6.2",
     "jose": "^6.2.2",
     "winston": "^3.19.0",

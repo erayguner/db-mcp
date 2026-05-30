@@ -127,6 +127,18 @@ variable "tenant_config_initial_content" {
   sensitive   = true
 }
 
+variable "extra_env_vars" {
+  description = <<-EOT
+    Additional plain (non-secret) environment variables merged into the
+    container env. Optional and defaulted to {} so existing callers are
+    unaffected. Used to wire feature-flagged config (e.g. Model Armor) without
+    changing the module's required inputs. Keys here override the module's
+    built-in defaults on collision.
+  EOT
+  type        = map(string)
+  default     = {}
+}
+
 # --- IAP (applied to the global external ALB backend) ---
 variable "iap_client_id" {
   description = "IAP OAuth2 client ID (enables IAP on the ALB backend when set)"

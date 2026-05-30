@@ -43,6 +43,12 @@ resource "google_project_service" "required_apis" {
     "datacatalog.googleapis.com",
     "accesscontextmanager.googleapis.com",
     "modelarmor.googleapis.com",
+    # Automation / HITL (R17/R18). Harmless when enable_automation = false;
+    # enabling an API does not create billable resources.
+    "pubsub.googleapis.com",
+    "workflows.googleapis.com",
+    "workflowexecutions.googleapis.com",
+    "aiplatform.googleapis.com",
   ])
 
   project            = var.project_id
@@ -100,6 +106,9 @@ module "bigquery" {
   enable_policy_tags      = var.enable_policy_tags
   authorized_views        = var.authorized_views
 
+  # Read-only by default. Set true only for datasets that must accept writes.
+  grant_data_editor = var.grant_data_editor
+
   depends_on = [module.iam]
 }
 
@@ -123,8 +132,35 @@ module "networking" {
 
   enable_vpc_service_controls  = var.enable_vpc_service_controls
   access_policy_name           = var.access_policy_name
+  enforce_perimeter            = var.enforce_perimeter
   vpc_sc_egress_to_projects    = var.vpc_sc_egress_to_projects
   vpc_sc_ingress_from_projects = var.vpc_sc_ingress_from_projects
+
+  # Scope the IAM-role-based egress example to the MCP runtime SA (BigQuery +
+  # Vertex AI). Empty disables that example rule.
+  vpc_sc_runtime_service_account = module.iam.mcp_service_account_email
+
+  depends_on = [google_project_service.required_apis, module.iam]
+}
+
+# --- Model Armor (feature-flagged; default off) ---
+# Screens LLM prompts/responses before BigQuery. The template lives in
+# google-beta; the app calls it at runtime via the MODEL_ARMOR_* env vars wired
+# into the Cloud Run module below.
+module "model_armor" {
+  source = "./modules/model-armor"
+  count  = var.enable_model_armor ? 1 : 0
+
+  providers = {
+    google-beta = google-beta
+  }
+
+  project_id  = var.project_id
+  location    = var.model_armor_location
+  environment = var.environment
+
+  enforcement_type     = var.model_armor_enforcement_type
+  enable_floor_setting = var.model_armor_enable_floor_setting
 
   depends_on = [google_project_service.required_apis]
 }
@@ -170,6 +206,17 @@ module "cloud_run" {
   # Multi-region DR: attach the DR region's NEG when enabled (see dr.tf).
   dr_neg_id = try(module.cloud_run_dr[0].neg_id, "")
 
+  # Feature-flagged Model Armor wiring. When enable_model_armor=false this is an
+  # empty map, leaving the container env unchanged. MODEL_ARMOR_FILTER_VERSION
+  # is passed for forward-compat: the template has no filter-version field
+  # (set at runtime by the service), so the app selects "v3"/Latest via env.
+  extra_env_vars = var.enable_model_armor ? {
+    MODEL_ARMOR_ENABLED        = "true"
+    MODEL_ARMOR_TEMPLATE       = module.model_armor[0].template_resource
+    MODEL_ARMOR_LOCATION       = var.model_armor_location
+    MODEL_ARMOR_FILTER_VERSION = var.model_armor_filter_version
+  } : {}
+
   depends_on = [module.iam, module.networking]
 }
 
@@ -186,5 +233,26 @@ module "monitoring" {
   slack_webhook_url     = var.notification_channels.slack_webhook_url
   pagerduty_service_key = var.notification_channels.pagerduty_service_key
 
+  enable_alerts = var.enable_alerts
+
   depends_on = [module.cloud_run]
+}
+
+# --- Automation / HITL (R17/R18; feature-flagged, default off) ---
+# Event-driven remediation pipeline with human-in-the-loop approval. Nothing is
+# created unless enable_automation = true.
+module "automation" {
+  source = "./modules/automation"
+  count  = var.enable_automation ? 1 : 0
+
+  project_id  = var.project_id
+  region      = var.region
+  environment = var.environment
+
+  worker_image            = var.automation_worker_image
+  worker_instance_count   = var.automation_worker_instance_count
+  enable_ai_inference_smt = var.automation_enable_ai_inference_smt
+  ai_inference_endpoint   = var.automation_ai_inference_endpoint
+
+  depends_on = [google_project_service.required_apis]
 }

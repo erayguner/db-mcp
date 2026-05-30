@@ -36,7 +36,11 @@ import { initializeTelemetry, shutdownTelemetry } from './telemetry/index.js';
 import { recordRequest, recordToolCall, trackConnection } from './telemetry/metrics.js';
 import { recordException, setSpanAttributes } from './telemetry/tracing.js';
 import { MCPServerFactory, ServerState } from './mcp/server-factory.js';
-import { ToolHandlerFactory, ToolHandlerContext } from './mcp/handlers/tool-handlers.js';
+import {
+  ToolHandlerFactory,
+  ToolHandlerContext,
+  ToolResponse,
+} from './mcp/handlers/tool-handlers.js';
 import { validateToolArgs, ToolName } from './mcp/schemas/tool-schemas.js';
 import { generateToolDefinitions } from './mcp/tools/definitions.js';
 import {
@@ -53,9 +57,28 @@ import { ProgressNotifier } from './mcp/handlers/progress-notifier.js';
 import { BehavioralAnomalyDetector } from './security/anomaly-detector.js';
 import { EffectivenessTracker } from './monitoring/effectiveness-metrics.js';
 import { GracefulDegradationHandler } from './bigquery/graceful-degradation.js';
+import { readFileSync } from 'node:fs';
+import { AuthMiddleware } from './auth/auth-middleware.js';
+import { OIDCAuthenticator, AuthenticatedPrincipal } from './auth/oidc-authenticator.js';
+import { loadOAuthMetadataConfig } from './auth/oauth-metadata.js';
+import { TenantRegistry } from './tenancy/tenant-registry.js';
+import { TenantContextFactory, TenantContext } from './tenancy/tenant-context.js';
+import {
+  StreamableHttpTransport,
+  McpRequestContext,
+  AuthResolver,
+} from './mcp/transports/http-transport.js';
+import {
+  JsonRpcRequest,
+  JsonRpcResponse,
+  JSON_RPC_ERRORS,
+} from './mcp/middleware/batch-handler.js';
 
 /** Server version — single source of truth */
 const SERVER_VERSION = '1.0.0';
+
+/** MCP protocol revision advertised on `initialize` over the HTTP transport. */
+const MCP_PROTOCOL_VERSION = '2025-11-25';
 
 /** Tool descriptions — single source of truth */
 const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -88,6 +111,17 @@ interface HealthCheckEvent {
 interface RequestWithUserId {
   userId?: string;
   [key: string]: unknown;
+}
+
+/**
+ * Input accepted by the shared call-tool pipeline (`callToolHandler`), so the
+ * exact same code path runs for stdio requests and HTTP JSON-RPC requests.
+ * `tenantContext` is populated only on the authenticated HTTP path.
+ */
+interface CallToolInput {
+  params: { name: string; arguments?: unknown };
+  userId?: string;
+  tenantContext?: TenantContext;
 }
 
 /**
@@ -155,6 +189,20 @@ export class MCPBigQueryServer {
   private degradationHandler: GracefulDegradationHandler;
   private modelArmor: ModelArmorProvider;
 
+  // Transport + HTTP auth/tenancy wiring
+  private readonly transportMode: 'stdio' | 'http';
+  private httpTransport: StreamableHttpTransport | null = null;
+  private authMiddleware: AuthMiddleware | null = null;
+  private tenantRegistry: TenantRegistry | null = null;
+  private tenantContextFactory: TenantContextFactory | null = null;
+
+  // Shared request pipelines (assigned in setupHandlers; invoked by both the
+  // stdio SDK request handlers and the HTTP JSON-RPC dispatcher).
+  private callToolHandler!: (request: CallToolInput) => Promise<ToolResponse>;
+  private readResourceHandler!: (request: { params: { uri: string } }) => Promise<{
+    contents: Array<{ uri: string; mimeType: string; text: string }>;
+  }>;
+
   constructor() {
     this.env = getEnvironment();
 
@@ -189,6 +237,7 @@ export class MCPBigQueryServer {
 
     // Determine transport from env
     const transport = process.env.MCP_TRANSPORT === 'http' ? ('http' as const) : ('stdio' as const);
+    this.transportMode = transport;
 
     // Initialize MCP Server Factory with comprehensive config
     this.serverFactory = new MCPServerFactory({
@@ -358,11 +407,6 @@ export class MCPBigQueryServer {
     // ==========================================
     // Call Tool Handler (Factory Pattern)
     // ==========================================
-    interface MCPGenericRequest<Params> {
-      params: Params;
-      userId?: string;
-    }
-
     /**
      * Safely extract userId from request object
      */
@@ -374,9 +418,10 @@ export class MCPBigQueryServer {
       return undefined;
     }
 
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const typedReq = request as MCPGenericRequest<{ name: string; arguments?: unknown }>;
-      const { name, arguments: args } = typedReq.params;
+    // Call-tool pipeline — stored as a field so the identical code path serves
+    // both the stdio request handler (registered below) and the HTTP dispatcher.
+    this.callToolHandler = async (request: CallToolInput): Promise<ToolResponse> => {
+      const { name, arguments: args } = request.params;
       const requestId = crypto.randomUUID();
 
       const requestBytes = args ? JSON.stringify(args).length : 0;
@@ -451,6 +496,38 @@ export class MCPBigQueryServer {
         }
 
         // ==========================================
+        // 1b. Per-tenant tool allow-list (defense-in-depth)
+        // ==========================================
+        const allowedTools = request.tenantContext?.config.allowedTools;
+        if (allowedTools && allowedTools.length > 0 && !allowedTools.includes(name)) {
+          logger.warn('Tool blocked by tenant allow-list', {
+            tool: name,
+            tenant: request.tenantContext?.tenantId,
+            requestId,
+          });
+          recordRequest(name, false, request.tenantContext?.tenantId);
+          stopTimer(false);
+          recordErrorByCode(ErrorCode.SECURITY_VALIDATION_FAILED, name);
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify(
+                  {
+                    error: `Tool "${name}" is not permitted for this tenant`,
+                    code: 'TENANT_TOOL_NOT_ALLOWED',
+                    requestId,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        // ==========================================
         // 2. Ensure BigQuery is initialized
         // ==========================================
         if (!this.bigQueryClient) {
@@ -506,6 +583,9 @@ export class MCPBigQueryServer {
             environment: this.env.NODE_ENV,
           },
           modelArmor: this.modelArmor,
+          // Tenant context is resolved at the HTTP auth boundary and threaded
+          // through here so DatasetPolicy + per-tenant maxBytesBilled enforce.
+          tenantContext: request.tenantContext,
         };
 
         const tenantId = context.tenantContext?.tenantId;
@@ -513,6 +593,11 @@ export class MCPBigQueryServer {
           'tool.name': name,
           'tool.request_id': requestId,
           'tool.has_user_id': !!context.userId,
+          // OpenTelemetry GenAI + MCP semantic conventions (R14) so spans line
+          // up with Cloud Trace agent/MCP dashboards and Observability Analytics.
+          'gen_ai.operation.name': 'execute_tool',
+          'gen_ai.tool.name': name,
+          'mcp.method.name': 'tools/call',
           ...(tenantId ? { 'tenant.id': tenantId } : {}),
         });
 
@@ -590,6 +675,7 @@ export class MCPBigQueryServer {
 
         logger.info('Tool execution completed', {
           tool: name,
+          tenant: tenantId,
           success,
           requestId,
           responseBytes,
@@ -629,7 +715,11 @@ export class MCPBigQueryServer {
       } finally {
         trackConnection(-1);
       }
-    });
+    };
+
+    server.setRequestHandler(CallToolRequestSchema, (request) =>
+      this.callToolHandler(request as CallToolInput)
+    );
 
     // ==========================================
     // List Resources Handler
@@ -721,9 +811,10 @@ export class MCPBigQueryServer {
     // Read Resource Handler
     // ==========================================
     try {
-      server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-        const typedReq = request as MCPGenericRequest<{ uri: string }>;
-        const { uri } = typedReq.params;
+      // Read-resource pipeline — stored as a field so it is reusable from the
+      // HTTP dispatcher as well as the stdio handler registered below.
+      this.readResourceHandler = async (request: { params: { uri: string } }) => {
+        const { uri } = request.params;
 
         logger.info('Handling read_resource request', { uri });
         recordProtocolMethod('read_resource');
@@ -996,12 +1087,234 @@ export class MCPBigQueryServer {
         }
 
         throw new Error(`Unknown resource: ${uri}`);
-      });
+      };
+
+      server.setRequestHandler(ReadResourceRequestSchema, (request) =>
+        this.readResourceHandler(request as { params: { uri: string } })
+      );
     } catch (err) {
       logger.warn('Skipping read_resource handler registration', { error: (err as Error).message });
     }
 
     logger.info('Request handlers configured');
+  }
+
+  /**
+   * Build the OIDC auth middleware and tenant registry/factory for the HTTP
+   * transport. Auth is enforced only when an OIDC issuer is configured (via
+   * OAUTH_* metadata env vars or OIDC_ISSUER/OIDC_AUDIENCE); otherwise the
+   * server logs a prominent warning and serves unauthenticated (dev only).
+   */
+  private setupAuthAndTenancy(): void {
+    // --- Tenant registry + context factory ---
+    this.tenantRegistry = new TenantRegistry();
+    const tenantPath = this.env.TENANT_CONFIG_PATH;
+    try {
+      const yamlContent = readFileSync(tenantPath, 'utf-8');
+      this.tenantRegistry.loadFromYaml(yamlContent);
+      logger.info('Tenant registry loaded', {
+        tenantPath,
+        tenants: this.tenantRegistry.size(),
+      });
+    } catch (error) {
+      logger.warn(
+        'Failed to load tenant config; tenant isolation will use the default tenant only',
+        { tenantPath, error: (error as Error).message }
+      );
+    }
+    this.tenantContextFactory = new TenantContextFactory(
+      this.tenantRegistry,
+      this.env.DEFAULT_TENANT_ID
+    );
+
+    // --- OIDC authentication ---
+    try {
+      const oauthCfg = loadOAuthMetadataConfig();
+      if (oauthCfg) {
+        this.authMiddleware = new AuthMiddleware({
+          oidc: OIDCAuthenticator.configFromOAuthMetadata(oauthCfg),
+          bypassTools: [],
+          requireAuth: this.env.MCP_AUTH_REQUIRED,
+        });
+        // Do not log issuer/audience (CodeQL js/clear-text-logging treats
+        // resolved auth config as sensitive). The method + flag are sufficient.
+        logger.info('HTTP authentication enabled', {
+          method: 'oauth-metadata',
+          requireAuth: this.env.MCP_AUTH_REQUIRED,
+        });
+      } else if (this.env.OIDC_ISSUER && this.env.OIDC_AUDIENCE) {
+        this.authMiddleware = new AuthMiddleware({
+          oidc: {
+            issuer: this.env.OIDC_ISSUER,
+            audience: this.env.OIDC_AUDIENCE,
+            requiredScopes: [],
+            clockToleranceSec: 30,
+            ...(this.env.OIDC_JWKS_URI ? { jwksUri: this.env.OIDC_JWKS_URI } : {}),
+          },
+          bypassTools: [],
+          requireAuth: this.env.MCP_AUTH_REQUIRED,
+        });
+        logger.info('HTTP authentication enabled', {
+          method: 'oidc-env',
+          requireAuth: this.env.MCP_AUTH_REQUIRED,
+        });
+      } else {
+        logger.warn(
+          'HTTP transport starting WITHOUT authentication — set OAUTH_* or ' +
+            'OIDC_ISSUER/OIDC_AUDIENCE to verify inbound Bearer tokens'
+        );
+      }
+    } catch (error) {
+      logger.error(
+        'Failed to initialize OIDC authentication; HTTP transport will be UNAUTHENTICATED',
+        { error: (error as Error).message }
+      );
+      this.authMiddleware = null;
+    }
+  }
+
+  /**
+   * Build the auth resolver passed to the HTTP transport. Verifies the inbound
+   * Bearer token and resolves the tenant context. The inbound token is used
+   * ONLY to authenticate and resolve the tenant — it is NEVER forwarded to
+   * BigQuery (no token passthrough). BigQuery is reached via the service's own
+   * ADC / per-tenant service-account identity.
+   */
+  private buildAuthResolver(): AuthResolver {
+    return async (headers) => {
+      if (!this.authMiddleware) {
+        // No OIDC configured — allow through with no principal/tenant (dev).
+        return { authorized: true };
+      }
+      const result = await this.authMiddleware.authenticate(headers);
+      if (!result.authenticated) {
+        return { authorized: false, error: result.error, errorCode: result.errorCode };
+      }
+      let tenantContext: TenantContext | undefined;
+      if (result.principal && this.tenantContextFactory) {
+        try {
+          tenantContext = this.tenantContextFactory.createContext(result.principal);
+        } catch (error) {
+          return {
+            authorized: false,
+            error: (error as Error).message,
+            errorCode: 'TENANT_RESOLUTION_FAILED',
+          };
+        }
+      }
+      return {
+        authorized: true,
+        context: { principal: result.principal, tenantContext },
+      };
+    };
+  }
+
+  /**
+   * Dispatch a single JSON-RPC request to the matching MCP method (HTTP path).
+   * Mirrors the stdio handlers but threads the authenticated tenant context
+   * into tool execution. Never throws: protocol errors become JSON-RPC error
+   * objects; tool-level errors are returned as tool results with `isError`.
+   */
+  private async dispatch(
+    req: JsonRpcRequest,
+    context?: McpRequestContext
+  ): Promise<JsonRpcResponse> {
+    const ok = (result: unknown): JsonRpcResponse => ({ jsonrpc: '2.0', id: req.id, result });
+    const fail = (code: number, message: string, data?: unknown): JsonRpcResponse => ({
+      jsonrpc: '2.0',
+      id: req.id,
+      error: { code, message, ...(data !== undefined ? { data } : {}) },
+    });
+
+    const params = (req.params ?? {}) as Record<string, unknown>;
+    const principal = context?.principal as AuthenticatedPrincipal | undefined;
+    const tenantContext = context?.tenantContext as TenantContext | undefined;
+
+    try {
+      switch (req.method) {
+        case 'initialize':
+          return ok({
+            protocolVersion:
+              typeof params.protocolVersion === 'string'
+                ? params.protocolVersion
+                : MCP_PROTOCOL_VERSION,
+            capabilities: { tools: {}, resources: {}, prompts: {}, logging: {} },
+            serverInfo: { name: 'gcp-bigquery-mcp-server', version: SERVER_VERSION },
+          });
+
+        case 'ping':
+          return ok({});
+
+        case 'tools/list':
+          return ok({ tools: generateToolDefinitions(this.getToolDescription.bind(this)) });
+
+        case 'tools/call': {
+          const name = typeof params.name === 'string' ? params.name : '';
+          if (!name) return fail(JSON_RPC_ERRORS.INVALID_PARAMS, 'Missing tool name');
+          recordProtocolMethod('call_tool');
+          const result = await this.callToolHandler({
+            params: { name, arguments: params.arguments },
+            ...(principal?.subject ? { userId: principal.subject } : {}),
+            ...(tenantContext ? { tenantContext } : {}),
+          });
+          return ok(result);
+        }
+
+        case 'resources/list':
+          return ok({
+            resources: [
+              {
+                uri: 'bigquery://datasets',
+                name: 'BigQuery Dataset Catalog',
+                description:
+                  'Discoverable catalog of all available BigQuery datasets with descriptions and metadata',
+                mimeType: 'application/json',
+              },
+            ],
+          });
+
+        case 'resources/templates/list':
+          return ok({ resourceTemplates: BIGQUERY_RESOURCE_TEMPLATES });
+
+        case 'resources/read': {
+          const uri = typeof params.uri === 'string' ? params.uri : '';
+          if (!uri) return fail(JSON_RPC_ERRORS.INVALID_PARAMS, 'Missing resource uri');
+          return ok(await this.readResourceHandler({ params: { uri } }));
+        }
+
+        case 'prompts/list':
+          return ok({ prompts: this.promptRegistry.listPrompts() });
+
+        case 'prompts/get': {
+          const name = typeof params.name === 'string' ? params.name : '';
+          if (!name) return fail(JSON_RPC_ERRORS.INVALID_PARAMS, 'Missing prompt name');
+          const prompt = this.promptRegistry.getPrompt(
+            name,
+            (params.arguments as Record<string, string>) ?? {}
+          );
+          return ok({
+            description: prompt.description,
+            messages: prompt.messages.map(
+              (m: { role: string; content: { type: string; text: string } }) => ({
+                role: m.role,
+                content: m.content,
+              })
+            ),
+          });
+        }
+
+        default:
+          // notifications/* carry no id and need no response — return a benign
+          // result the transport drops (HTTP 202). Unknown requests → error.
+          if (req.method.startsWith('notifications/')) return ok({});
+          return fail(JSON_RPC_ERRORS.METHOD_NOT_FOUND, `Method not found: ${req.method}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Dispatch error', { method: req.method, id: req.id, error: message });
+      recordException(error as Error);
+      return fail(JSON_RPC_ERRORS.INTERNAL_ERROR, 'Internal error', message);
+    }
   }
 
   /**
@@ -1035,6 +1348,27 @@ export class MCPBigQueryServer {
       // 3. Start the MCP server (handles transport and lifecycle)
       await this.serverFactory.start();
 
+      // 3b. For HTTP, set up auth + tenancy and start the Streamable HTTP
+      // listener (exposes /health for Cloud Run probes and POST /mcp). The
+      // stdio path needs none of this.
+      if (this.transportMode === 'http') {
+        this.setupAuthAndTenancy();
+        this.httpTransport = new StreamableHttpTransport(
+          (req, ctx) => this.dispatch(req, ctx),
+          {
+            port: this.env.MCP_HTTP_PORT,
+            strictStreamableHttp: process.env.MCP_TRANSPORT_STRICT === 'streamable',
+          },
+          this.buildAuthResolver()
+        );
+        await this.httpTransport.start();
+        logger.info('Streamable HTTP transport listening', {
+          port: this.env.MCP_HTTP_PORT,
+          authEnabled: this.authMiddleware !== null,
+          strictStreamableHttp: process.env.MCP_TRANSPORT_STRICT === 'streamable',
+        });
+      }
+
       this.initialized = true;
 
       logger.info('MCP BigQuery Server started successfully', {
@@ -1060,7 +1394,15 @@ export class MCPBigQueryServer {
     try {
       logger.info('Initiating server shutdown', { reason });
 
-      // 1. Shutdown MCP server (handles transport closure)
+      // 1. Stop accepting HTTP requests first (drains in-flight + closes SSE),
+      // then stop tenant config watching.
+      if (this.httpTransport) {
+        await this.httpTransport.shutdown();
+        this.httpTransport = null;
+      }
+      this.tenantRegistry?.stopWatching();
+
+      // 2. Shutdown MCP server (handles transport closure)
       await this.serverFactory.shutdown(reason);
 
       // 2. Shutdown telemetry

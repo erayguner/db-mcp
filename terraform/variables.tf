@@ -112,6 +112,12 @@ variable "enable_policy_tags" {
   default     = false
 }
 
+variable "grant_data_editor" {
+  description = "Grant the runtime SA roles/bigquery.dataEditor at dataset scope. Default false = read-only (dataViewer + user). Writes require explicit opt-in."
+  type        = bool
+  default     = false
+}
+
 variable "authorized_views" {
   description = "Authorized views exposing curated columns to tenants. See modules/bigquery/governance.tf."
   type = map(object({
@@ -121,6 +127,40 @@ variable "authorized_views" {
     query          = string
   }))
   default = {}
+}
+
+# ---------------------------------------------------------------------------
+# Model Armor (R9) — feature-flagged, default off
+# ---------------------------------------------------------------------------
+
+variable "enable_model_armor" {
+  description = "Create the Model Armor template and wire MODEL_ARMOR_* env vars into Cloud Run. Default false (existing deployments unaffected)."
+  type        = bool
+  default     = false
+}
+
+variable "model_armor_location" {
+  description = "Region for the Model Armor template. Should match the app's MODEL_ARMOR_LOCATION (default region)."
+  type        = string
+  default     = "europe-west2"
+}
+
+variable "model_armor_enforcement_type" {
+  description = "Model Armor template enforcement_type: INSPECT_ONLY or INSPECT_AND_BLOCK."
+  type        = string
+  default     = "INSPECT_ONLY"
+}
+
+variable "model_armor_filter_version" {
+  description = "Filter/detector version surfaced to the app as MODEL_ARMOR_FILTER_VERSION. NOT a Terraform template field (set at runtime by the service); 'v3' selects the Latest behavior."
+  type        = string
+  default     = "v3"
+}
+
+variable "model_armor_enable_floor_setting" {
+  description = "Create the project-level Model Armor floor setting. Default false. See modules/model-armor (destroy-persistence bug #26214)."
+  type        = bool
+  default     = false
 }
 
 # ---------------------------------------------------------------------------
@@ -203,6 +243,12 @@ variable "access_policy_name" {
   description = "Access Context Manager policy ID. Required for the VPC-SC perimeter."
   type        = string
   default     = ""
+}
+
+variable "enforce_perimeter" {
+  description = "Promote the VPC-SC perimeter from dry-run to ENFORCED (blocks violations). Keep false until ~2 weeks of clean dry-run audit logs."
+  type        = bool
+  default     = false
 }
 
 variable "vpc_sc_egress_to_projects" {
@@ -331,6 +377,46 @@ variable "notification_channels" {
     slack_webhook_url     = ""
     pagerduty_service_key = ""
   }
+}
+
+variable "enable_alerts" {
+  description = "Create the R15 alert policies (elevated error rate, high p95 latency). Non-destructive; notification channels are optional/var-driven."
+  type        = bool
+  default     = true
+}
+
+# ---------------------------------------------------------------------------
+# Automation / HITL (R17/R18) — feature-flagged, default off
+# ---------------------------------------------------------------------------
+
+variable "enable_automation" {
+  description = "Create the automation/HITL scaffold (Pub/Sub remediation bus, Cloud Run worker pool, HITL workflow, Slack secret, worker SA). Default false."
+  type        = bool
+  default     = false
+}
+
+variable "automation_worker_image" {
+  description = "Container image for the remediation worker pool (deployed out-of-band; Terraform ignores image changes)."
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/worker-pool"
+}
+
+variable "automation_worker_instance_count" {
+  description = "MANUAL-scaling instance count for the worker pool. Default 0 = idle (dry-run posture)."
+  type        = number
+  default     = 0
+}
+
+variable "automation_enable_ai_inference_smt" {
+  description = "Add a Vertex AI-inference SMT to the remediation subscription. Default false."
+  type        = bool
+  default     = false
+}
+
+variable "automation_ai_inference_endpoint" {
+  description = "Vertex AI model/endpoint for the optional AI-inference SMT (required when automation_enable_ai_inference_smt = true)."
+  type        = string
+  default     = ""
 }
 
 # ---------------------------------------------------------------------------

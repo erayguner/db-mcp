@@ -85,6 +85,28 @@ variable "access_policy_name" {
   default     = ""
 }
 
+variable "enforce_perimeter" {
+  description = <<-EOT
+    Promote the VPC-SC perimeter from dry-run to ENFORCED. Default false keeps
+    the perimeter in dry-run (spec populated, status empty) so violations are
+    only logged. Set true ONLY after ~2 weeks of clean dry-run audit logs; when
+    true the `status` block is populated with the same restricted_services and
+    rules as `spec`, so violations are BLOCKED.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "vpc_sc_runtime_service_account" {
+  description = <<-EOT
+    MCP runtime service account email used to scope the example IAM-role-based
+    egress rule (BigQuery + Vertex AI). Empty disables the example egress rule.
+    Reflects the 2026-04-30 GA of IAM roles in VPC-SC ingress/egress policies.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "vpc_sc_restricted_services" {
   description = "Services protected by the VPC-SC perimeter"
   type        = list(string)
