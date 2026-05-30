@@ -1,0 +1,90 @@
+# Human-in-the-loop (HITL) approval workflow — callback-based.
+#
+# Purpose: gate high-cost / DML / destructive remediation actions behind an
+# explicit human approval. The workflow creates a callback endpoint, notifies a
+# human (e.g. via Slack), then BLOCKS on events.await_callback until an approver
+# POSTs an approve/reject decision to the callback URL (or the timeout fires).
+#
+# Invoked with input shaped like:
+#   {
+#     "action":      "delete_table",        # the remediation to run
+#     "tenant":      "tenant-123",
+#     "reason":      "orphaned staging table",
+#     "estimatedCostUsd": 0.0,
+#     "approverHint":"data-platform-oncall"
+#   }
+#
+# Note: this file is loaded verbatim via file() (not templatefile()), so plain
+# Workflows ${...} syntax is used. Expressions are single-quoted so the file is
+# also valid strict YAML (an unquoted ${...} containing ": " would otherwise be
+# parsed as a nested mapping).
+
+main:
+  params: [input]
+  steps:
+    - init:
+        assign:
+          - action: "${input.action}"
+          - tenant: '${default(map.get(input, "tenant"), "unknown")}'
+          - reason: '${default(map.get(input, "reason"), "")}'
+          - estimatedCostUsd: '${default(map.get(input, "estimatedCostUsd"), 0)}'
+          - approvalTimeoutSec: 3600
+
+    - createCallback:
+        call: events.create_callback_endpoint
+        args:
+          http_callback_method: "POST"
+        result: callbackDetails
+
+    - notifyApprover:
+        # Surface the callback URL to a human. Replace this sys.log with a
+        # Slack webhook call (URL from Secret Manager) in a real deployment.
+        try:
+          call: sys.log
+          args:
+            severity: "WARNING"
+            text: '${"HITL approval required for action=" + action + " tenant=" + tenant + " cost=$" + string(estimatedCostUsd) + " approve_url=" + callbackDetails.url}'
+        except:
+          as: e
+          steps:
+            - logNotifyError:
+                call: sys.log
+                args:
+                  severity: "ERROR"
+                  text: '${"Failed to notify approver: " + e.message}'
+
+    - awaitDecision:
+        try:
+          call: events.await_callback
+          args:
+            callback: callbackDetails
+            timeout: "${approvalTimeoutSec}"
+          result: decision
+        except:
+          as: e
+          steps:
+            - timedOut:
+                return:
+                  status: "TIMED_OUT"
+                  action: "${action}"
+                  tenant: "${tenant}"
+
+    - evaluateDecision:
+        switch:
+          - condition: '${map.get(decision.http_request.body, "approved") == true}'
+            next: approved
+        next: rejected
+
+    - approved:
+        return:
+          status: "APPROVED"
+          action: "${action}"
+          tenant: "${tenant}"
+          approver: '${default(map.get(decision.http_request.body, "approver"), "unknown")}'
+
+    - rejected:
+        return:
+          status: "REJECTED"
+          action: "${action}"
+          tenant: "${tenant}"
+          approver: '${default(map.get(decision.http_request.body, "approver"), "unknown")}'

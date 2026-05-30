@@ -106,3 +106,20 @@ output "monitoring_dashboard_url" {
   description = "Cloud Monitoring dashboard URL"
   value       = module.monitoring.dashboard_url
 }
+
+# --- Model Armor ---
+output "model_armor_template" {
+  description = "Model Armor template resource name (null when disabled). Set as MODEL_ARMOR_TEMPLATE."
+  value       = var.enable_model_armor ? module.model_armor[0].template_resource : null
+}
+
+# --- Automation / HITL ---
+output "automation_remediation_topic_id" {
+  description = "Remediation Pub/Sub topic ID (null when automation disabled)."
+  value       = var.enable_automation ? module.automation[0].remediation_topic_id : null
+}
+
+output "automation_workflow_id" {
+  description = "HITL approval workflow ID (null when automation disabled)."
+  value       = var.enable_automation ? module.automation[0].workflow_id : null
+}

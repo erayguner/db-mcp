@@ -24,8 +24,10 @@ locals {
   }
   ingress = local.ingress_map[var.ingress_mode]
 
-  # Runtime environment variables rendered as dynamic env blocks.
-  env_vars = {
+  # Runtime environment variables rendered as dynamic env blocks. Module
+  # defaults first; var.extra_env_vars merged last so callers (e.g. the root
+  # module wiring Model Armor) can add/override without editing this module.
+  env_vars = merge({
     MCP_TRANSPORT                       = "http"
     MCP_HTTP_PORT                       = "8080"
     MCP_HTTP_HOST                       = "0.0.0.0"
@@ -42,7 +44,7 @@ locals {
     OTEL_SERVICE_NAME                   = "mcp-bigquery-server"
     OTEL_TRACES_EXPORTER                = "google_cloud_trace"
     OTEL_METRICS_EXPORTER               = "google_cloud_monitoring"
-  }
+  }, var.extra_env_vars)
 }
 
 # ---------------------------------------------------------------------------

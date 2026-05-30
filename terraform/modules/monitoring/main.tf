@@ -12,9 +12,12 @@
 
 terraform {
   required_providers {
+    # Kept in lockstep with the root module (hashicorp/google 7.34.0,
+    # released 2026-05-27). See terraform/versions.tf for the deletion_policy
+    # one-time plan-diff caveat when upgrading from <7.31.
     google = {
       source  = "hashicorp/google"
-      version = "~> 7.0"
+      version = "~> 7.34"
     }
   }
 }
@@ -176,6 +179,120 @@ resource "google_logging_metric" "bigquery_bytes_processed" {
   }
 
   value_extractor = "EXTRACT(jsonPayload.bytesProcessed)"
+}
+
+# ------------------------------------------------------------------------
+# Tenant-dimensioned log-based metrics (R15)
+#
+# Keyed off `tenant_id` + `tool_name` labels extracted from the app's
+# structured logs. The application logs the tenant under jsonPayload.tenant
+# (see src/mcp/handlers/tool-handlers.ts) and the tool name under
+# jsonPayload.tool; both are mapped to the canonical metric labels below.
+#
+# CARDINALITY WARNING: every distinct (tenant_id, tool_name) pair is a new
+# time series and counts toward the per-metric active-series billing/limit.
+# With N tenants and ~M tools that is N*M series per metric. Keep the tool set
+# small/bounded and avoid putting unbounded values (query text, request IDs)
+# into label_extractors. If tenant count grows large, drop tenant_id from the
+# high-frequency tool-call metric and rely on the SLO/aggregate metrics.
+# ------------------------------------------------------------------------
+
+# Tool-call volume per tenant + tool. Drives the "tool-call volume" dashboard
+# tile and lets operators see which tenant/tool combinations are hot.
+resource "google_logging_metric" "tool_calls" {
+  name   = "mcp_bigquery_tool_calls_${var.environment}"
+  filter = <<-EOT
+    resource.type="cloud_run_revision"
+    resource.labels.service_name="${local.service_name}"
+    jsonPayload.event="tool_call"
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "tenant_id"
+      value_type  = "STRING"
+      description = "Tenant identifier (bounded set; see cardinality warning)"
+    }
+    labels {
+      key         = "tool_name"
+      value_type  = "STRING"
+      description = "MCP tool invoked (bounded set of registered tools)"
+    }
+  }
+
+  # The app currently logs the tenant under jsonPayload.tenant. EXTRACT falls
+  # back to an empty label when the field is absent (e.g. pre-auth calls).
+  label_extractors = {
+    "tenant_id" = "EXTRACT(jsonPayload.tenant)"
+    "tool_name" = "EXTRACT(jsonPayload.tool)"
+  }
+}
+
+# Per-tenant error count. Same tenant dimension as tool_calls so error rate can
+# be computed per tenant on the dashboard / in alerts.
+resource "google_logging_metric" "tenant_error_count" {
+  name   = "mcp_bigquery_tenant_error_count_${var.environment}"
+  filter = <<-EOT
+    resource.type="cloud_run_revision"
+    resource.labels.service_name="${local.service_name}"
+    severity>=ERROR
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "tenant_id"
+      value_type  = "STRING"
+      description = "Tenant identifier (bounded set; see cardinality warning)"
+    }
+    labels {
+      key         = "tool_name"
+      value_type  = "STRING"
+      description = "MCP tool that errored (may be empty for non-tool errors)"
+    }
+  }
+
+  label_extractors = {
+    "tenant_id" = "EXTRACT(jsonPayload.tenant)"
+    "tool_name" = "EXTRACT(jsonPayload.tool)"
+  }
+}
+
+# Token usage per tenant. Backs the "token usage" dashboard tile. Reads
+# jsonPayload.tokenUsage (forward-looking field; emits no series until the app
+# logs it, which is safe). Keyed by tenant_id only to bound cardinality.
+resource "google_logging_metric" "token_usage" {
+  name   = "mcp_bigquery_token_usage_${var.environment}"
+  filter = <<-EOT
+    resource.type="cloud_run_revision"
+    resource.labels.service_name="${local.service_name}"
+    jsonPayload.tokenUsage:*
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "tenant_id"
+      value_type  = "STRING"
+      description = "Tenant identifier (bounded set; see cardinality warning)"
+    }
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.tokenUsage)"
+
+  label_extractors = {
+    "tenant_id" = "EXTRACT(jsonPayload.tenant)"
+  }
 }
 
 # ==========================================
@@ -855,6 +972,102 @@ resource "google_monitoring_slo" "latency" {
 resource "google_monitoring_custom_service" "mcp_bigquery" {
   service_id   = "mcp-bigquery-${var.environment}"
   display_name = "MCP BigQuery Server - ${var.environment}"
+}
+
+# ==========================================
+# R15 Alert Policies (gated behind enable_alerts)
+# ==========================================
+#
+# These complement the always-on policies above with tenant-aware coverage
+# built on the R15 log-based metrics. Notification channels are optional/
+# var-driven: the email channel is only attached when alert_email is set, and
+# Slack/PagerDuty only when their secrets are supplied. With no channels the
+# policy is still created (visible in console), it just won't notify.
+
+locals {
+  # Optional notification channel list — safe (empty) when nothing configured.
+  r15_notification_channels = concat(
+    var.alert_email != "" ? [google_monitoring_notification_channel.email.id] : [],
+    var.slack_webhook_url != "" ? [google_monitoring_notification_channel.slack[0].id] : [],
+    var.pagerduty_service_key != "" ? [google_monitoring_notification_channel.pagerduty[0].id] : [],
+  )
+}
+
+# Elevated error rate (tenant-dimensioned). Fires when the per-tenant error
+# metric exceeds the threshold; groups by tenant_id so one noisy tenant is
+# visible on its own.
+resource "google_monitoring_alert_policy" "r15_elevated_error_rate" {
+  count = var.enable_alerts ? 1 : 0
+
+  display_name = "MCP BigQuery - Elevated Error Rate by Tenant (${var.environment})"
+  combiner     = "OR"
+  enabled      = true
+
+  conditions {
+    display_name = "Per-tenant error rate > ${var.error_rate_threshold}/min"
+
+    condition_threshold {
+      filter          = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${local.service_name}\" AND metric.type=\"logging.googleapis.com/user/mcp_bigquery_tenant_error_count_${var.environment}\""
+      duration        = "300s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.error_rate_threshold
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_RATE"
+        group_by_fields    = ["metric.label.tenant_id"]
+      }
+    }
+  }
+
+  notification_channels = local.r15_notification_channels
+
+  alert_strategy {
+    auto_close = "86400s"
+  }
+
+  documentation {
+    content   = "Per-tenant error rate exceeded ${var.error_rate_threshold}/min in ${var.environment}. Check the tenant_id label and Cloud Logging for the offending tenant."
+    mime_type = "text/markdown"
+  }
+}
+
+# High p95 latency on Cloud Run request latencies. Distinct from the always-on
+# query-latency alert: this one watches end-to-end request latency.
+resource "google_monitoring_alert_policy" "r15_high_p95_latency" {
+  count = var.enable_alerts ? 1 : 0
+
+  display_name = "MCP BigQuery - High p95 Request Latency (${var.environment})"
+  combiner     = "OR"
+  enabled      = true
+
+  conditions {
+    display_name = "p95 request latency > ${var.latency_threshold_ms}ms"
+
+    condition_threshold {
+      filter          = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${local.service_name}\" AND metric.type=\"run.googleapis.com/request_latencies\""
+      duration        = "300s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.latency_threshold_ms
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_PERCENTILE_95"
+      }
+    }
+  }
+
+  notification_channels = local.r15_notification_channels
+
+  alert_strategy {
+    auto_close = "86400s"
+  }
+
+  documentation {
+    content   = "p95 request latency exceeded ${var.latency_threshold_ms}ms in ${var.environment}. Investigate BigQuery latency, cold starts, and instance saturation."
+    mime_type = "text/markdown"
+  }
 }
 
 # ==========================================

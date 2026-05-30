@@ -42,6 +42,18 @@ variable "enable_audit_logging" {
   default     = true
 }
 
+variable "grant_data_editor" {
+  description = <<-EOT
+    Grant the runtime service account roles/bigquery.dataEditor at dataset
+    scope. Default false enforces the read-only design (dataViewer + user only).
+    Writes (INSERT/UPDATE/DELETE/load) require explicit opt-in per tenant and
+    contradict the read-only MCP posture — enable only for datasets that must
+    accept writes, ideally via a separate dataset/module instance.
+  EOT
+  type        = bool
+  default     = false
+}
+
 # Tenant-scoped IAM bindings with IAM Conditions.
 # Each entry creates a conditional IAM member binding on the specified datasets,
 # providing defense-in-depth behind the application-layer YAML allowlist.

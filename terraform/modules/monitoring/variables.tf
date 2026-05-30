@@ -49,6 +49,22 @@ variable "pagerduty_service_key" {
 }
 
 # ==========================================
+# Alert Toggles
+# ==========================================
+
+variable "enable_alerts" {
+  description = <<-EOT
+    Create the R15 alert policies (elevated error rate, high p95 latency).
+    Default true — alerts are non-destructive. Notification channels are
+    optional/var-driven, so these alerts still apply cleanly when no Slack /
+    PagerDuty channel is configured (they fall back to the email channel, or to
+    no channels if alert_email is empty).
+  EOT
+  type        = bool
+  default     = true
+}
+
+# ==========================================
 # Alert Thresholds
 # ==========================================
 
