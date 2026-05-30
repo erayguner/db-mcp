@@ -403,13 +403,23 @@ export class StreamableHttpTransport {
     // --- OAuth 2.0 discovery (RFC 8414 + RFC 9728) ---
     this.registerOAuthDiscoveryRoutes(app);
 
+    // Rate-limit the MCP endpoint — transport-layer defense-in-depth on top of
+    // the app-level SecurityMiddleware, and satisfies CodeQL
+    // js/missing-rate-limiting (this route performs authorization).
+    const mcpLimiter = rateLimit({
+      windowMs: 60_000,
+      max: Number(process.env.MCP_HTTP_RATE_LIMIT_MAX ?? 600),
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+
     // --- MCP JSON-RPC endpoint (POST) ---
-    app.post('/mcp', (req: Request, res: Response) => {
+    app.post('/mcp', mcpLimiter, (req: Request, res: Response) => {
       void this.handleJsonRpcPost(req, res);
     });
 
     // --- MCP SSE stream (GET) — disabled in strict Streamable HTTP mode ---
-    app.get('/mcp', (req: Request, res: Response) => {
+    app.get('/mcp', mcpLimiter, (req: Request, res: Response) => {
       if (this.config.strictStreamableHttp) {
         res.setHeader('Allow', 'POST');
         res.status(405).json({

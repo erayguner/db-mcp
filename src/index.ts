@@ -1136,9 +1136,10 @@ export class MCPBigQueryServer {
           bypassTools: [],
           requireAuth: this.env.MCP_AUTH_REQUIRED,
         });
-        logger.info('HTTP authentication enabled (OAuth metadata)', {
-          issuer: oauthCfg.authorizationServerIssuer,
-          audience: oauthCfg.resourceAudience,
+        // Do not log issuer/audience (CodeQL js/clear-text-logging treats
+        // resolved auth config as sensitive). The method + flag are sufficient.
+        logger.info('HTTP authentication enabled', {
+          method: 'oauth-metadata',
           requireAuth: this.env.MCP_AUTH_REQUIRED,
         });
       } else if (this.env.OIDC_ISSUER && this.env.OIDC_AUDIENCE) {
@@ -1153,9 +1154,8 @@ export class MCPBigQueryServer {
           bypassTools: [],
           requireAuth: this.env.MCP_AUTH_REQUIRED,
         });
-        logger.info('HTTP authentication enabled (OIDC env)', {
-          issuer: this.env.OIDC_ISSUER,
-          audience: this.env.OIDC_AUDIENCE,
+        logger.info('HTTP authentication enabled', {
+          method: 'oidc-env',
           requireAuth: this.env.MCP_AUTH_REQUIRED,
         });
       } else {
