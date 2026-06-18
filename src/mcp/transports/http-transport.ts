@@ -1,20 +1,13 @@
 import express, { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
-import type { IncomingMessage, ServerResponse } from 'http';
-import type { Server as HttpServer } from 'http';
+import type { IncomingMessage, ServerResponse, Server as HttpServer } from 'http';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { logger } from '../../utils/logger.js';
-import {
-  JsonRpcRequest,
-  JsonRpcResponse,
-  validateJsonRpc,
-  isBatchRequest,
-  processBatch,
-  JSON_RPC_ERRORS,
-} from '../middleware/batch-handler.js';
-import { shouldCompress, compressResponse } from '../middleware/compression.js';
 import {
   OAuthMetadataConfig,
   buildAuthorizationServerMetadata,
@@ -40,9 +33,10 @@ export const HttpTransportConfigSchema = z.object({
    */
   allowedHosts: z.array(z.string()).default([]),
   /**
-   * When `true`, GET /mcp returns 405 instead of opening an SSE stream.
-   * Required by Gemini Enterprise custom MCP connectors, which only support
-   * Streamable HTTP and explicitly reject SSE.
+   * Retained for configuration compatibility. The transport now always speaks
+   * stateless Streamable HTTP (no standalone SSE channel), so `GET /mcp` returns
+   * 405 regardless of this flag — required by Gemini Enterprise custom MCP
+   * connectors, which only support Streamable HTTP and reject SSE.
    */
   strictStreamableHttp: z.boolean().default(false),
   /** Optional OAuth 2.0 discovery configuration. */
@@ -88,23 +82,14 @@ export interface TransportMetrics {
 }
 
 /**
- * Opaque per-request context produced by the {@link AuthResolver} and passed
- * to the JSON-RPC handler. Kept structurally loose so the transport stays
- * decoupled from the auth/tenancy modules (the handler casts as needed).
+ * Opaque per-request context produced by the {@link AuthResolver}. The
+ * principal + tenant context are attached to the request as MCP `AuthInfo` so
+ * the SDK transport threads them to request handlers via `extra.authInfo`.
  */
 export interface McpRequestContext {
   principal?: unknown;
   tenantContext?: unknown;
 }
-
-/**
- * JSON-RPC request handler. Receives the validated request plus the optional
- * authenticated context resolved for the connection.
- */
-export type JsonRpcHandler = (
-  request: JsonRpcRequest,
-  context?: McpRequestContext
-) => Promise<JsonRpcResponse>;
 
 /**
  * Outcome of authenticating/authorizing an inbound HTTP request.
@@ -124,33 +109,41 @@ export interface AuthResolution {
 export type AuthResolver = (headers: Record<string, string | undefined>) => Promise<AuthResolution>;
 
 /**
- * Represents a connected SSE client.
+ * Returns a fresh, MCP `Server` with all request handlers registered, ready to
+ * be connected to a transport. The transport runs in stateless mode and calls
+ * this once per request (a stateless transport may not be reused across
+ * requests — doing so risks JSON-RPC id collisions between clients).
  */
-interface SseClient {
-  id: string;
-  res: Response;
-  connectedAt: number;
-}
+export type ServerProvider = () => Server;
+
+/** Minimal MCP token shape attached to the request for the SDK transport. */
+type RequestWithAuth = IncomingMessage & { auth?: AuthInfo };
 
 /**
  * Streamable HTTP transport for production Cloud Run deployment.
  *
+ * Built on the official `@modelcontextprotocol/sdk` `StreamableHTTPServerTransport`
+ * in **stateless mode**: a fresh `Server` + transport is created per request and
+ * torn down when the response closes. This keeps the service horizontally
+ * scalable on Cloud Run (no sticky sessions) and delegates protocol concerns —
+ * `MCP-Protocol-Version` header validation, version negotiation, rejection of
+ * JSON-RPC batches (removed in spec 2025-06-18), and per-request SSE — to the SDK.
+ *
  * Provides:
- * - `POST /mcp`  JSON-RPC request endpoint (single and batched)
- * - `GET  /mcp`  SSE stream for server-to-client notifications
- * - `GET  /health` and `GET /readiness` health probes
- * - `GET  /metrics` Prometheus scrape endpoint
- * - Optional gzip response compression (built-in `zlib`)
- * - Request-id injection on every response
- * - Graceful shutdown with in-flight drain
+ * - `POST /mcp`  MCP Streamable HTTP endpoint (single JSON-RPC request/response)
+ * - `GET/DELETE /mcp`  405 (no standalone SSE / sessions in stateless mode)
+ * - `GET /health`, `/readiness`  health probes
+ * - `GET /metrics`  Prometheus scrape endpoint
+ * - `GET /.well-known/oauth-*`  RFC 8414 + RFC 9728 discovery
+ * - Host allow-list (DNS-rebinding defense), CORS/Origin enforcement, security
+ *   headers, request-id injection, and graceful shutdown with in-flight drain.
  */
 export class StreamableHttpTransport {
   private readonly config: HttpTransportConfig;
-  private readonly handler: JsonRpcHandler;
+  private readonly serverProvider: ServerProvider;
   private readonly authResolver?: AuthResolver;
   private readonly app: express.Application;
   private server: HttpServer | null = null;
-  private sseClients: Map<string, SseClient> = new Map();
 
   // Counters
   private activeConnections = 0;
@@ -158,12 +151,12 @@ export class StreamableHttpTransport {
   private totalErrors = 0;
 
   constructor(
-    handler: JsonRpcHandler,
+    serverProvider: ServerProvider,
     config?: Partial<HttpTransportConfig>,
     authResolver?: AuthResolver
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.handler = handler;
+    this.serverProvider = serverProvider;
     this.authResolver = authResolver;
     this.app = this.buildApp();
   }
@@ -186,7 +179,7 @@ export class StreamableHttpTransport {
         logger.info('Streamable HTTP transport started', {
           host: this.config.host,
           port: this.config.port,
-          compression: this.config.enableCompression,
+          mode: 'stateless',
         });
         resolve();
       });
@@ -194,26 +187,13 @@ export class StreamableHttpTransport {
   }
 
   /**
-   * Gracefully shut down: close SSE streams, stop accepting new
-   * connections, and drain in-flight requests.
+   * Gracefully shut down: stop accepting new connections and drain in-flight
+   * requests. Per-request MCP transports/servers close on their own response's
+   * `close` event, so there is no session/SSE registry to tear down.
    */
   async shutdown(): Promise<void> {
-    logger.info('Shutting down HTTP transport', {
-      activeConnections: this.activeConnections,
-      sseClients: this.sseClients.size,
-    });
+    logger.info('Shutting down HTTP transport', { activeConnections: this.activeConnections });
 
-    // Close all SSE streams
-    for (const [id, client] of this.sseClients) {
-      try {
-        client.res.end();
-      } catch {
-        // client already disconnected
-      }
-      this.sseClients.delete(id);
-    }
-
-    // Close the HTTP server
     if (this.server) {
       await new Promise<void>((resolve, reject) => {
         this.server!.close((err) => {
@@ -227,31 +207,6 @@ export class StreamableHttpTransport {
         });
       });
       this.server = null;
-    }
-  }
-
-  /**
-   * Broadcast a notification object to every connected SSE client.
-   */
-  broadcast(notification: object): void {
-    const payload = `data: ${JSON.stringify(notification)}\n\n`;
-    const deadClients: string[] = [];
-
-    for (const [id, client] of this.sseClients) {
-      try {
-        client.res.write(payload);
-      } catch {
-        deadClients.push(id);
-      }
-    }
-
-    // Prune disconnected clients
-    for (const id of deadClients) {
-      this.sseClients.delete(id);
-    }
-
-    if (deadClients.length > 0) {
-      logger.debug('Pruned dead SSE clients', { count: deadClients.length });
     }
   }
 
@@ -308,7 +263,7 @@ export class StreamableHttpTransport {
     });
 
     // --- CORS ---
-    // MCP spec 2025-11-25 §6.4: reject disallowed origins with HTTP 403.
+    // MCP spec 2025-11-25 §Transports: reject disallowed origins with HTTP 403.
     // When no corsOrigins are configured all origins are permitted (open mode).
     app.use((req: Request, res: Response, next: NextFunction) => {
       const origin = req.headers.origin;
@@ -325,8 +280,12 @@ export class StreamableHttpTransport {
       }
       if (origin) {
         res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, Mcp-Session-Id, MCP-Protocol-Version'
+        );
+        res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id, MCP-Protocol-Version');
         res.setHeader('Access-Control-Max-Age', '86400');
       }
       if (req.method === 'OPTIONS') {
@@ -377,9 +336,6 @@ export class StreamableHttpTransport {
    */
   private registerRoutes(app: express.Application): void {
     // Health / readiness probes + deployment-probe aliases.
-    // /health and /health/live both return the liveness payload (full+live).
-    // /readiness and /health/ready both return the readiness payload.
-    // This satisfies all probe configurations used by Terraform and Cloud Run.
     const handleHealth = (_req: Request, res: Response): void => {
       res.json({ status: 'healthy', timestamp: new Date().toISOString() });
     };
@@ -413,24 +369,22 @@ export class StreamableHttpTransport {
       legacyHeaders: false,
     });
 
-    // --- MCP JSON-RPC endpoint (POST) ---
+    // --- MCP Streamable HTTP endpoint (POST) ---
     app.post('/mcp', mcpLimiter, (req: Request, res: Response) => {
-      void this.handleJsonRpcPost(req, res);
+      void this.handleMcpPost(req, res);
     });
 
-    // --- MCP SSE stream (GET) — disabled in strict Streamable HTTP mode ---
-    app.get('/mcp', mcpLimiter, (req: Request, res: Response) => {
-      if (this.config.strictStreamableHttp) {
-        res.setHeader('Allow', 'POST');
-        res.status(405).json({
-          error: 'method_not_allowed',
-          error_description:
-            'SSE is disabled; this server runs in strict Streamable HTTP mode. Use POST /mcp.',
-        });
-        return;
-      }
-      this.handleSseConnect(req, res);
-    });
+    // --- GET/DELETE /mcp: no standalone SSE / sessions in stateless mode ---
+    const methodNotAllowed = (_req: Request, res: Response): void => {
+      res.setHeader('Allow', 'POST');
+      res.status(405).json({
+        error: 'method_not_allowed',
+        error_description:
+          'This server uses stateless Streamable HTTP (no SSE channel or sessions). Use POST /mcp.',
+      });
+    };
+    app.get('/mcp', mcpLimiter, methodNotAllowed);
+    app.delete('/mcp', mcpLimiter, methodNotAllowed);
 
     const endpoints = [
       '/health',
@@ -439,6 +393,7 @@ export class StreamableHttpTransport {
       '/health/ready',
       '/metrics',
       'POST /mcp',
+      'GET|DELETE /mcp (405 — stateless Streamable HTTP)',
     ];
     if (this.config.oauthMetadata) {
       endpoints.push(
@@ -446,17 +401,97 @@ export class StreamableHttpTransport {
         'GET /.well-known/oauth-protected-resource'
       );
     }
-    if (this.config.strictStreamableHttp) {
-      endpoints.push('GET /mcp (405 — strict mode)');
-    } else {
-      endpoints.push('GET /mcp (SSE)');
-    }
 
     logger.info('HTTP transport routes registered', {
       endpoints,
-      strictStreamableHttp: this.config.strictStreamableHttp,
       oauthDiscovery: !!this.config.oauthMetadata,
     });
+  }
+
+  /**
+   * Authenticate (if configured), then hand the request to a fresh stateless
+   * SDK Streamable HTTP transport bound to a fresh MCP Server. The resolved
+   * principal + tenant context are attached as MCP `AuthInfo` so request
+   * handlers receive them via `extra.authInfo`. The inbound token is used only
+   * to authenticate/resolve tenancy — it is never forwarded to BigQuery.
+   */
+  private async handleMcpPost(req: Request, res: Response): Promise<void> {
+    this.totalRequests++;
+
+    // Authentication / tenant resolution (when an auth resolver is wired).
+    if (this.authResolver) {
+      let resolution: AuthResolution;
+      try {
+        resolution = await this.authResolver(req.headers as Record<string, string | undefined>);
+      } catch (err) {
+        this.totalErrors++;
+        logger.error('Auth resolver threw', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        this.sendUnauthorized(res, {
+          error: 'invalid_token',
+          errorDescription: 'Authentication failed',
+        });
+        return;
+      }
+      if (!resolution.authorized) {
+        this.totalErrors++;
+        this.sendUnauthorized(res, {
+          error: resolution.errorCode ?? 'invalid_token',
+          errorDescription: resolution.error,
+        });
+        return;
+      }
+      if (resolution.context) {
+        const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+        const principal = resolution.context.principal as
+          | { subject?: string; scopes?: string[] }
+          | undefined;
+        (req as RequestWithAuth).auth = {
+          token,
+          clientId: principal?.subject ?? 'mcp-client',
+          scopes: principal?.scopes ?? [],
+          extra: {
+            principal: resolution.context.principal,
+            tenantContext: resolution.context.tenantContext,
+          },
+        };
+      }
+    }
+
+    // Stateless mode: a fresh Server + transport per request, torn down when
+    // the response closes. The SDK owns protocol-version validation, version
+    // negotiation, batch rejection, and (per-request) SSE streaming.
+    const server = this.serverProvider();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      // Return a single JSON-RPC response (Content-Type: application/json)
+      // rather than opening an SSE stream — this server's tools are
+      // request/response and clients expect a direct reply.
+      enableJsonResponse: true,
+    });
+
+    const cleanup = (): void => {
+      void transport.close();
+      void server.close();
+    };
+    res.on('close', cleanup);
+
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(req as RequestWithAuth, res as ServerResponse, req.body);
+    } catch (error) {
+      this.totalErrors++;
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('MCP request handling failed', { error: message });
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32603, message: 'Internal server error' },
+        });
+      }
+    }
   }
 
   /**
@@ -465,7 +500,7 @@ export class StreamableHttpTransport {
    * - `/.well-known/oauth-authorization-server` (RFC 8414)
    * - `/.well-known/oauth-protected-resource`   (RFC 9728)
    *
-   * Required by MCP 2025-11-25 auth flow and by Gemini Enterprise custom MCP
+   * Required by the MCP 2025-11-25 auth flow and by Gemini Enterprise custom MCP
    * connector registration.
    */
   private registerOAuthDiscoveryRoutes(app: express.Application): void {
@@ -525,149 +560,6 @@ export class StreamableHttpTransport {
       error: opts.error ?? 'invalid_token',
       error_description: opts.errorDescription ?? 'Authentication required',
       resource_metadata: resourceMetadataUrl || undefined,
-    });
-  }
-
-  /**
-   * Handle an incoming JSON-RPC POST request at `/mcp`.
-   *
-   * Accepts either a single request object or a batch array.
-   * Responses may optionally be gzip-compressed when the client
-   * indicates support via `Accept-Encoding`.
-   */
-  private async handleJsonRpcPost(req: Request, res: Response): Promise<void> {
-    this.totalRequests++;
-
-    // Validate the payload
-    const validation = validateJsonRpc(req.body as unknown);
-    if (!validation.valid) {
-      this.totalErrors++;
-      res.status(400).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: {
-          code: JSON_RPC_ERRORS.INVALID_REQUEST,
-          message: validation.error ?? 'Invalid JSON-RPC request',
-        },
-      });
-      return;
-    }
-
-    // Authentication / tenant resolution (when an auth resolver is wired).
-    // The resolved context is forwarded to the handler so tool execution can
-    // enforce per-tenant policy. The inbound token is never forwarded
-    // downstream to BigQuery (no token passthrough).
-    let context: McpRequestContext | undefined;
-    if (this.authResolver) {
-      let resolution: AuthResolution;
-      try {
-        resolution = await this.authResolver(req.headers as Record<string, string | undefined>);
-      } catch (err) {
-        this.totalErrors++;
-        logger.error('Auth resolver threw', {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        this.sendUnauthorized(res, {
-          error: 'invalid_token',
-          errorDescription: 'Authentication failed',
-        });
-        return;
-      }
-      if (!resolution.authorized) {
-        this.totalErrors++;
-        this.sendUnauthorized(res, {
-          error: resolution.errorCode ?? 'invalid_token',
-          errorDescription: resolution.error,
-        });
-        return;
-      }
-      context = resolution.context;
-    }
-
-    try {
-      let responses: JsonRpcResponse[];
-
-      if (isBatchRequest(req.body)) {
-        responses = await processBatch(validation.requests, (r) => this.handler(r, context));
-      } else {
-        // Single request — still use the first validated request
-        const single = await this.handler(validation.requests[0], context);
-        responses = [single];
-      }
-
-      // JSON-RPC: notifications (requests without an `id`) get no response.
-      // MCP Streamable HTTP: a POST consisting solely of notifications/responses
-      // is acknowledged with 202 Accepted and an empty body.
-      const answerable = responses.filter((r) => r.id !== undefined);
-      if (answerable.length === 0) {
-        res.status(202).end();
-        return;
-      }
-
-      // If the incoming body was a single object, return a single response.
-      const body = isBatchRequest(req.body) ? answerable : answerable[0];
-      const serialized = JSON.stringify(body);
-
-      // Optional gzip compression
-      const acceptsGzip = (req.headers['accept-encoding'] ?? '').includes('gzip');
-      if (this.config.enableCompression && acceptsGzip && shouldCompress(serialized)) {
-        const { compressed } = await compressResponse(serialized);
-        res.setHeader('Content-Encoding', 'gzip');
-        res.setHeader('Content-Type', 'application/json');
-        res.send(compressed);
-      } else {
-        res.setHeader('Content-Type', 'application/json');
-        res.send(serialized);
-      }
-    } catch (error) {
-      this.totalErrors++;
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error('JSON-RPC handler error', { error: message });
-
-      res.status(500).json({
-        jsonrpc: '2.0',
-        id: null,
-        error: {
-          code: JSON_RPC_ERRORS.INTERNAL_ERROR,
-          message: 'Internal server error',
-        },
-      });
-    }
-  }
-
-  /**
-   * Upgrade a GET request at `/mcp` into a Server-Sent Events stream.
-   *
-   * The connection stays open until the client disconnects or the
-   * transport is shut down.
-   */
-  private handleSseConnect(_req: Request, res: Response): void {
-    const clientId = randomUUID();
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-SSE-Client-Id', clientId);
-    res.flushHeaders();
-
-    // Send an initial connection event
-    res.write(`event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`);
-
-    const client: SseClient = { id: clientId, res, connectedAt: Date.now() };
-    this.sseClients.set(clientId, client);
-
-    logger.info('SSE client connected', {
-      clientId,
-      totalClients: this.sseClients.size,
-    });
-
-    // Clean up when the client disconnects
-    _req.on('close', () => {
-      this.sseClients.delete(clientId);
-      logger.info('SSE client disconnected', {
-        clientId,
-        totalClients: this.sseClients.size,
-      });
     });
   }
 }

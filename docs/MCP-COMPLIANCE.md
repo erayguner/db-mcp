@@ -11,43 +11,43 @@ This document tracks the MCP protocol compliance of this BigQuery MCP server aga
 
 ### Part 2: Architecture & Core Implementation (Ch 4-7)
 
-| Recommendation                                 | Chapter | Status | Implementation                                                                         |
-| ---------------------------------------------- | ------- | ------ | -------------------------------------------------------------------------------------- |
-| Tool providers with composability              | Ch 4, 6 | DONE   | `src/mcp/tools/definitions.ts` — 4 tools with Zod schemas, annotations, output schemas |
-| Resource providers (browse data)               | Ch 4, 6 | DONE   | `src/index.ts` — `list_resources`/`read_resource` with `bigquery://` URIs              |
-| Prompt providers (AI guidance)                 | Ch 4, 6 | DONE   | `src/mcp/handlers/prompt-handlers.ts` — 5 BigQuery-specific prompt templates           |
-| Security interfaces                            | Ch 4    | DONE   | `src/security/middleware.ts` — auth, rate limit, injection detection, audit            |
-| Discovery interfaces                           | Ch 4    | DONE   | Tool and resource listing via standard MCP primitives                                  |
-| Client features (sampling, roots, elicitation) | Ch 4    | N/A    | Client-side features, not server responsibility                                        |
-| Streamable HTTP transport                      | Ch 5, 9 | DONE   | `src/mcp/transports/http-transport.ts` — POST/GET with SSE                             |
-| JSON-RPC message format                        | Ch 5    | DONE   | MCP SDK handles JSON-RPC 2.0 framing                                                   |
-| Session management                             | Ch 7    | DONE   | `src/mcp/handlers/session-manager.ts` — multi-turn session tracking                    |
-| Capability negotiation                         | Ch 5    | DONE   | MCP SDK handles during connection init                                                 |
+| Recommendation                                 | Chapter | Status | Implementation                                                                                                                       |
+| ---------------------------------------------- | ------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Tool providers with composability              | Ch 4, 6 | DONE   | `src/mcp/tools/definitions.ts` — 4 tools with Zod schemas, annotations, output schemas                                               |
+| Resource providers (browse data)               | Ch 4, 6 | DONE   | `src/index.ts` — `list_resources`/`read_resource` with `bigquery://` URIs                                                            |
+| Prompt providers (AI guidance)                 | Ch 4, 6 | DONE   | `src/mcp/handlers/prompt-handlers.ts` — 5 BigQuery-specific prompt templates                                                         |
+| Security interfaces                            | Ch 4    | DONE   | `src/security/middleware.ts` — auth, rate limit, injection detection, audit                                                          |
+| Discovery interfaces                           | Ch 4    | DONE   | Tool and resource listing via standard MCP primitives                                                                                |
+| Client features (sampling, roots, elicitation) | Ch 4    | N/A    | Client-side features, not server responsibility                                                                                      |
+| Streamable HTTP transport                      | Ch 5, 9 | DONE   | `src/mcp/transports/http-transport.ts` — official MCP SDK `StreamableHTTPServerTransport`, stateless (POST `/mcp`; GET/DELETE → 405) |
+| JSON-RPC message format                        | Ch 5    | DONE   | MCP SDK handles JSON-RPC 2.0 framing                                                                                                 |
+| Session management                             | Ch 7    | DONE   | `src/mcp/handlers/session-manager.ts` — multi-turn session tracking                                                                  |
+| Capability negotiation                         | Ch 5    | DONE   | MCP SDK handles during connection init                                                                                               |
 
 ### Part 3: Security & Performance (Ch 8-9)
 
-| Recommendation                     | Chapter | Status | Implementation                                                         |
-| ---------------------------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| OIDC authentication                | Ch 8    | DONE   | `src/auth/oidc-authenticator.ts` — JWT verification with JWKS          |
-| Multi-party authentication         | Ch 8    | DONE   | WIF + OIDC + tenant subject patterns                                   |
-| Capability-based authorization     | Ch 8    | DONE   | Per-tenant tool allowlists in `tenant-config.ts`                       |
-| Context-aware authorization        | Ch 8    | DONE   | `src/tenancy/dataset-policy.ts` — SQL-level dataset enforcement        |
-| Rate limiting                      | Ch 8    | DONE   | `src/security/middleware.ts` — per-user/tool with configurable windows |
-| Prompt injection detection         | Ch 8    | DONE   | Pattern-based detection + sanitization                                 |
-| Data minimization (column masking) | Ch 8    | DONE   | `src/security/column-masking.ts` — per-tenant column rules             |
-| Data lineage & provenance          | Ch 8    | DONE   | All tool responses include `provenance` metadata                       |
-| Comprehensive audit logging        | Ch 8    | DONE   | `src/auth/audit-logger.ts` — 20+ event types, Cloud Logging            |
-| Behavioral anomaly detection       | Ch 8    | DONE   | `src/security/anomaly-detector.ts` — per-user baselines                |
-| Privacy-preserving audit           | Ch 8    | DONE   | Sensitive data redaction in logs                                       |
-| TLS / encryption in transit        | Ch 8    | DONE   | Cloud Run enforces HTTPS; HTTP transport supports TLS                  |
-| Connection pooling & reuse         | Ch 9    | DONE   | `src/bigquery/connection-pool.ts` — health checks, idle cleanup        |
-| Intelligent caching                | Ch 9    | DONE   | `src/bigquery/query-cache.ts` — LRU + TTL + size-based eviction        |
-| Streaming / progressive results    | Ch 9    | DONE   | `src/mcp/handlers/progress-notifier.ts` — progress tokens              |
-| Request batching                   | Ch 9    | DONE   | `src/mcp/middleware/batch-handler.ts` — parallel JSON-RPC batch        |
-| Response compression               | Ch 9    | DONE   | `src/mcp/middleware/compression.ts` — gzip for large payloads          |
-| Distributed tracing                | Ch 9    | DONE   | `src/telemetry/tracing.ts` — OpenTelemetry + Cloud Trace               |
-| Adaptive resource allocation       | Ch 9    | DONE   | Connection pool auto-scales min→max connections                        |
-| Graceful degradation               | Ch 9    | DONE   | `src/bigquery/graceful-degradation.ts` — circuit breaker + stale cache |
+| Recommendation                     | Chapter | Status | Implementation                                                                                                 |
+| ---------------------------------- | ------- | ------ | -------------------------------------------------------------------------------------------------------------- |
+| OIDC authentication                | Ch 8    | DONE   | `src/auth/oidc-authenticator.ts` — JWT verification with JWKS                                                  |
+| Multi-party authentication         | Ch 8    | DONE   | WIF + OIDC + tenant subject patterns                                                                           |
+| Capability-based authorization     | Ch 8    | DONE   | Per-tenant tool allowlists in `tenant-config.ts`                                                               |
+| Context-aware authorization        | Ch 8    | DONE   | `src/tenancy/dataset-policy.ts` — SQL-level dataset enforcement                                                |
+| Rate limiting                      | Ch 8    | DONE   | `src/security/middleware.ts` — per-user/tool with configurable windows                                         |
+| Prompt injection detection         | Ch 8    | DONE   | Pattern-based detection + sanitization                                                                         |
+| Data minimization (column masking) | Ch 8    | DONE   | `src/security/column-masking.ts` — per-tenant column rules                                                     |
+| Data lineage & provenance          | Ch 8    | DONE   | All tool responses include `provenance` metadata                                                               |
+| Comprehensive audit logging        | Ch 8    | DONE   | `src/auth/audit-logger.ts` — 20+ event types, Cloud Logging                                                    |
+| Behavioral anomaly detection       | Ch 8    | DONE   | `src/security/anomaly-detector.ts` — per-user baselines                                                        |
+| Privacy-preserving audit           | Ch 8    | DONE   | Sensitive data redaction in logs                                                                               |
+| TLS / encryption in transit        | Ch 8    | DONE   | Cloud Run enforces HTTPS; HTTP transport supports TLS                                                          |
+| Connection pooling & reuse         | Ch 9    | DONE   | `src/bigquery/connection-pool.ts` — health checks, idle cleanup                                                |
+| Intelligent caching                | Ch 9    | DONE   | `src/bigquery/query-cache.ts` — LRU + TTL + size-based eviction                                                |
+| Streaming / progressive results    | Ch 9    | DONE   | SDK Streamable HTTP supports per-request SSE; this server returns single JSON responses (`enableJsonResponse`) |
+| Request batching                   | Ch 9    | N/A    | Removed from the MCP spec in revision 2025-06-18; the SDK transport rejects JSON-RPC batch arrays              |
+| Response compression               | Ch 9    | DONE   | gzip negotiated at the Cloud Run / load-balancer edge                                                          |
+| Distributed tracing                | Ch 9    | DONE   | `src/telemetry/tracing.ts` — OpenTelemetry + Cloud Trace                                                       |
+| Adaptive resource allocation       | Ch 9    | DONE   | Connection pool auto-scales min→max connections                                                                |
+| Graceful degradation               | Ch 9    | DONE   | `src/bigquery/graceful-degradation.ts` — circuit breaker + stale cache                                         |
 
 ### Part 4: Multi-Agent & RAG (Ch 10-13)
 
@@ -143,21 +143,23 @@ structured messages.
 
 **File**: `src/mcp/transports/http-transport.ts`
 
-Production transport for Cloud Run deployment:
+Production transport for Cloud Run deployment, built on the official MCP SDK `StreamableHTTPServerTransport` in
+**stateless mode** — a fresh `Server` + transport per request, so any instance can serve any request (no sticky
+sessions). The SDK owns `MCP-Protocol-Version` header validation, protocol version negotiation, and rejection of
+JSON-RPC batch arrays (batching was removed from the spec in 2025-06-18).
 
-- **POST /mcp** — JSON-RPC requests (single or batched array)
-- **GET /mcp** — SSE stream for server notifications (disabled in strict mode)
-- **GET /health** — Health check endpoint
+- **POST /mcp** — single JSON-RPC request → single JSON-RPC response (`enableJsonResponse`)
+- **GET /mcp**, **DELETE /mcp** — `405 Method Not Allowed` with `Allow: POST` (no standalone SSE / sessions in stateless
+  mode)
+- **GET /health**, **/readiness** — health probes
 - **GET /.well-known/oauth-authorization-server** — RFC 8414 metadata (when `OAUTH_*` env vars set)
 - **GET /.well-known/oauth-protected-resource** — RFC 9728 metadata (when `OAUTH_*` env vars set)
-- Built-in gzip compression for responses > 1KB
+- Host allow-list (DNS-rebinding defense), CORS / Origin enforcement, security headers
 - Request ID injection for tracing
-- CORS support for cross-origin clients
 - Graceful shutdown with drain period
 
-**Strict Streamable HTTP mode** (`MCP_TRANSPORT_STRICT=streamable`) — required for Gemini Enterprise custom MCP
-connectors, which explicitly do not support SSE: `GET /mcp` returns `405 Method Not Allowed` with `Allow: POST` instead
-of opening an SSE stream.
+`GET /mcp` always returning `405` in stateless mode satisfies Gemini Enterprise custom MCP connectors, which only
+support Streamable HTTP and reject SSE. Response gzip is negotiated at the Cloud Run / load-balancer edge.
 
 **`sendUnauthorized()` helper** — emits RFC 6750 / MCP 2025-06-18 compliant 401 responses with a
 `WWW-Authenticate: Bearer ... resource_metadata="..."` header pointing at the protected-resource metadata document.
@@ -227,15 +229,18 @@ Multi-turn session tracking:
 - Auto-cleanup after 1h idle
 - Max 1000 concurrent sessions
 
-### 5. Request Batching
+### 5. Argument Completion
 
-**File**: `src/mcp/middleware/batch-handler.ts`
+**File**: `src/index.ts` (`completion/complete` handler)
 
-JSON-RPC batch support per the MCP spec:
+Autocompletion for resource-template and prompt arguments (MCP 2025-11-25 `completions` capability):
 
-- Clients POST an array of JSON-RPC requests
-- Server processes them in parallel via `Promise.allSettled`
-- Returns an array of responses
+- Completes `datasetId` / `tableId` from the live BigQuery catalog
+- Prefix-filtered, capped at 100 values with `hasMore`
+- Resilient: a failing catalog lookup returns an empty completion, never an error
+
+> **Note:** JSON-RPC request batching was **removed** from the MCP spec in revision 2025-06-18. This server does not
+> accept batch arrays — the SDK Streamable HTTP transport rejects them.
 
 ### 6. Column-Level Masking
 

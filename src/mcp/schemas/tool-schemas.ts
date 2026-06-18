@@ -176,8 +176,16 @@ export function validateToolArgs<T extends ToolName>(
 }
 
 /**
- * Get tool schema as JSON Schema 2020-12 for MCP tool definition.
- * Uses zod-to-json-schema for accurate conversion.
+ * Get a tool's input schema as JSON Schema 2020-12 — the default dialect MCP
+ * 2025-11-25 (SEP-1613) expects for tool `inputSchema`.
+ *
+ * zod-to-json-schema has no `jsonSchema2020-12` target, so we emit with its
+ * closest target (`jsonSchema2019-09`) and inline all definitions
+ * (`$refStrategy: 'none'`). The result uses only keywords that are identical
+ * across draft 2019-09 and 2020-12 for these schemas (object/properties/type/
+ * enum/default/description/minimum/maximum and single-schema array `items`), so
+ * labelling it `2020-12` via `$schema` is accurate — there are no tuple
+ * `items`/`prefixItems` or `$recursiveRef`/`$dynamicRef` constructs that differ.
  */
 export function getToolInputSchema(toolName: ToolName): JsonSchema {
   const schema = TOOL_SCHEMAS[toolName];

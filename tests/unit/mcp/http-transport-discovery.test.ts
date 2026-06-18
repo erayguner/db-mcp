@@ -1,40 +1,38 @@
 /**
- * Integration tests for the StreamableHttpTransport — focused on the
- * Gemini-Enterprise-related additions: OAuth discovery endpoints,
- * strict Streamable HTTP mode, and the WWW-Authenticate 401 helper.
+ * Tests for the StreamableHttpTransport HTTP surface — the Gemini-Enterprise /
+ * MCP-auth-related additions: OAuth discovery endpoints, the stateless GET 405,
+ * and the WWW-Authenticate 401 helper. These are pure Express routes that
+ * resolve before the MCP protocol layer, so they need no live MCP Server.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
 import { AddressInfo } from 'net';
-import { StreamableHttpTransport } from '../../../src/mcp/transports/http-transport.js';
-import type { JsonRpcRequest, JsonRpcResponse } from '../../../src/mcp/middleware/batch-handler.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import {
+  StreamableHttpTransport,
+  ServerProvider,
+} from '../../../src/mcp/transports/http-transport.js';
 
-const noopHandler = async (req: JsonRpcRequest): Promise<JsonRpcResponse> => ({
-  jsonrpc: '2.0',
-  id: req.id ?? null,
-  result: { ok: true },
-});
+const makeServer: ServerProvider = () =>
+  new Server({ name: 'test-mcp', version: '0.0.0' }, { capabilities: {} });
 
 function getPort(t: StreamableHttpTransport): number {
   const app = t.getApp();
-  // express stores the server on internal handle; reach into transport via cast
   const internal = (t as unknown as { server: { address(): AddressInfo | null } }).server;
   const addr = internal.address();
   if (!addr || typeof addr === 'string') throw new Error('no address');
-  // touch app reference to satisfy unused checks
   void app;
   return addr.port;
 }
 
-describe('StreamableHttpTransport — discovery + strict mode', () => {
-  describe('strict Streamable HTTP mode', () => {
+describe('StreamableHttpTransport — discovery + stateless behaviour', () => {
+  describe('stateless Streamable HTTP', () => {
     let transport: StreamableHttpTransport;
 
     beforeEach(async () => {
-      transport = new StreamableHttpTransport(noopHandler, {
+      transport = new StreamableHttpTransport(makeServer, {
         port: 0,
         host: '127.0.0.1',
-        strictStreamableHttp: true,
         oauthMetadata: null,
       });
       await transport.start();
@@ -44,7 +42,7 @@ describe('StreamableHttpTransport — discovery + strict mode', () => {
       await transport.shutdown();
     });
 
-    it('returns 405 with Allow: POST on GET /mcp', async () => {
+    it('returns 405 with Allow: POST on GET /mcp (no standalone SSE)', async () => {
       const port = getPort(transport);
       const res = await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'GET' });
       expect(res.status).toBe(405);
@@ -53,52 +51,11 @@ describe('StreamableHttpTransport — discovery + strict mode', () => {
       expect(body.error).toBe('method_not_allowed');
     });
 
-    it('still accepts POST /mcp in strict mode', async () => {
+    it('returns 405 with Allow: POST on DELETE /mcp (no sessions)', async () => {
       const port = getPort(transport);
-      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
-      });
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { result: { ok: boolean } };
-      expect(body.result.ok).toBe(true);
-    });
-  });
-
-  describe('non-strict mode (SSE permitted)', () => {
-    let transport: StreamableHttpTransport;
-
-    beforeEach(async () => {
-      transport = new StreamableHttpTransport(noopHandler, {
-        port: 0,
-        host: '127.0.0.1',
-        strictStreamableHttp: false,
-        oauthMetadata: null,
-      });
-      await transport.start();
-    });
-
-    afterEach(async () => {
-      await transport.shutdown();
-    });
-
-    it('opens an SSE stream on GET /mcp', async () => {
-      const port = getPort(transport);
-      const controller = new AbortController();
-      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-      expect(res.status).toBe(200);
-      expect(res.headers.get('Content-Type')).toContain('text/event-stream');
-      controller.abort();
-      // Drain to release the socket
-      try {
-        await res.body?.cancel();
-      } catch {
-        /* ignore */
-      }
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'DELETE' });
+      expect(res.status).toBe(405);
+      expect(res.headers.get('Allow')).toBe('POST');
     });
   });
 
@@ -106,10 +63,9 @@ describe('StreamableHttpTransport — discovery + strict mode', () => {
     let transport: StreamableHttpTransport;
 
     beforeAll(async () => {
-      transport = new StreamableHttpTransport(noopHandler, {
+      transport = new StreamableHttpTransport(makeServer, {
         port: 0,
         host: '127.0.0.1',
-        strictStreamableHttp: true,
         oauthMetadata: {
           resourceUrl: 'https://mcp.example.com',
           authorizationServerIssuer: 'https://accounts.google.com',
@@ -149,10 +105,9 @@ describe('StreamableHttpTransport — discovery + strict mode', () => {
     });
 
     it('does NOT mount discovery routes when oauthMetadata is null', async () => {
-      const t2 = new StreamableHttpTransport(noopHandler, {
+      const t2 = new StreamableHttpTransport(makeServer, {
         port: 0,
         host: '127.0.0.1',
-        strictStreamableHttp: true,
         oauthMetadata: null,
       });
       await t2.start();

@@ -16,9 +16,11 @@ Federation** authentication. Provides secure, keyless access to BigQuery through
 
 - **Zero Service Account Keys** - 100% Workload Identity Federation
 - **Google Workspace Integration** - OIDC user authentication
-- **MCP Protocol Compliant** - Follows official MCP SDK best practices (2025-11-25 spec)
-- **Gemini Enterprise Ready** - OAuth 2.0 discovery (RFC 8414/9728), strict Streamable HTTP transport
-- **Resource Templates** - RFC 6570 URI templates for dataset/table/schema/sample/job/INFORMATION_SCHEMA
+- **MCP Protocol Compliant** - Built on the official MCP SDK's `StreamableHTTPServerTransport` (stateless), 2025-11-25
+  spec
+- **Gemini Enterprise Ready** - OAuth 2.0 discovery (RFC 8414/9728), stateless Streamable HTTP transport
+- **Resource Templates + Completions** - RFC 6570 URI templates for dataset/table/schema/sample/job/INFORMATION_SCHEMA,
+  with `completion/complete` autocompletion of dataset/table IDs
 - **Cost Elicitation Gate** - Per-query dry-run guardrail that surfaces high-cost confirmations to clients
 - **Multi-tenant** - YAML allowlist + IAM Conditions on BigQuery datasets
 - **Security Middleware** - Rate limiting, prompt injection detection, data redaction

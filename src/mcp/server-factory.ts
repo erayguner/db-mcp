@@ -13,15 +13,7 @@ interface ServerCapabilities {
   resources?: Record<string, unknown>;
   prompts?: Record<string, unknown>;
   logging?: Record<string, unknown>;
-}
-
-/**
- * Server Constructor Options
- */
-interface ServerConstructorOptions extends Record<string, unknown> {
-  name: string;
-  version: string;
-  capabilities?: ServerCapabilities;
+  completions?: Record<string, unknown>;
 }
 
 /**
@@ -94,18 +86,7 @@ export class MCPServerFactory extends EventEmitter {
     super();
     this.config = this.parseAndValidateConfig(config);
 
-    const serverOptions: ServerConstructorOptions = {
-      name: this.config.name,
-      version: this.config.version,
-      capabilities: {
-        tools: this.config.capabilities.tools ? { list: true, call: true } : undefined,
-        resources: this.config.capabilities.resources ? { list: true, read: true } : undefined,
-        prompts: this.config.capabilities.prompts ? {} : undefined,
-        logging: this.config.capabilities.logging ? {} : undefined,
-      },
-    };
-
-    this.server = new Server(serverOptions);
+    this.server = this.newServer();
     this.setState(ServerState.READY);
     logger.info('MCP Server Factory initialized', {
       name: this.config.name,
@@ -131,6 +112,43 @@ export class MCPServerFactory extends EventEmitter {
       gracefulShutdownTimeoutMs: parsed.gracefulShutdownTimeoutMs ?? 30000,
       healthCheckIntervalMs: parsed.healthCheckIntervalMs ?? 60000,
     };
+  }
+
+  /**
+   * Build the capabilities document advertised to clients. Uses spec-shaped
+   * empty objects per MCP 2025-11-25. `completions` is always advertised
+   * because the server registers a `completion/complete` handler.
+   */
+  private buildCapabilities(): ServerCapabilities {
+    const c = this.config.capabilities;
+    return {
+      ...(c.tools ? { tools: {} } : {}),
+      ...(c.resources ? { resources: {} } : {}),
+      ...(c.prompts ? { prompts: {} } : {}),
+      ...(c.logging ? { logging: {} } : {}),
+      completions: {},
+    };
+  }
+
+  /**
+   * Construct a fresh, unconnected MCP Server with the configured identity and
+   * capabilities. Capabilities are passed in the SDK's second constructor
+   * argument (`ServerOptions`) so they are correctly advertised on `initialize`.
+   */
+  private newServer(): Server {
+    return new Server(
+      { name: this.config.name, version: this.config.version },
+      { capabilities: this.buildCapabilities() }
+    );
+  }
+
+  /**
+   * Create a fresh, unconnected MCP Server configured identically to the
+   * primary server. The Streamable HTTP transport runs in stateless mode and
+   * connects a new Server + transport per request, so it calls this per request.
+   */
+  public createServer(): Server {
+    return this.newServer();
   }
 
   /**
