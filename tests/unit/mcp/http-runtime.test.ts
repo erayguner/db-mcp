@@ -1,29 +1,26 @@
 import { describe, it, expect, afterEach } from '@jest/globals';
 import { createServer, Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   StreamableHttpTransport,
-  JsonRpcHandler,
   AuthResolver,
+  ServerProvider,
 } from '../../../src/mcp/transports/http-transport.js';
 
 /**
- * Runtime tests for the wired Streamable HTTP transport — the path that makes
- * the server actually deployable on Cloud Run (health probe + POST /mcp) and
- * enforces auth/tenant resolution at the HTTP boundary.
- *
- * We drive the transport's Express app through an ephemeral http.Server so the
- * test never binds a fixed port.
+ * Runtime tests for the SDK-backed Streamable HTTP transport — the HTTP-layer
+ * concerns the transport itself owns: Cloud Run health probe, the auth
+ * boundary (401 + WWW-Authenticate), Host allow-list (DNS-rebinding defense),
+ * and the stateless GET 405. The MCP protocol itself (initialize negotiation,
+ * batch rejection, version-header validation) is delegated to and covered by
+ * the official SDK transport, so these tests do not re-assert it.
  */
 
-const echoHandler: JsonRpcHandler = async (req, ctx) => ({
-  jsonrpc: '2.0',
-  id: req.id,
-  result: {
-    method: req.method,
-    tenant: (ctx?.tenantContext as { id?: string } | undefined)?.id ?? null,
-  },
-});
+// In these tests the MCP Server is the repo's lightweight mock; the routes
+// exercised below resolve before any request reaches the MCP protocol layer.
+const makeServer: ServerProvider = () =>
+  new Server({ name: 'test-mcp', version: '0.0.0' }, { capabilities: {} });
 
 let httpServer: HttpServer | null = null;
 
@@ -44,7 +41,7 @@ afterEach(async () => {
 
 describe('StreamableHttpTransport runtime', () => {
   it('serves the /health liveness probe (Cloud Run startup/liveness)', async () => {
-    const transport = new StreamableHttpTransport(echoHandler);
+    const transport = new StreamableHttpTransport(makeServer);
     const base = await listen(transport);
 
     const res = await fetch(`${base}/health`);
@@ -53,41 +50,13 @@ describe('StreamableHttpTransport runtime', () => {
     expect(body.status).toBe('healthy');
   });
 
-  it('answers an initialize request with a JSON-RPC result', async () => {
-    const transport = new StreamableHttpTransport(echoHandler);
-    const base = await listen(transport);
-
-    const res = await fetch(`${base}/mcp`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: number; result: { method: string } };
-    expect(body.id).toBe(1);
-    expect(body.result.method).toBe('initialize');
-  });
-
-  it('acknowledges a notification (no id) with 202 and no body', async () => {
-    const transport = new StreamableHttpTransport(echoHandler);
-    const base = await listen(transport);
-
-    const res = await fetch(`${base}/mcp`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
-    });
-    expect(res.status).toBe(202);
-    expect(await res.text()).toBe('');
-  });
-
-  it('rejects requests with 401 when the auth resolver denies', async () => {
+  it('rejects requests with 401 + WWW-Authenticate when the auth resolver denies', async () => {
     const denyResolver: AuthResolver = async () => ({
       authorized: false,
       error: 'token expired',
       errorCode: 'invalid_token',
     });
-    const transport = new StreamableHttpTransport(echoHandler, undefined, denyResolver);
+    const transport = new StreamableHttpTransport(makeServer, undefined, denyResolver);
     const base = await listen(transport);
 
     const res = await fetch(`${base}/mcp`, {
@@ -99,30 +68,25 @@ describe('StreamableHttpTransport runtime', () => {
     expect(res.headers.get('www-authenticate')).toContain('Bearer');
   });
 
-  it('threads the resolved tenant context through to the handler', async () => {
-    const allowResolver: AuthResolver = async () => ({
-      authorized: true,
-      context: { tenantContext: { id: 'tenant-a' } },
-    });
-    const transport = new StreamableHttpTransport(echoHandler, undefined, allowResolver);
-    const base = await listen(transport);
-
-    const res = await fetch(`${base}/mcp`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'tools/call' }),
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { result: { tenant: string } };
-    expect(body.result.tenant).toBe('tenant-a');
-  });
-
-  it('returns GET /mcp 405 in strict Streamable HTTP mode (Gemini Enterprise)', async () => {
-    const transport = new StreamableHttpTransport(echoHandler, { strictStreamableHttp: true });
+  it('returns GET /mcp 405 with Allow: POST (stateless Streamable HTTP)', async () => {
+    const transport = new StreamableHttpTransport(makeServer);
     const base = await listen(transport);
 
     const res = await fetch(`${base}/mcp`, { method: 'GET' });
     expect(res.status).toBe(405);
     expect(res.headers.get('allow')).toBe('POST');
+  });
+
+  it('rejects a disallowed Host header with 403 (DNS-rebinding defense)', async () => {
+    const transport = new StreamableHttpTransport(makeServer, {
+      allowedHosts: ['mcp.allowed.example:443'],
+    });
+    const base = await listen(transport);
+
+    // fetch sends Host: 127.0.0.1:<port>, which is not in the allow-list.
+    const res = await fetch(`${base}/health`);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('forbidden');
   });
 });

@@ -21,7 +21,9 @@ import {
   ReadResourceRequestSchema,
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
+  CompleteRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   BIGQUERY_RESOURCE_TEMPLATES,
   URI_MATCHERS,
@@ -63,22 +65,10 @@ import { OIDCAuthenticator, AuthenticatedPrincipal } from './auth/oidc-authentic
 import { loadOAuthMetadataConfig } from './auth/oauth-metadata.js';
 import { TenantRegistry } from './tenancy/tenant-registry.js';
 import { TenantContextFactory, TenantContext } from './tenancy/tenant-context.js';
-import {
-  StreamableHttpTransport,
-  McpRequestContext,
-  AuthResolver,
-} from './mcp/transports/http-transport.js';
-import {
-  JsonRpcRequest,
-  JsonRpcResponse,
-  JSON_RPC_ERRORS,
-} from './mcp/middleware/batch-handler.js';
+import { StreamableHttpTransport, AuthResolver } from './mcp/transports/http-transport.js';
 
 /** Server version — single source of truth */
 const SERVER_VERSION = '1.0.0';
-
-/** MCP protocol revision advertised on `initialize` over the HTTP transport. */
-const MCP_PROTOCOL_VERSION = '2025-11-25';
 
 /** Tool descriptions — single source of truth */
 const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -122,6 +112,15 @@ interface CallToolInput {
   params: { name: string; arguments?: unknown };
   userId?: string;
   tenantContext?: TenantContext;
+}
+
+/** Input accepted by the `completion/complete` handler (MCP 2025-11-25). */
+interface CompleteInput {
+  params: {
+    ref: { type: 'ref/prompt'; name: string } | { type: 'ref/resource'; uri: string };
+    argument: { name: string; value: string };
+    context?: { arguments?: Record<string, string> };
+  };
 }
 
 /**
@@ -385,24 +384,10 @@ export class MCPBigQueryServer {
    * Setup MCP request handlers using factory pattern
    */
   private setupHandlers(): void {
-    const server = this.serverFactory.getServer();
-
-    // Removed direct capability mutation to avoid unsafe any assignments
-
-    // ==========================================
-    // List Tools Handler
-    // ==========================================
-    try {
-      server.setRequestHandler(ListToolsRequestSchema, () => {
-        logger.debug('Handling list_tools request');
-        recordProtocolMethod('list_tools');
-        const tools = generateToolDefinitions(this.getToolDescription.bind(this));
-        logger.info('Listed tools', { count: tools.length });
-        return { tools };
-      });
-    } catch (err) {
-      logger.warn('Skipping list_tools handler registration', { error: (err as Error).message });
-    }
+    // Build the reusable handler pipelines (call-tool, read-resource) as fields,
+    // then register all handlers on the stdio server via registerHandlers().
+    // The HTTP transport registers the same handlers on a fresh Server per
+    // request, reading tenant/user context from extra.authInfo.
 
     // ==========================================
     // Call Tool Handler (Factory Pattern)
@@ -717,386 +702,422 @@ export class MCPBigQueryServer {
       }
     };
 
-    server.setRequestHandler(CallToolRequestSchema, (request) =>
-      this.callToolHandler(request as CallToolInput)
-    );
+    // ==========================================
+    // Read Resource Handler (pipeline stored as a field; registered per server)
+    // ==========================================
+    this.readResourceHandler = async (request: { params: { uri: string } }) => {
+      const { uri } = request.params;
 
-    // ==========================================
-    // List Resources Handler
-    // ==========================================
-    try {
-      server.setRequestHandler(ListResourcesRequestSchema, () => {
-        logger.debug('Handling list_resources request');
-        recordProtocolMethod('list_resources');
+      logger.info('Handling read_resource request', { uri });
+      recordProtocolMethod('read_resource');
+
+      // Ensure BigQuery is initialized
+      if (!this.bigQueryClient) {
+        await this.initializeBigQuery();
+      }
+
+      const projectId = this.env.GCP_PROJECT_ID;
+      const now = new Date().toISOString();
+
+      // bigquery://datasets — full catalog
+      if (uri === 'bigquery://datasets') {
+        const datasets = await this.bigQueryClient!.listDatasets();
+
+        const response = {
+          datasets: datasets.map((ds) => ({
+            id: ds.id,
+            projectId: ds.projectId,
+            location: ds.location,
+            description: ds.description,
+            creationTime: ds.createdAt.toISOString(),
+            lastModifiedTime: ds.modifiedAt.toISOString(),
+          })),
+          provenance: {
+            source: 'bigquery',
+            projectId,
+            retrievedAt: now,
+            freshness: 'real-time',
+            consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}`,
+          },
+        };
 
         return {
-          resources: [
+          contents: [
             {
-              uri: 'bigquery://datasets',
-              name: 'BigQuery Dataset Catalog',
-              description:
-                'Discoverable catalog of all available BigQuery datasets with descriptions and metadata',
+              uri,
               mimeType: 'application/json',
+              text: JSON.stringify(response, null, 2),
             },
           ],
         };
-      });
-    } catch (err) {
-      logger.warn('Skipping list_resources handler registration', {
-        error: (err as Error).message,
-      });
-    }
+      }
 
-    // ==========================================
-    // List Resource Templates Handler (MCP 2025-11-25)
-    // ==========================================
-    try {
-      server.setRequestHandler(ListResourceTemplatesRequestSchema, () => {
-        logger.debug('Handling list_resource_templates request');
-        recordProtocolMethod('list_resource_templates');
-        return { resourceTemplates: BIGQUERY_RESOURCE_TEMPLATES };
-      });
-    } catch (err) {
-      logger.warn('Skipping list_resource_templates handler registration', {
-        error: (err as Error).message,
-      });
-    }
-
-    // ==========================================
-    // List Prompts Handler
-    // ==========================================
-    try {
-      server.setRequestHandler(ListPromptsRequestSchema, () => {
-        logger.debug('Handling list_prompts request');
-        recordProtocolMethod('list_prompts');
-        const prompts = this.promptRegistry.listPrompts();
-        logger.info('Listed prompts', { count: prompts.length });
-        return { prompts };
-      });
-    } catch (err) {
-      logger.warn('Skipping list_prompts handler registration', { error: (err as Error).message });
-    }
-
-    // ==========================================
-    // Get Prompt Handler
-    // ==========================================
-    try {
-      server.setRequestHandler(GetPromptRequestSchema, (request) => {
-        const typedReq = request as {
-          params: { name: string; arguments?: Record<string, string> };
+      // bigquery://datasets/{datasetId}/tables/{tableId}/schema — schema only
+      const schemaMatch = uri.match(URI_MATCHERS.schema);
+      if (schemaMatch) {
+        const [, datasetId, tableId] = schemaMatch;
+        const table = await this.bigQueryClient!.getTable(datasetId, tableId);
+        const columns = Array.isArray(table.schema)
+          ? (table.schema as Array<Record<string, unknown>>).map((f) => ({
+              name: typeof f.name === 'string' ? f.name : '',
+              type: typeof f.type === 'string' ? f.type : 'UNKNOWN',
+              mode: typeof f.mode === 'string' ? f.mode : 'NULLABLE',
+              description: typeof f.description === 'string' ? f.description : undefined,
+            }))
+          : [];
+        const response = {
+          datasetId,
+          tableId,
+          columns,
+          tableDescription: table.description,
+          provenance: {
+            source: 'bigquery',
+            projectId,
+            datasetId,
+            tableId,
+            retrievedAt: now,
+            freshness: 'real-time',
+            consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
+          },
         };
-        const { name, arguments: args } = typedReq.params;
-
-        logger.info('Handling get_prompt request', { name, hasArgs: !!args });
-        recordProtocolMethod('get_prompt');
-
-        const result = this.promptRegistry.getPrompt(name, args || {});
-
-        // Map to SDK-expected format: { description, messages: [{role, content}] }
         return {
-          description: result.description,
-          messages: result.messages.map(
-            (m: { role: string; content: { type: string; text: string } }) => ({
-              role: m.role as 'user' | 'assistant',
-              content: m.content,
-            })
-          ),
+          contents: [
+            { uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) },
+          ],
         };
-      });
-    } catch (err) {
-      logger.warn('Skipping get_prompt handler registration', { error: (err as Error).message });
-    }
+      }
 
-    // ==========================================
-    // Read Resource Handler
-    // ==========================================
-    try {
-      // Read-resource pipeline — stored as a field so it is reusable from the
-      // HTTP dispatcher as well as the stdio handler registered below.
-      this.readResourceHandler = async (request: { params: { uri: string } }) => {
-        const { uri } = request.params;
-
-        logger.info('Handling read_resource request', { uri });
-        recordProtocolMethod('read_resource');
-
-        // Ensure BigQuery is initialized
-        if (!this.bigQueryClient) {
-          await this.initializeBigQuery();
+      // bigquery://datasets/{datasetId}/tables/{tableId}/sample — preview rows
+      const sampleMatch = uri.match(URI_MATCHERS.sample);
+      if (sampleMatch) {
+        const [, datasetId, tableId] = sampleMatch;
+        // Validate identifiers per BigQuery rules to prevent SQL injection.
+        if (!/^[A-Za-z0-9_]+$/.test(datasetId) || !/^[A-Za-z0-9_]+$/.test(tableId)) {
+          throw new Error(`Invalid dataset/table identifier in URI: ${uri}`);
         }
-
-        const projectId = this.env.GCP_PROJECT_ID;
-        const now = new Date().toISOString();
-
-        // bigquery://datasets — full catalog
-        if (uri === 'bigquery://datasets') {
-          const datasets = await this.bigQueryClient!.listDatasets();
-
-          const response = {
-            datasets: datasets.map((ds) => ({
-              id: ds.id,
-              projectId: ds.projectId,
-              location: ds.location,
-              description: ds.description,
-              creationTime: ds.createdAt.toISOString(),
-              lastModifiedTime: ds.modifiedAt.toISOString(),
-            })),
-            provenance: {
-              source: 'bigquery',
-              projectId,
-              retrievedAt: now,
-              freshness: 'real-time',
-              consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}`,
-            },
-          };
-
-          return {
-            contents: [
-              {
-                uri,
-                mimeType: 'application/json',
-                text: JSON.stringify(response, null, 2),
-              },
-            ],
-          };
-        }
-
-        // bigquery://datasets/{datasetId}/tables/{tableId}/schema — schema only
-        const schemaMatch = uri.match(URI_MATCHERS.schema);
-        if (schemaMatch) {
-          const [, datasetId, tableId] = schemaMatch;
-          const table = await this.bigQueryClient!.getTable(datasetId, tableId);
-          const columns = Array.isArray(table.schema)
-            ? (table.schema as Array<Record<string, unknown>>).map((f) => ({
-                name: typeof f.name === 'string' ? f.name : '',
-                type: typeof f.type === 'string' ? f.type : 'UNKNOWN',
-                mode: typeof f.mode === 'string' ? f.mode : 'NULLABLE',
-                description: typeof f.description === 'string' ? f.description : undefined,
-              }))
-            : [];
-          const response = {
+        const sampleSql = `SELECT * FROM \`${projectId}.${datasetId}.${tableId}\` LIMIT 10`;
+        const result = await this.bigQueryClient!.query({ query: sampleSql });
+        const response = {
+          datasetId,
+          tableId,
+          rows: result.rows,
+          rowCount: Array.isArray(result.rows) ? result.rows.length : 0,
+          provenance: {
+            source: 'bigquery',
+            projectId,
             datasetId,
             tableId,
-            columns,
-            tableDescription: table.description,
-            provenance: {
-              source: 'bigquery',
-              projectId,
-              datasetId,
-              tableId,
-              retrievedAt: now,
-              freshness: 'real-time',
-              consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
-            },
-          };
-          return {
-            contents: [
-              { uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) },
-            ],
-          };
-        }
+            retrievedAt: now,
+            freshness: 'real-time',
+            note: 'Up to 10 rows; honors tenant column-masking policies if applied at query time.',
+            consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
+          },
+        };
+        return {
+          contents: [
+            { uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) },
+          ],
+        };
+      }
 
-        // bigquery://datasets/{datasetId}/tables/{tableId}/sample — preview rows
-        const sampleMatch = uri.match(URI_MATCHERS.sample);
-        if (sampleMatch) {
-          const [, datasetId, tableId] = sampleMatch;
-          // Validate identifiers per BigQuery rules to prevent SQL injection.
-          if (!/^[A-Za-z0-9_]+$/.test(datasetId) || !/^[A-Za-z0-9_]+$/.test(tableId)) {
-            throw new Error(`Invalid dataset/table identifier in URI: ${uri}`);
-          }
-          const sampleSql = `SELECT * FROM \`${projectId}.${datasetId}.${tableId}\` LIMIT 10`;
-          const result = await this.bigQueryClient!.query({ query: sampleSql });
-          const response = {
-            datasetId,
-            tableId,
-            rows: result.rows,
-            rowCount: Array.isArray(result.rows) ? result.rows.length : 0,
-            provenance: {
-              source: 'bigquery',
-              projectId,
-              datasetId,
-              tableId,
-              retrievedAt: now,
-              freshness: 'real-time',
-              note: 'Up to 10 rows; honors tenant column-masking policies if applied at query time.',
-              consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
-            },
-          };
-          return {
-            contents: [
-              { uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) },
-            ],
-          };
+      // bigquery://jobs/{jobId} — query job result handle
+      const jobMatch = uri.match(URI_MATCHERS.job);
+      if (jobMatch) {
+        const [, jobId] = jobMatch;
+        if (!/^[A-Za-z0-9_\-:.]+$/.test(jobId)) {
+          throw new Error(`Invalid job id in URI: ${uri}`);
         }
-
-        // bigquery://jobs/{jobId} — query job result handle
-        const jobMatch = uri.match(URI_MATCHERS.job);
-        if (jobMatch) {
-          const [, jobId] = jobMatch;
-          if (!/^[A-Za-z0-9_\-:.]+$/.test(jobId)) {
-            throw new Error(`Invalid job id in URI: ${uri}`);
-          }
-          // Defer to the BigQuery client; if it lacks a getJob helper, surface a clear error.
-          const client = this.bigQueryClient as unknown as {
-            getJob?: (id: string) => Promise<unknown>;
-          };
-          if (typeof client.getJob !== 'function') {
-            throw new Error(
-              'Job resource requires BigQueryClient.getJob() — not implemented in this build'
-            );
-          }
-          const job = await client.getJob(jobId);
-          const response = {
+        // Defer to the BigQuery client; if it lacks a getJob helper, surface a clear error.
+        const client = this.bigQueryClient as unknown as {
+          getJob?: (id: string) => Promise<unknown>;
+        };
+        if (typeof client.getJob !== 'function') {
+          throw new Error(
+            'Job resource requires BigQueryClient.getJob() — not implemented in this build'
+          );
+        }
+        const job = await client.getJob(jobId);
+        const response = {
+          jobId,
+          job,
+          provenance: {
+            source: 'bigquery',
+            projectId,
             jobId,
-            job,
-            provenance: {
-              source: 'bigquery',
-              projectId,
-              jobId,
-              retrievedAt: now,
-              freshness: 'real-time',
-              consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&j=bq:${encodeURIComponent(jobId)}&page=queryresults`,
-            },
-          };
-          return {
-            contents: [
-              { uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) },
-            ],
-          };
-        }
+            retrievedAt: now,
+            freshness: 'real-time',
+            consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&j=bq:${encodeURIComponent(jobId)}&page=queryresults`,
+          },
+        };
+        return {
+          contents: [
+            { uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) },
+          ],
+        };
+      }
 
-        // bigquery://datasets/{datasetId}/information_schema/{view} — catalog browse
-        const isMatch = uri.match(URI_MATCHERS.informationSchema);
-        if (isMatch) {
-          const [, datasetId, view] = isMatch;
-          if (!/^[A-Za-z0-9_]+$/.test(datasetId)) {
-            throw new Error(`Invalid dataset identifier in URI: ${uri}`);
-          }
-          if (!ALLOWED_INFORMATION_SCHEMA_VIEWS.has(view)) {
-            throw new Error(`Unsupported INFORMATION_SCHEMA view: ${view}`);
-          }
-          const sql = `SELECT * FROM \`${projectId}.${datasetId}.INFORMATION_SCHEMA.${view}\` LIMIT 1000`;
-          const result = await this.bigQueryClient!.query({ query: sql });
-          const response = {
+      // bigquery://datasets/{datasetId}/information_schema/{view} — catalog browse
+      const isMatch = uri.match(URI_MATCHERS.informationSchema);
+      if (isMatch) {
+        const [, datasetId, view] = isMatch;
+        if (!/^[A-Za-z0-9_]+$/.test(datasetId)) {
+          throw new Error(`Invalid dataset identifier in URI: ${uri}`);
+        }
+        if (!ALLOWED_INFORMATION_SCHEMA_VIEWS.has(view)) {
+          throw new Error(`Unsupported INFORMATION_SCHEMA view: ${view}`);
+        }
+        const sql = `SELECT * FROM \`${projectId}.${datasetId}.INFORMATION_SCHEMA.${view}\` LIMIT 1000`;
+        const result = await this.bigQueryClient!.query({ query: sql });
+        const response = {
+          datasetId,
+          view,
+          rows: result.rows,
+          provenance: {
+            source: 'bigquery.information_schema',
+            projectId,
             datasetId,
             view,
-            rows: result.rows,
-            provenance: {
-              source: 'bigquery.information_schema',
-              projectId,
-              datasetId,
-              view,
-              retrievedAt: now,
-              freshness: 'real-time',
-            },
-          };
-          return {
-            contents: [
-              { uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) },
-            ],
-          };
-        }
+            retrievedAt: now,
+            freshness: 'real-time',
+          },
+        };
+        return {
+          contents: [
+            { uri, mimeType: 'application/json', text: JSON.stringify(response, null, 2) },
+          ],
+        };
+      }
 
-        // bigquery://datasets/{datasetId}/tables/{tableId} — table detail (check before dataset)
-        const tableMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)\/tables\/([^/]+)$/);
-        if (tableMatch) {
-          const [, datasetId, tableId] = tableMatch;
-          const table = await this.bigQueryClient!.getTable(datasetId, tableId);
+      // bigquery://datasets/{datasetId}/tables/{tableId} — table detail (check before dataset)
+      const tableMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)\/tables\/([^/]+)$/);
+      if (tableMatch) {
+        const [, datasetId, tableId] = tableMatch;
+        const table = await this.bigQueryClient!.getTable(datasetId, tableId);
 
-          const schemaContext = Array.isArray(table.schema)
-            ? {
-                columns: (table.schema as Array<Record<string, unknown>>).map((f) => ({
-                  name: typeof f.name === 'string' ? f.name : '',
-                  type: typeof f.type === 'string' ? f.type : 'UNKNOWN',
-                  description: typeof f.description === 'string' ? f.description : undefined,
-                  mode: typeof f.mode === 'string' ? f.mode : 'NULLABLE',
-                })),
-                tableDescription: table.description,
-              }
-            : undefined;
+        const schemaContext = Array.isArray(table.schema)
+          ? {
+              columns: (table.schema as Array<Record<string, unknown>>).map((f) => ({
+                name: typeof f.name === 'string' ? f.name : '',
+                type: typeof f.type === 'string' ? f.type : 'UNKNOWN',
+                description: typeof f.description === 'string' ? f.description : undefined,
+                mode: typeof f.mode === 'string' ? f.mode : 'NULLABLE',
+              })),
+              tableDescription: table.description,
+            }
+          : undefined;
 
-          const response = {
+        const response = {
+          datasetId,
+          tableId,
+          schema: table.schema,
+          metadata: {
+            type: table.type,
+            creationTime: table.createdAt.toISOString(),
+            lastModifiedTime: table.modifiedAt.toISOString(),
+            numRows: table.numRows,
+            numBytes: table.numBytes,
+            description: table.description,
+          },
+          schemaContext,
+          provenance: {
+            source: 'bigquery',
+            projectId,
             datasetId,
             tableId,
-            schema: table.schema,
-            metadata: {
-              type: table.type,
-              creationTime: table.createdAt.toISOString(),
-              lastModifiedTime: table.modifiedAt.toISOString(),
-              numRows: table.numRows,
-              numBytes: table.numBytes,
-              description: table.description,
+            retrievedAt: now,
+            freshness: 'real-time',
+            consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
+          },
+        };
+
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: 'application/json',
+              text: JSON.stringify(response, null, 2),
             },
-            schemaContext,
-            provenance: {
-              source: 'bigquery',
-              projectId,
-              datasetId,
-              tableId,
-              retrievedAt: now,
-              freshness: 'real-time',
-              consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
-            },
-          };
+          ],
+        };
+      }
 
-          return {
-            contents: [
-              {
-                uri,
-                mimeType: 'application/json',
-                text: JSON.stringify(response, null, 2),
-              },
-            ],
-          };
-        }
+      // bigquery://datasets/{datasetId} — dataset detail with table listing
+      const datasetMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)$/);
+      if (datasetMatch) {
+        const [, datasetId] = datasetMatch;
+        const tables = await this.bigQueryClient!.listTables(datasetId);
 
-        // bigquery://datasets/{datasetId} — dataset detail with table listing
-        const datasetMatch = uri.match(/^bigquery:\/\/datasets\/([^/]+)$/);
-        if (datasetMatch) {
-          const [, datasetId] = datasetMatch;
-          const tables = await this.bigQueryClient!.listTables(datasetId);
-
-          const response = {
+        const response = {
+          datasetId,
+          tables: tables.map((t) => ({
+            id: t.id,
+            type: t.type,
+            numRows: t.numRows,
+            numBytes: t.numBytes,
+            description: t.description,
+            creationTime: t.createdAt.toISOString(),
+          })),
+          provenance: {
+            source: 'bigquery',
+            projectId,
             datasetId,
-            tables: tables.map((t) => ({
-              id: t.id,
-              type: t.type,
-              numRows: t.numRows,
-              numBytes: t.numBytes,
-              description: t.description,
-              creationTime: t.createdAt.toISOString(),
-            })),
-            provenance: {
-              source: 'bigquery',
-              projectId,
-              datasetId,
-              retrievedAt: now,
-              freshness: 'real-time',
-              consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&page=dataset`,
+            retrievedAt: now,
+            freshness: 'real-time',
+            consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&page=dataset`,
+          },
+        };
+
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: 'application/json',
+              text: JSON.stringify(response, null, 2),
             },
-          };
+          ],
+        };
+      }
 
-          return {
-            contents: [
-              {
-                uri,
-                mimeType: 'application/json',
-                text: JSON.stringify(response, null, 2),
-              },
-            ],
-          };
-        }
+      throw new Error(`Unknown resource: ${uri}`);
+    };
 
-        throw new Error(`Unknown resource: ${uri}`);
-      };
-
-      server.setRequestHandler(ReadResourceRequestSchema, (request) =>
-        this.readResourceHandler(request as { params: { uri: string } })
-      );
-    } catch (err) {
-      logger.warn('Skipping read_resource handler registration', { error: (err as Error).message });
-    }
+    this.registerHandlers(this.serverFactory.getServer());
 
     logger.info('Request handlers configured');
+  }
+
+  /**
+   * Register all MCP request handlers on the given Server. Reused by the
+   * long-lived stdio server (once) and the stateless HTTP transport (a fresh
+   * Server per request). Tenant/user context is read from `extra.authInfo`,
+   * which the HTTP transport populates from the authenticated principal; on the
+   * stdio transport it is absent (single-tenant, local).
+   */
+  private registerHandlers(server: Server): void {
+    server.setRequestHandler(ListToolsRequestSchema, () => {
+      recordProtocolMethod('list_tools');
+      const tools = generateToolDefinitions(this.getToolDescription.bind(this));
+      logger.debug('Listed tools', { count: tools.length });
+      return { tools };
+    });
+
+    server.setRequestHandler(CallToolRequestSchema, (request, extra) => {
+      const authInfo = (extra as { authInfo?: { extra?: Record<string, unknown> } } | undefined)
+        ?.authInfo;
+      const principal = authInfo?.extra?.principal as AuthenticatedPrincipal | undefined;
+      const tenantContext = authInfo?.extra?.tenantContext as TenantContext | undefined;
+      const input = request as CallToolInput;
+      return this.callToolHandler({
+        params: input.params,
+        ...(principal?.subject ? { userId: principal.subject } : {}),
+        ...(tenantContext ? { tenantContext } : {}),
+      });
+    });
+
+    server.setRequestHandler(ListResourcesRequestSchema, () => {
+      recordProtocolMethod('list_resources');
+      return {
+        resources: [
+          {
+            uri: 'bigquery://datasets',
+            name: 'BigQuery Dataset Catalog',
+            description:
+              'Discoverable catalog of all available BigQuery datasets with descriptions and metadata',
+            mimeType: 'application/json',
+          },
+        ],
+      };
+    });
+
+    server.setRequestHandler(ListResourceTemplatesRequestSchema, () => {
+      recordProtocolMethod('list_resource_templates');
+      return { resourceTemplates: BIGQUERY_RESOURCE_TEMPLATES };
+    });
+
+    server.setRequestHandler(ListPromptsRequestSchema, () => {
+      recordProtocolMethod('list_prompts');
+      const prompts = this.promptRegistry.listPrompts();
+      logger.debug('Listed prompts', { count: prompts.length });
+      return { prompts };
+    });
+
+    server.setRequestHandler(GetPromptRequestSchema, (request) => {
+      const typedReq = request as {
+        params: { name: string; arguments?: Record<string, string> };
+      };
+      const { name, arguments: args } = typedReq.params;
+      recordProtocolMethod('get_prompt');
+      const result = this.promptRegistry.getPrompt(name, args || {});
+      return {
+        description: result.description,
+        messages: result.messages.map(
+          (m: { role: string; content: { type: string; text: string } }) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })
+        ),
+      };
+    });
+
+    server.setRequestHandler(ReadResourceRequestSchema, (request) =>
+      this.readResourceHandler(request as { params: { uri: string } })
+    );
+
+    // completion/complete — argument autocompletion (MCP 2025-11-25 completions)
+    server.setRequestHandler(CompleteRequestSchema, (request) =>
+      this.completeHandler(request as CompleteInput)
+    );
+  }
+
+  /**
+   * Argument autocompletion for resource templates and prompts (MCP 2025-11-25
+   * `completions` capability). Completes `datasetId` / `tableId` from the live
+   * BigQuery catalog. Never throws — a failing catalog lookup degrades to an
+   * empty completion. Tenant policy is enforced at tool-execution time; the
+   * catalog surfaced here matches the (already unauthenticated) resource listing.
+   */
+  private async completeHandler(
+    request: CompleteInput
+  ): Promise<{ completion: { values: string[]; total?: number; hasMore: boolean } }> {
+    recordProtocolMethod('complete');
+    const empty = { completion: { values: [], hasMore: false } };
+    try {
+      const argName = request.params.argument?.name;
+      const prefix = (request.params.argument?.value ?? '').toLowerCase();
+      if (argName !== 'datasetId' && argName !== 'tableId') {
+        return empty;
+      }
+
+      if (!this.bigQueryClient) {
+        await this.initializeBigQuery();
+      }
+
+      let values: string[] = [];
+      if (argName === 'datasetId') {
+        const datasets = await this.bigQueryClient!.listDatasets();
+        values = datasets.map((d) => d.id).filter(Boolean);
+      } else {
+        const datasetId = request.params.context?.arguments?.datasetId;
+        if (!datasetId) return empty;
+        const tables = await this.bigQueryClient!.listTables(datasetId);
+        values = tables.map((t) => t.id).filter(Boolean);
+      }
+
+      const matched = prefix ? values.filter((v) => v.toLowerCase().startsWith(prefix)) : values;
+      const limited = matched.slice(0, 100);
+      return {
+        completion: {
+          values: limited,
+          total: matched.length,
+          hasMore: matched.length > limited.length,
+        },
+      };
+    } catch (error) {
+      logger.warn('completion/complete failed; returning empty completion', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return empty;
+    }
   }
 
   /**
@@ -1210,114 +1231,6 @@ export class MCPBigQueryServer {
   }
 
   /**
-   * Dispatch a single JSON-RPC request to the matching MCP method (HTTP path).
-   * Mirrors the stdio handlers but threads the authenticated tenant context
-   * into tool execution. Never throws: protocol errors become JSON-RPC error
-   * objects; tool-level errors are returned as tool results with `isError`.
-   */
-  private async dispatch(
-    req: JsonRpcRequest,
-    context?: McpRequestContext
-  ): Promise<JsonRpcResponse> {
-    const ok = (result: unknown): JsonRpcResponse => ({ jsonrpc: '2.0', id: req.id, result });
-    const fail = (code: number, message: string, data?: unknown): JsonRpcResponse => ({
-      jsonrpc: '2.0',
-      id: req.id,
-      error: { code, message, ...(data !== undefined ? { data } : {}) },
-    });
-
-    const params = (req.params ?? {}) as Record<string, unknown>;
-    const principal = context?.principal as AuthenticatedPrincipal | undefined;
-    const tenantContext = context?.tenantContext as TenantContext | undefined;
-
-    try {
-      switch (req.method) {
-        case 'initialize':
-          return ok({
-            protocolVersion:
-              typeof params.protocolVersion === 'string'
-                ? params.protocolVersion
-                : MCP_PROTOCOL_VERSION,
-            capabilities: { tools: {}, resources: {}, prompts: {}, logging: {} },
-            serverInfo: { name: 'gcp-bigquery-mcp-server', version: SERVER_VERSION },
-          });
-
-        case 'ping':
-          return ok({});
-
-        case 'tools/list':
-          return ok({ tools: generateToolDefinitions(this.getToolDescription.bind(this)) });
-
-        case 'tools/call': {
-          const name = typeof params.name === 'string' ? params.name : '';
-          if (!name) return fail(JSON_RPC_ERRORS.INVALID_PARAMS, 'Missing tool name');
-          recordProtocolMethod('call_tool');
-          const result = await this.callToolHandler({
-            params: { name, arguments: params.arguments },
-            ...(principal?.subject ? { userId: principal.subject } : {}),
-            ...(tenantContext ? { tenantContext } : {}),
-          });
-          return ok(result);
-        }
-
-        case 'resources/list':
-          return ok({
-            resources: [
-              {
-                uri: 'bigquery://datasets',
-                name: 'BigQuery Dataset Catalog',
-                description:
-                  'Discoverable catalog of all available BigQuery datasets with descriptions and metadata',
-                mimeType: 'application/json',
-              },
-            ],
-          });
-
-        case 'resources/templates/list':
-          return ok({ resourceTemplates: BIGQUERY_RESOURCE_TEMPLATES });
-
-        case 'resources/read': {
-          const uri = typeof params.uri === 'string' ? params.uri : '';
-          if (!uri) return fail(JSON_RPC_ERRORS.INVALID_PARAMS, 'Missing resource uri');
-          return ok(await this.readResourceHandler({ params: { uri } }));
-        }
-
-        case 'prompts/list':
-          return ok({ prompts: this.promptRegistry.listPrompts() });
-
-        case 'prompts/get': {
-          const name = typeof params.name === 'string' ? params.name : '';
-          if (!name) return fail(JSON_RPC_ERRORS.INVALID_PARAMS, 'Missing prompt name');
-          const prompt = this.promptRegistry.getPrompt(
-            name,
-            (params.arguments as Record<string, string>) ?? {}
-          );
-          return ok({
-            description: prompt.description,
-            messages: prompt.messages.map(
-              (m: { role: string; content: { type: string; text: string } }) => ({
-                role: m.role,
-                content: m.content,
-              })
-            ),
-          });
-        }
-
-        default:
-          // notifications/* carry no id and need no response — return a benign
-          // result the transport drops (HTTP 202). Unknown requests → error.
-          if (req.method.startsWith('notifications/')) return ok({});
-          return fail(JSON_RPC_ERRORS.METHOD_NOT_FOUND, `Method not found: ${req.method}`);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error('Dispatch error', { method: req.method, id: req.id, error: message });
-      recordException(error as Error);
-      return fail(JSON_RPC_ERRORS.INTERNAL_ERROR, 'Internal error', message);
-    }
-  }
-
-  /**
    * Get tool description by name
    */
   private getToolDescription(name: string): string {
@@ -1354,7 +1267,13 @@ export class MCPBigQueryServer {
       if (this.transportMode === 'http') {
         this.setupAuthAndTenancy();
         this.httpTransport = new StreamableHttpTransport(
-          (req, ctx) => this.dispatch(req, ctx),
+          // Stateless Streamable HTTP: a fresh MCP Server (with handlers) per
+          // request, connected to its own SDK transport.
+          () => {
+            const requestServer = this.serverFactory.createServer();
+            this.registerHandlers(requestServer);
+            return requestServer;
+          },
           {
             port: this.env.MCP_HTTP_PORT,
             strictStreamableHttp: process.env.MCP_TRANSPORT_STRICT === 'streamable',

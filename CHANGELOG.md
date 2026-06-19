@@ -7,12 +7,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `completion/complete` handler (MCP 2025-11-25 completions capability): autocompletes `datasetId` / `tableId` for
+  resource templates and prompt arguments from the live BigQuery catalog, and advertises the `completions` capability on
+  `initialize`
+
 ### Changed
 
+- Migrate the HTTP transport to the official MCP SDK `StreamableHTTPServerTransport` in stateless mode (a fresh
+  `Server` + transport per request). The same request handlers now serve both stdio and HTTP, and the SDK owns
+  `MCP-Protocol-Version` header validation, protocol-version negotiation, and per-request streaming. Removes the
+  hand-rolled JSON-RPC dispatch layer (~490 net LOC deleted).
+- Thread tenant/principal context to tool handlers via the SDK's `extra.authInfo` instead of a parallel HTTP dispatch
+  path
+- Advertise server capabilities through the SDK `ServerOptions` argument so they are correctly returned on `initialize`
+  (previously passed in the wrong constructor position and silently dropped on the stdio path)
+- Document tool `inputSchema` as JSON Schema 2020-12, the MCP 2025-11-25 default dialect
 - Remove unused `QueryBuilder` class from BigQuery client
 - Simplify `BigQueryClient` config parsing (remove redundant fallbacks after Zod defaults)
 - Fix lint warnings (unused catch bindings in credential-manager and client)
 - Update documentation to match current implementation
+
+### Removed
+
+- JSON-RPC batching (`batch-handler`) — batching was removed from the MCP spec in revision 2025-06-18; the SDK transport
+  rejects batch arrays
+- Custom Server-Sent Events client registry / progress broadcast and the bespoke gzip middleware, now superseded by the
+  SDK transport
 
 ## [1.1.0] - 2026-04-04
 
