@@ -56,12 +56,9 @@ defineFeature(feature, (test) => {
     } as never);
 
   test('A request with no token is rejected', ({ given, when, then }) => {
-    given(
-      /^an OIDC authenticator for issuer "(.*)" and audience "(.*)"$/,
-      (issuer, audience) => {
-        oidc = new OIDCAuthenticator({ issuer, audience } as never);
-      }
-    );
+    given(/^an OIDC authenticator for issuer "(.*)" and audience "(.*)"$/, (issuer, audience) => {
+      oidc = new OIDCAuthenticator({ issuer, audience } as never);
+    });
     when('an empty bearer token is authenticated', async () => {
       try {
         await oidc.authenticate('');

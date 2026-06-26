@@ -11,9 +11,7 @@ defineFeature(feature, (test) => {
       ks = new KillSwitch();
     });
 
-  const haltStep = (
-    register: (s: RegExp, fn: (...args: string[]) => void) => void
-  ) =>
+  const haltStep = (register: (s: RegExp, fn: (...args: string[]) => void) => void) =>
     register(
       /^session "(.*)" is halted for reason "(.*)" by "(.*)"$/,
       (id: string, reason: string, actor: string) => {

@@ -1,14 +1,7 @@
 import { beforeEach } from '@jest/globals';
 import { loadFeature, defineFeature } from 'jest-cucumber';
-import {
-  ColumnMaskingEngine,
-  type ColumnMaskingRule,
-} from '../../src/security/column-masking.js';
-import {
-  enforceKAnonymity,
-  requiresDlp,
-  type CohortRow,
-} from '../../src/governance/dlp.js';
+import { ColumnMaskingEngine, type ColumnMaskingRule } from '../../src/security/column-masking.js';
+import { enforceKAnonymity, requiresDlp, type CohortRow } from '../../src/governance/dlp.js';
 import type { DataClassification } from '../../src/governance/policy.js';
 
 const feature = loadFeature('./pii-redaction.feature', { loadRelativePath: true });
@@ -17,9 +10,7 @@ function classificationFor(klass: string): DataClassification {
   return {
     $schema: 'db-mcp/data-classification.v1',
     version: '1.0.0',
-    classifications: [
-      { dataset: 'ds', class: klass, piiFields: [], retentionDays: 30 },
-    ],
+    classifications: [{ dataset: 'ds', class: klass, piiFields: [], retentionDays: 30 }],
   } as DataClassification;
 }
 
@@ -33,9 +24,7 @@ defineFeature(feature, (test) => {
     cohorts = [];
   });
 
-  const givenMaskingRule = (
-    given: (s: RegExp, fn: (...a: string[]) => void) => void
-  ) =>
+  const givenMaskingRule = (given: (s: RegExp, fn: (...a: string[]) => void) => void) =>
     given(
       /^a masking engine that masks column "(.*)" as "(.*)" in dataset "(.*)" table "(.*)"$/,
       (column: string, maskType: string, dataset: string, table: string) => {
@@ -45,7 +34,11 @@ defineFeature(feature, (test) => {
           columnPattern: column,
           maskType: maskType as ColumnMaskingRule['maskType'],
         };
-        engine = new ColumnMaskingEngine({ enabled: true, defaultMaskType: 'redact', rules: [rule] });
+        engine = new ColumnMaskingEngine({
+          enabled: true,
+          defaultMaskType: 'redact',
+          rules: [rule],
+        });
       }
     );
 
@@ -87,9 +80,7 @@ defineFeature(feature, (test) => {
       engine = new ColumnMaskingEngine({
         enabled: false,
         defaultMaskType: 'redact',
-        rules: [
-          { datasetPattern: '*', tablePattern: '*', columnPattern: '*', maskType: 'redact' },
-        ],
+        rules: [{ datasetPattern: '*', tablePattern: '*', columnPattern: '*', maskType: 'redact' }],
       });
     });
     whenMaskRow(when);
