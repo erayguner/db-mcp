@@ -11,12 +11,24 @@ export const ConnectionPoolConfigSchema = z.object({
   healthCheckIntervalMs: z.number().min(1000).default(60000),
   maxRetries: z.number().min(0).default(3),
   retryDelayMs: z.number().min(100).default(1000),
+  /**
+   * How long `shutdown()` waits for in-flight connections to be released before
+   * clearing the pool regardless. Was hardcoded at 30s.
+   */
+  shutdownDrainTimeoutMs: z.number().min(0).default(30000),
   projectId: z.string().optional(),
   keyFilename: z.string().optional(),
   credentials: z.unknown().optional(),
 });
 
 export type ConnectionPoolConfig = z.infer<typeof ConnectionPoolConfigSchema>;
+
+/**
+ * Constructor-facing config: fields with schema defaults are optional. Mirrors
+ * `BigQueryClientInputConfig`. Without this, adding any defaulted field to the
+ * schema breaks every call site, since `z.infer` makes defaulted fields required.
+ */
+export type ConnectionPoolInputConfig = z.input<typeof ConnectionPoolConfigSchema>;
 
 export interface PoolMetrics {
   totalConnections: number;
@@ -76,21 +88,19 @@ export class ConnectionPool extends EventEmitter {
     acquireTimes: [] as number[],
   };
 
-  constructor(config: ConnectionPoolConfig) {
+  constructor(config: ConnectionPoolInputConfig) {
     super();
     this.config = ConnectionPoolConfigSchema.parse(config) as Required<ConnectionPoolConfig>;
-
-    // In test environments, relax aggressive timeouts to reduce flakiness
-    if (process.env.NODE_ENV === 'test') {
-      this.config.acquireTimeoutMs = Math.max(this.config.acquireTimeoutMs, 30000);
-      this.config.healthCheckIntervalMs = Math.max(this.config.healthCheckIntervalMs, 10000);
-    }
     this.startTime = new Date();
     try {
       this.initialize();
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      this.emit('error', error);
+      // Deferred for the same reason as 'initialized' below. Emitting 'error'
+      // synchronously here is worse than merely unobservable: EventEmitter
+      // throws on an 'error' event with no listener, so an init failure would
+      // crash the process instead of surfacing to the caller's handler.
+      queueMicrotask(() => this.emit('error', error));
     }
   }
 
@@ -104,15 +114,23 @@ export class ConnectionPool extends EventEmitter {
       // Start health check interval
       this.startHealthCheck();
 
-      this.emit('initialized', {
-        minConnections: this.config.minConnections,
-        maxConnections: this.config.maxConnections,
-      });
+      // initialize() runs from the constructor, so a synchronous emit here is
+      // unobservable: no caller can attach a listener before `new` returns.
+      // Defer to a microtask so listeners registered immediately after
+      // construction still receive the event.
+      queueMicrotask(() =>
+        this.emit('initialized', {
+          minConnections: this.config.minConnections,
+          maxConnections: this.config.maxConnections,
+        })
+      );
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      this.emit(
-        'error',
-        new ConnectionPoolError('Failed to initialize connection pool', 'INIT_ERROR', err)
+      queueMicrotask(() =>
+        this.emit(
+          'error',
+          new ConnectionPoolError('Failed to initialize connection pool', 'INIT_ERROR', err)
+        )
       );
       throw err;
     }
@@ -420,12 +438,17 @@ export class ConnectionPool extends EventEmitter {
       if (request.timeoutHandle) {
         clearTimeout(request.timeoutHandle);
       }
-      request.reject(new ConnectionPoolError('Pool is shutting down', 'POOL_SHUTDOWN'));
+      request.reject(
+        new ConnectionPoolError(
+          'Queued connection request rejected: pool shutdown in progress',
+          'POOL_SHUTDOWN'
+        )
+      );
     }
     this.waitingQueue = [];
 
     // Wait for active connections to be released (with timeout)
-    const shutdownTimeout = 30000; // 30 seconds
+    const shutdownTimeout = this.config.shutdownDrainTimeoutMs;
     const startShutdown = Date.now();
 
     while (this.hasActiveConnections() && Date.now() - startShutdown < shutdownTimeout) {

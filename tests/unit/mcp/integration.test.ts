@@ -1,45 +1,97 @@
-import { MCPServerFactory, ServerState } from '../../../src/mcp/server-factory.js';
-import { ToolHandlerFactory } from '../../../src/mcp/handlers/tool-handlers.js';
-import { validateToolArgs } from '../../../src/mcp/schemas/tool-schemas.js';
-import { SecurityMiddleware } from '../../../src/security/middleware.js';
+import { jest } from '@jest/globals';
+import type { BigQueryClient } from '../../../src/bigquery/client.js';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import type { ToolHandlerFactory as ToolHandlerFactoryType } from '../../../src/mcp/handlers/tool-handlers.js';
+import type { SecurityMiddleware as SecurityMiddlewareType } from '../../../src/security/middleware.js';
 
-// Mock dependencies
-jest.mock('@modelcontextprotocol/sdk/server/index.js');
-jest.mock('@modelcontextprotocol/sdk/server/stdio.js');
-jest.mock('../../../src/bigquery/client');
-jest.mock('../../../src/utils/logger', () => ({
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  },
+// ESM-native mocking. `jest.mock()` is not applied to static ESM imports under
+// the ts-jest ESM preset, which is why `Server.mockImplementation` did not
+// exist and the real SDK class was loaded instead. Registering the mocks with
+// `jest.unstable_mockModule` and pulling the modules under test in via dynamic
+// `await import()` keeps these stubs scoped to this file.
+const MockServer = jest.fn();
+const MockStdioServerTransport = jest.fn();
+const MockBigQueryClient = jest.fn();
+
+jest.unstable_mockModule('@modelcontextprotocol/sdk/server/index.js', () => ({
+  Server: MockServer,
 }));
 
-import { BigQueryClient } from '../../../src/bigquery/client.js';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+jest.unstable_mockModule('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+  StdioServerTransport: MockStdioServerTransport,
+}));
 
-const MockBigQueryClient = BigQueryClient as unknown as jest.Mock;
-const MockServer = Server as unknown as jest.Mock;
+jest.unstable_mockModule('../../../src/bigquery/client.js', () => ({
+  BigQueryClient: MockBigQueryClient,
+}));
 
-// TODO: These tests need refactoring for ES module compatibility
-// The current mocking pattern doesn't work well with TypeScript ES modules
-describe.skip('MCP Integration Tests', () => {
+const loggerMock = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+};
+
+jest.unstable_mockModule('../../../src/utils/logger.js', () => ({
+  logger: loggerMock,
+  default: loggerMock,
+}));
+
+// Must be imported dynamically, after the mock registrations above.
+const { MCPServerFactory, ServerState } = await import('../../../src/mcp/server-factory.js');
+const { ToolHandlerFactory } = await import('../../../src/mcp/handlers/tool-handlers.js');
+const { validateToolArgs } = await import('../../../src/mcp/schemas/tool-schemas.js');
+const { SecurityMiddleware } = await import('../../../src/security/middleware.js');
+
+describe('MCP Integration Tests', () => {
   let mockBigQueryClient: jest.Mocked<BigQueryClient>;
   let mockServer: jest.Mocked<Server>;
-  let securityMiddleware: SecurityMiddleware;
-  let toolHandlerFactory: ToolHandlerFactory;
+  let securityMiddleware: SecurityMiddlewareType;
+  let toolHandlerFactory: ToolHandlerFactoryType;
+
+  // `DatasetMetadata`/`TableMetadata` declare `createdAt`/`modifiedAt` as
+  // required Dates and the handlers call `.toISOString()` on them unguarded.
+  // These builders keep the fixtures faithful to that contract; the previous
+  // bare `{ id, projectId }` literals made every list handler throw.
+  const FIXTURE_DATE = new Date('2026-01-01T00:00:00.000Z');
+
+  const buildDataset = (overrides: Record<string, unknown> = {}) => ({
+    id: 'dataset1',
+    projectId: 'test-project',
+    location: 'europe-west2',
+    createdAt: FIXTURE_DATE,
+    modifiedAt: FIXTURE_DATE,
+    tableCount: 0,
+    tables: [],
+    lastAccessedAt: FIXTURE_DATE,
+    accessCount: 0,
+    ...overrides,
+  });
+
+  const buildTable = (overrides: Record<string, unknown> = {}) => ({
+    id: 'users',
+    datasetId: 'analytics',
+    projectId: 'test-project',
+    type: 'TABLE' as const,
+    schema: [],
+    createdAt: FIXTURE_DATE,
+    modifiedAt: FIXTURE_DATE,
+    ...overrides,
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Mock BigQuery client
+    // Mock BigQuery client. This must cover every method the tool handlers
+    // call on the client — `getProjectId` is used to build provenance and
+    // console URLs, and every handler returned a QUERY_ERROR without it.
     mockBigQueryClient = {
       query: jest.fn(),
       dryRun: jest.fn(),
       listDatasets: jest.fn(),
       listTables: jest.fn(),
       getTable: jest.fn(),
+      getProjectId: jest.fn().mockReturnValue('test-project'),
       isHealthy: jest.fn().mockReturnValue(true),
     } as any;
 
@@ -214,7 +266,7 @@ describe.skip('MCP Integration Tests', () => {
       await factory.start();
 
       // Execute tool while server is running
-      mockBigQueryClient.listDatasets.mockResolvedValue([{ id: 'dataset1', projectId: 'project' }]);
+      mockBigQueryClient.listDatasets.mockResolvedValue([buildDataset()] as any);
 
       const response = await toolHandlerFactory.execute(
         'list_datasets',
@@ -331,8 +383,11 @@ describe.skip('MCP Integration Tests', () => {
       const validation = securityMiddleware.validateResponse(data);
 
       expect(validation.detected).toBe(true);
-      expect(validation.fields).toContain('rows.password');
-      expect(validation.fields).toContain('rows.api_key');
+      // The detector collapses array element indices into `[]`, so the reported
+      // path count is bounded by the schema rather than the row count.
+      // `tests/integration/security.test.ts` pins the same convention.
+      expect(validation.fields).toContain('rows[].password');
+      expect(validation.fields).toContain('rows[].api_key');
 
       const redacted = validation.redacted;
       expect(redacted.rows[0].password).toBe('[REDACTED]');
@@ -431,9 +486,9 @@ describe.skip('MCP Integration Tests', () => {
     it('should execute list datasets, tables, and schema workflow', async () => {
       // Step 1: List datasets
       mockBigQueryClient.listDatasets.mockResolvedValue([
-        { id: 'analytics', projectId: 'my-project' },
-        { id: 'staging', projectId: 'my-project' },
-      ]);
+        buildDataset({ id: 'analytics', projectId: 'my-project' }),
+        buildDataset({ id: 'staging', projectId: 'my-project' }),
+      ] as any);
 
       const datasetsResponse = await toolHandlerFactory.execute(
         'list_datasets',
@@ -445,9 +500,9 @@ describe.skip('MCP Integration Tests', () => {
 
       // Step 2: List tables in dataset
       mockBigQueryClient.listTables.mockResolvedValue([
-        { id: 'users', type: 'TABLE' },
-        { id: 'events', type: 'TABLE' },
-      ]);
+        buildTable({ id: 'users' }),
+        buildTable({ id: 'events' }),
+      ] as any);
 
       const tablesResponse = await toolHandlerFactory.execute(
         'list_tables',
@@ -458,14 +513,15 @@ describe.skip('MCP Integration Tests', () => {
       expect(tablesResponse.isError).toBeUndefined();
 
       // Step 3: Get table schema
-      mockBigQueryClient.getTable.mockResolvedValue({
-        schema: [
-          { name: 'id', type: 'INTEGER', mode: 'REQUIRED' },
-          { name: 'email', type: 'STRING', mode: 'REQUIRED' },
-        ],
-        type: 'TABLE',
-        numRows: 10000,
-      });
+      mockBigQueryClient.getTable.mockResolvedValue(
+        buildTable({
+          schema: [
+            { name: 'id', type: 'INTEGER', mode: 'REQUIRED' },
+            { name: 'email', type: 'STRING', mode: 'REQUIRED' },
+          ],
+          numRows: 10000,
+        }) as any
+      );
 
       const schemaResponse = await toolHandlerFactory.execute(
         'get_table_schema',

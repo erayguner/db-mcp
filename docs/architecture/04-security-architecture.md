@@ -483,8 +483,8 @@ class InputSanitizer {
   }
 
   sanitizeTableId(id: string): string {
-    // Table IDs: alphanumeric, underscores, hyphens
-    if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+    // Table IDs: alphanumeric and underscores at the tool-schema layer
+    if (!/^[a-zA-Z0-9_]+$/.test(id)) {
       throw new Error('Invalid table ID format');
     }
 

@@ -4,11 +4,13 @@
 
 import { getEnvironment, loadEnvironment } from '../../src/config/environment';
 
-describe.skip('Environment Configuration', () => {
+describe('Environment Configuration', () => {
   const originalEnv = process.env;
 
-  beforeAll(() => {
-    // Set required environment variables for all tests
+  beforeEach(() => {
+    // Give every test its own copy of process.env. `loadEnvironment()` reads
+    // process.env on each call (it does not memoise), so a test that mutates
+    // an env var would otherwise leak into every test that follows it.
     process.env = {
       ...originalEnv,
       GCP_PROJECT_ID: 'test-project',
@@ -21,7 +23,7 @@ describe.skip('Environment Configuration', () => {
     };
   });
 
-  afterAll(() => {
+  afterEach(() => {
     process.env = originalEnv;
   });
 
@@ -42,56 +44,85 @@ describe.skip('Environment Configuration', () => {
   });
 
   it('should transform boolean strings', () => {
-    process.env.ENABLE_CORS = 'true';
-    process.env.ENABLE_METRICS = 'false';
+    // Covers both transform polarities in the schema: `v === 'true'`
+    // (TENANT_HOT_RELOAD, MODEL_ARMOR_ENABLED) and `v !== 'false'`
+    // (MCP_AUTH_REQUIRED).
+    process.env.TENANT_HOT_RELOAD = 'true';
+    process.env.MODEL_ARMOR_ENABLED = 'false';
+    process.env.MCP_AUTH_REQUIRED = 'false';
 
     const env = loadEnvironment();
 
-    expect(env.ENABLE_CORS).toBe(true);
-    expect(env.ENABLE_METRICS).toBe(false);
+    expect(env.TENANT_HOT_RELOAD).toBe(true);
+    expect(env.MODEL_ARMOR_ENABLED).toBe(false);
+    expect(env.MCP_AUTH_REQUIRED).toBe(false);
+  });
+
+  it('should apply boolean defaults when unset', () => {
+    delete process.env.TENANT_HOT_RELOAD;
+    delete process.env.MODEL_ARMOR_ENABLED;
+    delete process.env.MCP_AUTH_REQUIRED;
+
+    const env = loadEnvironment();
+
+    expect(env.TENANT_HOT_RELOAD).toBe(true);
+    expect(env.MODEL_ARMOR_ENABLED).toBe(false);
+    expect(env.MCP_AUTH_REQUIRED).toBe(true);
   });
 
   it('should parse comma-separated lists', () => {
-    process.env.ALLOWED_ORIGINS = 'http://localhost:3000,https://app.example.com';
-    process.env.GOOGLE_WORKSPACE_ALLOWED_GROUPS = 'engineers,admins';
+    // Whitespace around entries must be trimmed by the schema transform.
+    process.env.GOOGLE_WORKSPACE_ALLOWED_GROUPS = 'engineers, admins';
 
     const env = loadEnvironment();
 
-    expect(Array.isArray(env.ALLOWED_ORIGINS)).toBe(true);
-    expect(env.ALLOWED_ORIGINS).toHaveLength(2);
+    expect(Array.isArray(env.GOOGLE_WORKSPACE_ALLOWED_GROUPS)).toBe(true);
     expect(env.GOOGLE_WORKSPACE_ALLOWED_GROUPS).toHaveLength(2);
+    expect(env.GOOGLE_WORKSPACE_ALLOWED_GROUPS).toEqual(['engineers', 'admins']);
+  });
+
+  it('should leave comma-separated lists undefined when unset', () => {
+    delete process.env.GOOGLE_WORKSPACE_ALLOWED_GROUPS;
+
+    const env = loadEnvironment();
+
+    expect(env.GOOGLE_WORKSPACE_ALLOWED_GROUPS).toBeUndefined();
   });
 
   it('should validate required fields', () => {
-    const envWithoutProject = { ...process.env };
-    delete envWithoutProject.GCP_PROJECT_ID;
-
-    // Temporarily replace process.env
-    const tempEnv = process.env;
-    process.env = envWithoutProject;
+    delete process.env.GCP_PROJECT_ID;
 
     expect(() => loadEnvironment()).toThrow('Invalid environment configuration');
-
-    // Restore process.env
-    process.env = tempEnv;
   });
 
   it('should validate email format', () => {
     process.env.MCP_SERVICE_ACCOUNT_EMAIL = 'invalid-email';
 
-    expect(() => loadEnvironment()).toThrow();
+    expect(() => loadEnvironment()).toThrow('Invalid environment configuration');
   });
 
-  it('should cache environment instance', () => {
-    // Clear the module cache first to start fresh
+  it('should accept an empty service account email', () => {
+    process.env.MCP_SERVICE_ACCOUNT_EMAIL = '';
+
+    const env = loadEnvironment();
+
+    expect(env.MCP_SERVICE_ACCOUNT_EMAIL).toBe('');
+  });
+
+  it('should cache environment instance', async () => {
+    // Reset the module registry so the singleton starts unset, then load the
+    // module through a dynamic import (ESM has no `require`).
     jest.resetModules();
 
-    // Re-import to get fresh instance
-    const { getEnvironment: getEnv } = require('../../src/config/environment');
+    const { getEnvironment: getEnv } = await import('../../src/config/environment');
 
     const env1 = getEnv();
     const env2 = getEnv();
 
     expect(env1).toBe(env2); // Same instance
+  });
+
+  it('should return the same instance from the module-level singleton', () => {
+    expect(getEnvironment()).toBe(getEnvironment());
   });
 });

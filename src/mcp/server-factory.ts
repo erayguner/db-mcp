@@ -80,7 +80,14 @@ export class MCPServerFactory extends EventEmitter {
   private transport: Transport | null = null;
   private state: ServerState = ServerState.INITIALIZING;
   private healthCheckInterval?: NodeJS.Timeout;
-  private shutdownHandlersRegistered = false;
+  /**
+   * Undo callbacks for the process-level listeners this instance registered.
+   * Held so `shutdown()` can detach them: previously every factory instance
+   * added four permanent `process` listeners that were never removed, so
+   * repeatedly constructing and starting factories (as the test suite does)
+   * leaked listeners until Node emitted MaxListenersExceededWarning.
+   */
+  private shutdownHandlerCleanups: Array<() => void> = [];
 
   constructor(config: ServerFactoryConfig) {
     super();
@@ -155,24 +162,6 @@ export class MCPServerFactory extends EventEmitter {
    * Get the underlying MCP Server instance
    */
   public getServer(): Server {
-    // In test environments, return a minimal adapter with setRequestHandler
-    const isTestEnv =
-      process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
-    if (isTestEnv) {
-      const handlers: Record<string | symbol, (req: unknown) => unknown> = {};
-      return {
-        setRequestHandler: (schema: unknown, handler: (req: unknown) => unknown) => {
-          const keyCandidate =
-            typeof schema === 'object' && schema !== null
-              ? ((schema as { method?: unknown }).method ??
-                (schema as { title?: unknown }).title ??
-                (schema as { name?: unknown }).name)
-              : undefined;
-          const key = typeof keyCandidate === 'string' ? keyCandidate : Symbol('handler');
-          handlers[key] = handler;
-        },
-      } as unknown as Server;
-    }
     return this.server;
   }
 
@@ -272,7 +261,13 @@ export class MCPServerFactory extends EventEmitter {
       });
     } catch (error) {
       this.setState(ServerState.ERROR);
-      this.emit('error', error);
+      // `error` is a special EventEmitter event: emitting it with no listener
+      // makes Node throw the raw error, which would pre-empt the
+      // ServerFactoryError below and hijack this method's contract. Only emit
+      // when somebody is actually listening.
+      if (this.listenerCount('error') > 0) {
+        this.emit('error', error);
+      }
 
       throw new ServerFactoryError(
         `Failed to start server: ${(error as Error).message}`,
@@ -302,6 +297,12 @@ export class MCPServerFactory extends EventEmitter {
         clearInterval(this.healthCheckInterval);
         this.healthCheckInterval = undefined;
       }
+
+      // Detach process listeners before anything that can throw, so a failed
+      // close still releases them rather than leaking them for the process
+      // lifetime. Safe to call from within one of those listeners: Node allows
+      // removing a listener during its own emit.
+      this.unregisterShutdownHandlers();
 
       // Close server with timeout
       await Promise.race([this.closeServer(), this.shutdownTimeout()]);
@@ -355,14 +356,22 @@ export class MCPServerFactory extends EventEmitter {
    * Register process signal handlers for graceful shutdown
    */
   private registerShutdownHandlers(): void {
-    if (this.shutdownHandlersRegistered) {
+    // Idempotent: a repeated start() must not stack a second set of listeners.
+    if (this.shutdownHandlerCleanups.length > 0) {
       return;
     }
+
+    const track = (event: string, handler: (...args: never[]) => void): void => {
+      process.on(event, handler as (...args: unknown[]) => void);
+      this.shutdownHandlerCleanups.push(() => {
+        process.off(event, handler as (...args: unknown[]) => void);
+      });
+    };
 
     const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT'];
 
     signals.forEach((signal) => {
-      process.on(signal, async () => {
+      track(signal, async () => {
         logger.info(`Received ${signal}, initiating graceful shutdown`);
         try {
           await this.shutdown(signal);
@@ -375,7 +384,7 @@ export class MCPServerFactory extends EventEmitter {
     });
 
     // Handle uncaught errors
-    process.on('uncaughtException', async (error) => {
+    track('uncaughtException', async (error: Error) => {
       logger.error('Uncaught exception', { error });
       try {
         await this.shutdown('uncaughtException');
@@ -384,7 +393,7 @@ export class MCPServerFactory extends EventEmitter {
       }
     });
 
-    process.on('unhandledRejection', async (reason) => {
+    track('unhandledRejection', async (reason: unknown) => {
       logger.error('Unhandled rejection', { reason });
       try {
         await this.shutdown('unhandledRejection');
@@ -392,8 +401,16 @@ export class MCPServerFactory extends EventEmitter {
         process.exit(1);
       }
     });
+  }
 
-    this.shutdownHandlersRegistered = true;
+  /**
+   * Detach every process-level listener this instance registered.
+   */
+  private unregisterShutdownHandlers(): void {
+    for (const cleanup of this.shutdownHandlerCleanups) {
+      cleanup();
+    }
+    this.shutdownHandlerCleanups = [];
   }
 
   /**

@@ -31,15 +31,34 @@ jest.mock('../../src/mcp/server-factory', () => {
 });
 
 describe('Tool listing', () => {
-  it('exposes alias and output schema for execute_query', async () => {
+  // `jest.mock()` above does not intercept the static ESM import of
+  // server-factory under the ts-jest ESM preset, so `server.start()` runs the
+  // real startup path: it initializes OpenTelemetry (whose periodic metric
+  // reader holds a live, non-unref'd timer) and registers process-level
+  // shutdown handlers. Started servers were never stopped, which is what made
+  // Jest report "A worker process has failed to exit gracefully".
+  const started: MCPBigQueryServer[] = [];
+
+  const startServer = async (): Promise<MCPBigQueryServer> => {
     const server = new MCPBigQueryServer();
+    started.push(server);
     await server.start();
+    return server;
+  };
+
+  afterEach(async () => {
+    while (started.length > 0) {
+      await started.pop()!.shutdown('test teardown');
+    }
+  });
+
+  it('exposes alias and output schema for execute_query', async () => {
+    await startServer();
     expect(TOOL_SCHEMAS.execute_query).toBeDefined();
     expect(OUTPUT_SCHEMAS.execute_query).toBeDefined();
   });
   it('list_tools handler returns tools including execute_query', async () => {
-    const server = new MCPBigQueryServer();
-    await server.start();
+    await startServer();
     const handlerEntry = Object.entries(registeredHandlers).find(
       ([k]) => String(k).includes('ListTools') || String(k).includes('tools')
     );

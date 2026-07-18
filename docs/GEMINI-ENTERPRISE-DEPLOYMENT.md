@@ -159,11 +159,13 @@ re-invokes the tool with `confirmCost: true`.
 Run these against the deployed Cloud Run service before submitting the connector for Gemini Enterprise registration:
 
 - [ ] `GET /health` returns 200.
+- [ ] `GET /readiness` returns 200 with `"ready":true` and a passing `bigquery` check.
+- [ ] `GET /metrics` returns Prometheus text exposition format, not JSON.
 - [ ] `GET /.well-known/oauth-authorization-server` returns RFC 8414 JSON.
 - [ ] `GET /.well-known/oauth-protected-resource` returns RFC 9728 JSON.
 - [ ] `GET /mcp` returns 405 with `Allow: POST` (strict mode).
 - [ ] Unauthenticated `POST /mcp` returns 401 with `WWW-Authenticate`.
-- [ ] Authenticated `POST /mcp` with `{"method": "tools/list"}` enumerates the four tools and their annotations
+- [ ] Authenticated `POST /mcp` with `{"method": "tools/list"}` enumerates the five tools and their annotations
       (`readOnlyHint`, `costHintTier`).
 - [ ] Authenticated `POST /mcp` with `{"method": "resources/templates/list"}` returns the six BigQuery resource
       templates.

@@ -15,6 +15,8 @@ export {
   BigQueryClientConfigSchema,
   QueryResult,
   QueryOptions,
+  QueryPlan,
+  QueryPlanStage,
   BigQueryClientError,
 } from './client.js';
 export { QueryCache, QueryCacheConfig, CacheStats } from './query-cache.js';
@@ -23,8 +25,7 @@ export {
   QueryOptimizerConfig,
   ValidationResult,
   CostEstimate,
-  QueryPlan,
-  QueryStage,
+  QueryShape,
   OptimizationSuggestion,
 } from './query-optimizer.js';
 export {
@@ -53,6 +54,7 @@ export {
 export {
   ConnectionPool,
   ConnectionPoolConfig,
+  ConnectionPoolInputConfig,
   PoolMetrics,
   ConnectionPoolError,
 } from './connection-pool.js';
@@ -70,10 +72,16 @@ export {
   ProjectContext,
   QuotaUsage,
   PermissionValidationResult,
+  PermissionCheckStatus,
+  PermissionCheckOutcome,
+  DEFAULT_BIGQUERY_PROBE_PERMISSIONS,
   ProjectDiscoveryResult,
   CrossProjectQueryOptions,
   MultiProjectManagerError,
   ProjectNotFoundError,
   PermissionDeniedError,
+  // Distinct from PermissionDeniedError: the IAM check itself failed, so the
+  // caller must fail closed rather than treat it as an authorization decision.
+  PermissionCheckFailedError,
   QuotaExceededError,
 } from './multi-project-manager.js';

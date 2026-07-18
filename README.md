@@ -35,14 +35,14 @@ Federation** authentication. Provides secure, keyless access to BigQuery through
 
 ## Project Structure
 
-```
+```text
 db-mcp/
 ├── src/                       # TypeScript source code
 │   ├── auth/                  # WIF authentication modules
 │   ├── bigquery/              # BigQuery client, discovery, optimization
 │   ├── mcp/                   # MCP protocol handlers and tools
 │   ├── security/              # Security middleware
-│   ├── monitoring/            # Health checks and monitoring
+│   ├── monitoring/            # Readiness probes and metrics
 │   ├── telemetry/             # OpenTelemetry instrumentation
 │   ├── config/                # Configuration management
 │   └── utils/                 # Logging utilities
@@ -128,23 +128,31 @@ terraform apply
 
 The server provides these MCP tools:
 
-| Tool               | Description                              |
-| ------------------ | ---------------------------------------- |
-| `query_bigquery`   | Execute SQL queries on BigQuery datasets |
-| `list_datasets`    | List all available BigQuery datasets     |
-| `list_tables`      | List tables in a specific dataset        |
-| `get_table_schema` | Get schema information for a table       |
+| Tool               | Description                                                            |
+| ------------------ | ---------------------------------------------------------------------- |
+| `query_bigquery`   | Run a GoogleSQL query and return the result rows                       |
+| `execute_query`    | Deprecated alias for `query_bigquery`; retained for existing clients   |
+| `list_datasets`    | List datasets the caller may access, with location and timestamps      |
+| `list_tables`      | List tables in one dataset, with row counts and byte sizes where known |
+| `get_table_schema` | Column names, types and modes for one table, plus optional metadata    |
+
+Tool annotations are tenant-aware: `readOnlyHint` is `false` and `destructiveHint` `true` for the SQL-executing tools
+when the tenant's write mode permits writes, since clients use `readOnlyHint` to auto-approve calls without prompting.
 
 **Server Capabilities**:
 
-- Resources: BigQuery datasets listing
-- Tools: Query execution and schema inspection
+- Resources: `bigquery://` URIs for datasets, tables, schemas, samples, jobs, and INFORMATION_SCHEMA
+- Tools: Query execution and schema inspection, with a union output schema covering executed, dry-run, and
+  cost-confirmation responses
+- Prompts: 5 BigQuery-specific templates
+- Logging: `logging/setLevel` plus `notifications/message` for security refusals
+- Progress: `notifications/progress` when the client supplies a `_meta.progressToken`
 - Stderr Logging: All logs to stderr (JSON-RPC compatible)
 - Graceful Shutdown: SIGTERM/SIGINT handling
 
 ## Architecture
 
-```
+```text
 Client Request
   ↓
 MCP Protocol Layer (JSON-RPC)
@@ -165,7 +173,7 @@ BigQuery API
 1. **Workload Identity Federation** - Identity pools for dev/staging/prod with OIDC providers
 2. **Security Middleware** - Rate limiting, prompt injection detection, SQL injection prevention
 3. **BigQuery Integration** - Connection pooling, query optimization, dataset discovery
-4. **Monitoring** - Health checks, OpenTelemetry tracing, Cloud Monitoring integration
+4. **Monitoring** - Liveness/readiness probes, Prometheus `/metrics`, OpenTelemetry tracing, Cloud Monitoring
 
 ## Documentation
 
@@ -185,20 +193,27 @@ BigQuery API
 ## Testing
 
 ```bash
-# Run all tests
+# Run all tests — 68 suites, 871 tests, none skipped
 npm test
 
 # Run specific test suites
 npm run test:unit
 npm run test:integration
+npm run test:bdd
+
+# Performance suites, with timing budgets enforced
 npm run test:performance
 
-# Run with coverage
+# Run with coverage (jest.config.mjs enforces coverageThreshold floors)
 npm run test:coverage
 
 # Watch mode
 npm run test:watch
 ```
+
+Timing-sensitive assertions are gated behind `PERF_TIMING_ASSERTIONS=true`, set only by `npm run test:performance`, so
+ordinary runs measure timing budgets without enforcing them. See [LOCAL-TESTING.md](docs/LOCAL-TESTING.md) for the
+coverage floors.
 
 ## Development Commands
 

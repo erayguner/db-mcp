@@ -38,6 +38,12 @@ function makeWif(overrides: Record<string, unknown> = {}): WIFAuthenticator {
     workloadIdentityPoolId: 'my-pool',
     workloadIdentityProviderId: 'my-provider',
     serviceAccountEmail: 'sa@test-project.iam.gserviceaccount.com',
+    // These scenarios exercise CLAIMS validation (expiry, issuer, verified
+    // email) using unsigned fixture tokens, so signature verification is
+    // explicitly opted out. Construction now fails closed without either
+    // `jwksUri` or this flag. Signature verification itself is covered by
+    // tests/auth/wif-token-verification.test.ts.
+    allowUnverifiedTokens: true,
     ...overrides,
   });
 }

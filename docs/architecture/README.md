@@ -345,7 +345,7 @@ compliant identity provider.
 
 - Clear layered architecture
 - Comprehensive documentation
-- High test coverage (>80%)
+- Coverage floors enforced by `jest.config.mjs` rather than tracked manually
 - Automated CI/CD
 
 ## Quick Reference

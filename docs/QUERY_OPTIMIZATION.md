@@ -338,6 +338,7 @@ class OptimizedQueryExecutor {
    - Static data: 24 hours
 
 3. **Invalidation**: Clear cache when data changes
+
    ```typescript
    cache.invalidate(/^users:/); // All user queries
    cache.invalidate(/users.*id=123/); // Specific user
@@ -359,6 +360,7 @@ class OptimizedQueryExecutor {
    ```
 
 3. **Regular Reports**: Generate weekly optimization reports
+
    ```typescript
    const report = await optimizer.generateReport(query);
    ```
@@ -379,6 +381,7 @@ class OptimizedQueryExecutor {
    ```
 
 3. **Cleanup**: Run periodic cleanup
+
    ```typescript
    setInterval(() => tracker.cleanup(), 60 * 60 * 1000);
    ```

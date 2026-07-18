@@ -55,10 +55,13 @@ export interface BigQueryTableMetadata {
 
 // Zod schemas
 export const DatasetManagerConfigSchema = z.object({
-  cacheSize: z.number().min(10).default(100),
-  cacheTTLMs: z.number().min(1000).default(3600000), // 1 hour default
+  // Lower bounds only guard against zero/negative values. Previous floors
+  // (cacheSize >= 10, cacheTTLMs >= 1000, discoveryIntervalMs >= 60000) were
+  // arbitrary and rejected legitimate small configurations.
+  cacheSize: z.number().min(1).default(100),
+  cacheTTLMs: z.number().min(1).default(3600000), // 1 hour default
   autoDiscovery: z.boolean().default(true),
-  discoveryIntervalMs: z.number().min(60000).default(300000), // 5 minutes
+  discoveryIntervalMs: z.number().min(1).default(300000), // 5 minutes
   projectId: z.string().optional(),
 });
 
@@ -117,6 +120,10 @@ export class DatasetManager extends EventEmitter {
   private discoveryInterval?: NodeJS.Timeout;
   private accessOrder: string[] = []; // For LRU tracking
 
+  // Lifetime hit/miss counters backing getCacheStats().hitRate.
+  private datasetCounters = { hits: 0, misses: 0 };
+  private tableCounters = { hits: 0, misses: 0 };
+
   constructor(config: DatasetManagerConfig) {
     super();
     this.config = DatasetManagerConfigSchema.parse(config) as Required<DatasetManagerConfig>;
@@ -139,12 +146,14 @@ export class DatasetManager extends EventEmitter {
     // Check cache first
     const cached = this.getCachedDataset(cacheKey);
     if (cached) {
+      this.datasetCounters.hits++;
       this.updateAccessOrder(cacheKey);
       this.emit('cache:hit', { type: 'dataset', key: cacheKey });
       return cached;
     }
 
     // Fetch from BigQuery
+    this.datasetCounters.misses++;
     this.emit('cache:miss', { type: 'dataset', key: cacheKey });
     const metadata = await this.fetchDatasetMetadata(client, datasetId, projectId);
 
@@ -168,12 +177,14 @@ export class DatasetManager extends EventEmitter {
     // Check cache
     const cached = this.getCachedTable(cacheKey);
     if (cached) {
+      this.tableCounters.hits++;
       this.updateAccessOrder(cacheKey);
       this.emit('cache:hit', { type: 'table', key: cacheKey });
       return cached;
     }
 
     // Fetch from BigQuery
+    this.tableCounters.misses++;
     this.emit('cache:miss', { type: 'table', key: cacheKey });
     const metadata = await this.fetchTableMetadata(client, datasetId, tableId, projectId);
 
@@ -546,24 +557,23 @@ export class DatasetManager extends EventEmitter {
     };
   }
 
+  /**
+   * Cache hit rate as a fraction in [0, 1].
+   *
+   * Previously this returned `totalAccessCount / cache.size`, which is the mean
+   * number of accesses per resident entry — not a hit rate. It ignored misses
+   * entirely (no miss counter existed) and was unbounded above 1.0, so any
+   * consumer treating it as a ratio read a meaningless number.
+   */
   private calculateHitRate(type: 'dataset' | 'table'): number {
-    // This is a simplified calculation
-    // In production, you'd track hits/misses over time
-    if (type === 'dataset') {
-      if (this.datasetCache.size === 0) return 0;
-      const totalAccess = Array.from(this.datasetCache.values()).reduce(
-        (sum, entry) => sum + entry.accessCount,
-        0
-      );
-      return totalAccess / this.datasetCache.size;
-    } else {
-      if (this.tableCache.size === 0) return 0;
-      const totalAccess = Array.from(this.tableCache.values()).reduce(
-        (sum, entry) => sum + entry.accessCount,
-        0
-      );
-      return totalAccess / this.tableCache.size;
+    const counters = type === 'dataset' ? this.datasetCounters : this.tableCounters;
+    const total = counters.hits + counters.misses;
+
+    if (total === 0) {
+      return 0;
     }
+
+    return counters.hits / total;
   }
 
   /**

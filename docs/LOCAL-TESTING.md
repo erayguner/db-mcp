@@ -34,11 +34,18 @@ Output is written to `dist/`.
 ## Step 4: Run Tests
 
 ```bash
-# Run all tests
+# Run all tests (68 suites, 871 tests, none skipped)
 npm test
 
 # Run unit tests only
 npm run test:unit
+
+# Integration and BDD feature suites
+npm run test:integration
+npm run test:bdd
+
+# Performance suites, with timing budgets enforced
+npm run test:performance
 
 # Run with coverage
 npm run test:coverage
@@ -46,6 +53,15 @@ npm run test:coverage
 # Run in watch mode
 npm run test:watch
 ```
+
+BigQuery is mocked through `jest.mock('@google-cloud/bigquery')` in `tests/setup.ts` plus `moduleNameMapper` entries —
+there is no environment flag that switches mocking on or off.
+
+### Timing assertions
+
+Timing-sensitive assertions are gated behind `PERF_TIMING_ASSERTIONS=true`, which only `npm run test:performance` sets.
+Under `npm test` the budgets are measured but not enforced, so ordinary runs are not flaky on a loaded machine. Setting
+`PERF_TIMING_REPORT=true` writes measured timings to stderr.
 
 ## Step 5: Run the Server
 
@@ -104,20 +120,21 @@ curl -s http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":3,"method":"resources/list","params":{}}'
 
-# Batch request (multiple operations in one HTTP call)
-curl -s http://localhost:8080/mcp \
-  -H "Content-Type: application/json" \
-  -d '[
-    {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}},
-    {"jsonrpc":"2.0","id":2,"method":"prompts/list","params":{}}
-  ]'
-
-# Health check
+# Liveness — 200 while the process runs
 curl -s http://localhost:8080/health
 
-# SSE stream (server notifications)
-curl -N http://localhost:8080/mcp
+# Readiness — 503 with the failing dependency named if BigQuery is unreachable
+curl -si http://localhost:8080/readiness
+
+# Prometheus metrics — text exposition format
+curl -s http://localhost:8080/metrics
+
+# GET /mcp returns 405: the transport is stateless, with no standalone SSE channel
+curl -si http://localhost:8080/mcp
 ```
+
+> JSON-RPC request batching was removed from the MCP spec in revision 2025-06-18. The SDK transport rejects batch
+> arrays, so send one request per call.
 
 ## MCP Protocol Compliance
 
@@ -125,15 +142,16 @@ See [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md) for the full compliance matrix.
 
 **Capabilities declared at connection init**:
 
-- **Tools**: 4 BigQuery tools (query, list datasets, list tables, get schema)
-- **Resources**: Browse datasets and tables via `bigquery://` URIs
+- **Tools**: 5 BigQuery tools (query, its deprecated alias, list datasets, list tables, get schema)
+- **Resources**: Browse datasets, tables, schemas, samples, jobs, and INFORMATION_SCHEMA via `bigquery://` URIs
 - **Prompts**: 5 BigQuery-specific prompt templates
-- **Logging**: Structured logging to stderr
+- **Logging**: `logging/setLevel` plus `notifications/message` for security refusals
+- **Completions**: `completion/complete` for dataset and table IDs
 
 **Transport options**:
 
 - `stdio` (default) — for local Claude/MCP client integration
-- `http` — Streamable HTTP with SSE for production (Cloud Run)
+- `http` — stateless Streamable HTTP for production (Cloud Run); POST `/mcp` only, no standalone SSE channel
 
 **Security**:
 
@@ -152,22 +170,27 @@ See [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md) for the full compliance matrix.
 
 ## Available MCP Capabilities
 
-### Tools (4)
+### Tools (5)
 
 | Tool               | Description                                                    |
 | ------------------ | -------------------------------------------------------------- |
 | `query_bigquery`   | Execute SQL on BigQuery (supports dryRun, maxResults, timeout) |
+| `execute_query`    | Deprecated alias for `query_bigquery`                          |
 | `list_datasets`    | List all accessible BigQuery datasets                          |
 | `list_tables`      | List tables in a dataset                                       |
 | `get_table_schema` | Get schema and metadata for a table                            |
 
 ### Resources (browsable via `bigquery://` URIs)
 
-| URI Pattern                            | Description                       |
-| -------------------------------------- | --------------------------------- |
-| `bigquery://datasets`                  | Catalog of all datasets           |
-| `bigquery://datasets/{id}`             | Dataset detail with table listing |
-| `bigquery://datasets/{id}/tables/{id}` | Table detail with schema          |
+| URI Pattern                                                 | Description                       |
+| ----------------------------------------------------------- | --------------------------------- |
+| `bigquery://datasets`                                       | Catalog of all datasets           |
+| `bigquery://datasets/{datasetId}`                           | Dataset detail with table listing |
+| `bigquery://datasets/{datasetId}/tables/{tableId}`          | Full table metadata               |
+| `bigquery://datasets/{datasetId}/tables/{tableId}/schema`   | Schema-only view                  |
+| `bigquery://datasets/{datasetId}/tables/{tableId}/sample`   | Up to 10 preview rows (masked)    |
+| `bigquery://jobs/{jobId}`                                   | Job metadata — no result rows     |
+| `bigquery://datasets/{datasetId}/information_schema/{view}` | INFORMATION_SCHEMA browse         |
 
 ### Prompts (5 AI guidance templates)
 
@@ -208,12 +231,11 @@ Expected directories:
 - `auth/` — Authentication (OIDC, WIF, audit logger)
 - `bigquery/` — BigQuery client, connection pool, query cache, graceful degradation
 - `config/` — Environment and tenant configuration
-- `mcp/` — MCP server factory, handlers (tools, prompts, sessions, progress), schemas, transports, middleware (batch,
-  compression)
+- `mcp/` — MCP server factory, handlers (tools, prompts, progress), schemas, resources, tools, transports
 - `security/` — Security middleware, anomaly detection, column masking
 - `tenancy/` — Multi-tenant config, registry, dataset policies, context
 - `telemetry/` — OpenTelemetry tracing and metrics
-- `monitoring/` — Health monitoring, effectiveness metrics
+- `monitoring/` — Readiness registry, effectiveness metrics
 - `utils/` — Logger
 
 ### Common Issues
@@ -248,14 +270,25 @@ docker logs <container-id>
 
 ## Test Coverage
 
-Target: 80%+ across statements, branches, functions, and lines.
-
 ```bash
 npm run test:coverage
 
 # View coverage report
 open coverage/lcov-report/index.html
 ```
+
+`jest.config.mjs` enforces `coverageThreshold` floors, so a coverage regression fails the run:
+
+| Scope               | Statements | Branches | Functions | Lines |
+| ------------------- | ---------- | -------- | --------- | ----- |
+| `./src/bigquery/`   | 80         | 63       | 82        | 80    |
+| `./src/governance/` | 80         | 67       | 80        | 82    |
+| `./src/tenancy/`    | 72         | 74       | 70        | 70    |
+| Everything else     | 38         | 31       | 41        | 39    |
+
+> Jest excludes path-keyed groups from the `global` group, so the last row is **not** a repo-wide floor — it applies
+> only to files outside the three directories listed above. Raise the floors as coverage improves; they are ratchets,
+> not targets.
 
 ## Next Steps
 

@@ -304,8 +304,11 @@ export class InputValidator {
       };
     }
 
-    // Only allow alphanumeric, underscore, and hyphen
-    if (!/^[a-zA-Z0-9_-]+$/.test(datasetId)) {
+    // BigQuery dataset IDs permit only letters, numbers and underscores —
+    // hyphens are not legal. This previously accepted hyphens, which both
+    // disagreed with the stricter rule already enforced in tool-schemas.ts and
+    // src/index.ts, and let through IDs BigQuery itself would reject.
+    if (!/^[a-zA-Z0-9_]+$/.test(datasetId)) {
       return {
         valid: false,
         error: 'Dataset ID contains invalid characters',
@@ -365,25 +368,48 @@ export class SensitiveDataDetector {
   ];
 
   /**
-   * Check if data contains sensitive information
+   * Hard ceiling on how many distinct paths are listed. Collapsing array
+   * indices already bounds output by the result's shape rather than its size;
+   * this is a backstop for pathologically wide or deep objects.
+   */
+  private static readonly MAX_REPORTED_FIELDS = 50;
+
+  /**
+   * Check if data contains sensitive information.
+   *
+   * Reported paths collapse array element indices into `[]`, so a 2000-row
+   * result with a `password` column reports the single path `rows[].password`
+   * rather than 2000 indexed paths. That list is joined into a warning string
+   * and written to the audit log, so its size must depend on the result's shape,
+   * not on its row count.
    */
   detectSensitiveData(data: unknown): { detected: boolean; fields: string[] } {
-    const sensitiveFields: string[] = [];
+    // Insertion-ordered and deduplicated. Bounded by the number of distinct
+    // collapsed paths, i.e. by the schema, not by the number of rows.
+    const sensitivePaths = new Set<string>();
 
     const checkObject = (obj: unknown, path: string = '') => {
       if (typeof obj !== 'object' || obj === null) {
         return;
       }
 
-      for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-        const fullPath = path ? `${path}.${key}` : key;
-        const keyLower = key.toLowerCase();
+      const isArray = Array.isArray(obj);
 
-        // Check field names against configured patterns
-        for (const pattern of this.config.sensitiveDataPatterns) {
-          if (keyLower.includes(pattern.toLowerCase())) {
-            sensitiveFields.push(fullPath);
-            break;
+      for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+        // Array elements all share their container's path plus `[]`; an element
+        // index is positional, never a field name, so it is never itself
+        // matched against the sensitive-name patterns.
+        const fullPath = isArray ? `${path}[]` : path ? `${path}.${key}` : key;
+
+        if (!isArray) {
+          const keyLower = key.toLowerCase();
+
+          // Check field names against configured patterns
+          for (const pattern of this.config.sensitiveDataPatterns) {
+            if (keyLower.includes(pattern.toLowerCase())) {
+              sensitivePaths.add(fullPath);
+              break;
+            }
           }
         }
 
@@ -391,7 +417,7 @@ export class SensitiveDataDetector {
         if (typeof value === 'string') {
           for (const { name, regex } of SensitiveDataDetector.VALUE_PATTERNS) {
             if (regex.test(value)) {
-              sensitiveFields.push(`${fullPath}[value:${name}]`);
+              sensitivePaths.add(`${fullPath}[value:${name}]`);
               break;
             }
           }
@@ -406,16 +432,21 @@ export class SensitiveDataDetector {
 
     checkObject(data);
 
-    if (sensitiveFields.length > 0) {
-      logger.warn('Sensitive data detected', {
-        fields: sensitiveFields,
-      });
+    const allPaths = Array.from(sensitivePaths);
+    const max = SensitiveDataDetector.MAX_REPORTED_FIELDS;
+    const fields =
+      allPaths.length > max
+        ? [...allPaths.slice(0, max), `... +${allPaths.length - max} more`]
+        : allPaths;
+
+    if (fields.length > 0) {
+      logger.warn('Sensitive data detected', { fields });
       recordError('sensitive_data_detected');
     }
 
     return {
-      detected: sensitiveFields.length > 0,
-      fields: sensitiveFields,
+      detected: fields.length > 0,
+      fields,
     };
   }
 
@@ -813,7 +844,13 @@ export class SecurityMiddleware {
   /**
    * Validate response data
    */
-  validateResponse(data: unknown): { allowed: boolean; redacted?: unknown; warnings?: string[] } {
+  validateResponse(data: unknown): {
+    allowed: boolean;
+    detected: boolean;
+    fields: string[];
+    redacted?: unknown;
+    warnings?: string[];
+  } {
     const warnings: string[] = [];
 
     try {
@@ -832,15 +869,19 @@ export class SecurityMiddleware {
         const redacted = this.sensitiveDetector.redactSensitiveData(data);
         return {
           allowed: true,
+          detected: true,
+          fields: sensitiveCheck.fields,
           redacted,
           warnings,
         };
       }
 
-      return { allowed: true };
+      return { allowed: true, detected: false, fields: [] };
     } catch (error) {
       logger.error('Response validation error', { error });
-      return { allowed: true }; // Allow response but log error
+      // Allow response but log error. Report nothing as detected, since the
+      // scan did not complete.
+      return { allowed: true, detected: false, fields: [] };
     }
   }
 }

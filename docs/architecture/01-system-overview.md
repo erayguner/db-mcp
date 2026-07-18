@@ -273,7 +273,8 @@ see the Terraform `modules/cloud-run` module.
 
 ### Maintainability
 
-- **Code Coverage**: > 80% unit test coverage
+- **Code Coverage**: enforced `coverageThreshold` floors per area (80%+ statements for `src/bigquery` and
+  `src/governance`); see [LOCAL-TESTING.md](../LOCAL-TESTING.md)
 - **Documentation**: Comprehensive API and architecture docs
 - **Monitoring**: Distributed tracing and metrics
 - **CI/CD**: Automated testing and deployment

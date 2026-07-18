@@ -17,7 +17,7 @@ jest.mock('../../src/telemetry/metrics', () => ({
   recordError: jest.fn(),
 }));
 
-describe.skip('MCP Server Integration', () => {
+describe('MCP Server Integration', () => {
   let server: any;
   let mockBQClient: ReturnType<typeof createMockBigQueryClient>;
 

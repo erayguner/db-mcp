@@ -1,27 +1,36 @@
+import { jest } from '@jest/globals';
 import { EventEmitter } from 'events';
-import {
-  BigQueryClientFactory,
-  BigQueryClientFactoryConfig,
-  ClientFactoryError,
-} from '../../../src/mcp/bigquery-client-factory.js';
+import type { BigQueryClient } from '../../../src/bigquery/client.js';
+import type { BigQueryClientFactoryConfig } from '../../../src/mcp/bigquery-client-factory.js';
 
-// Mock dependencies
-jest.mock('../../../src/bigquery/client');
-jest.mock('../../../src/utils/logger', () => ({
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  },
+// ESM-native mocking. `jest.mock()` does not intercept static ESM imports under
+// the ts-jest ESM preset, so the real BigQueryClient was being loaded and
+// `BigQueryClient.mockImplementation` did not exist. Registering the mock with
+// `jest.unstable_mockModule` and importing the module under test dynamically is
+// the supported pattern.
+const MockBigQueryClient = jest.fn();
+
+jest.unstable_mockModule('../../../src/bigquery/client.js', () => ({
+  BigQueryClient: MockBigQueryClient,
 }));
 
-import { BigQueryClient } from '../../../src/bigquery/client.js';
-const MockBigQueryClient = BigQueryClient as unknown as jest.Mock;
+const loggerMock = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+};
 
-// TODO: These tests need refactoring for ES module compatibility
-// The current mocking pattern doesn't work well with TypeScript ES modules
-describe.skip('BigQueryClientFactory', () => {
+jest.unstable_mockModule('../../../src/utils/logger.js', () => ({
+  logger: loggerMock,
+  default: loggerMock,
+}));
+
+// Must be imported dynamically, after the mock registrations above.
+const { BigQueryClientFactory, ClientFactoryError } =
+  await import('../../../src/mcp/bigquery-client-factory.js');
+
+describe('BigQueryClientFactory', () => {
   let mockBigQueryClient: jest.Mocked<BigQueryClient>;
   let defaultConfig: BigQueryClientFactoryConfig;
 
@@ -29,30 +38,31 @@ describe.skip('BigQueryClientFactory', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
 
-    // Create mock BigQuery client factory function
-    const createMockClient = () =>
-      ({
-        isHealthy: jest.fn().mockReturnValue(true),
-        shutdown: jest.fn().mockResolvedValue(undefined),
-        invalidateCache: jest.fn(),
-        getPoolMetrics: jest.fn().mockReturnValue({
-          activeConnections: 2,
-          idleConnections: 1,
-          totalConnections: 3,
-        }),
-        getCacheStats: jest.fn().mockReturnValue({
-          hits: 10,
-          misses: 5,
-          size: 15,
-        }),
-        on: jest.fn(),
-      }) as any;
+    // Every client the factory constructs is a distinct object, so identity
+    // checks like "different projects get different clients" hold, but all of
+    // them share one set of jest.fn()s. That lets assertions such as
+    // "shutdown was called three times" observe every instance the factory
+    // created — previously `mockBigQueryClient` was a throwaway object the
+    // factory never received, so those assertions could never pass and the
+    // tests were skipped.
+    mockBigQueryClient = {
+      isHealthy: jest.fn().mockReturnValue(true),
+      shutdown: jest.fn().mockResolvedValue(undefined),
+      invalidateCache: jest.fn(),
+      getPoolMetrics: jest.fn().mockReturnValue({
+        activeConnections: 2,
+        idleConnections: 1,
+        totalConnections: 3,
+      }),
+      getCacheStats: jest.fn().mockReturnValue({
+        hits: 10,
+        misses: 5,
+        size: 15,
+      }),
+      on: jest.fn(),
+    } as any;
 
-    // Mock implementation returns a new instance each time
-    MockBigQueryClient.mockImplementation(createMockClient);
-
-    // Keep a reference for tests that need it
-    mockBigQueryClient = createMockClient();
+    MockBigQueryClient.mockImplementation(() => ({ ...mockBigQueryClient }));
 
     defaultConfig = {
       defaultProjectId: 'test-project',
@@ -149,7 +159,7 @@ describe.skip('BigQueryClientFactory', () => {
       const client = await factory.getClient('test-project');
 
       expect(client).toBeDefined();
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: 'test-project',
         })
@@ -163,7 +173,7 @@ describe.skip('BigQueryClientFactory', () => {
       const client2 = await factory.getClient('test-project');
 
       expect(client1).toBe(client2);
-      expect(BigQueryClient).toHaveBeenCalledTimes(1);
+      expect(MockBigQueryClient).toHaveBeenCalledTimes(1);
     });
 
     it('should create separate clients for different projects', async () => {
@@ -173,7 +183,7 @@ describe.skip('BigQueryClientFactory', () => {
       const client2 = await factory.getClient('project-2');
 
       expect(client1).not.toBe(client2);
-      expect(BigQueryClient).toHaveBeenCalledTimes(2);
+      expect(MockBigQueryClient).toHaveBeenCalledTimes(2);
     });
 
     it('should use default project when not specified', async () => {
@@ -181,7 +191,7 @@ describe.skip('BigQueryClientFactory', () => {
 
       await factory.getClient();
 
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: 'test-project',
         })
@@ -261,9 +271,7 @@ describe.skip('BigQueryClientFactory', () => {
         } as any;
       };
 
-      (BigQueryClient as jest.MockedClass<typeof BigQueryClient>).mockImplementation(
-        createMockWithHealth
-      );
+      MockBigQueryClient.mockImplementation(createMockWithHealth);
 
       const factory = new BigQueryClientFactory(defaultConfig);
 
@@ -275,7 +283,7 @@ describe.skip('BigQueryClientFactory', () => {
       factory.getClient('test-project');
 
       // Should create new client because first one is unhealthy
-      expect(BigQueryClient).toHaveBeenCalledTimes(2);
+      expect(MockBigQueryClient).toHaveBeenCalledTimes(2);
     });
 
     it('should pass pooling configuration to client', async () => {
@@ -283,7 +291,7 @@ describe.skip('BigQueryClientFactory', () => {
 
       await factory.getClient('test-project');
 
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           connectionPool: expect.objectContaining({
             minConnections: 2,
@@ -298,7 +306,7 @@ describe.skip('BigQueryClientFactory', () => {
 
       await factory.getClient('test-project');
 
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           datasetManager: expect.objectContaining({
             cacheSize: 100,
@@ -313,7 +321,7 @@ describe.skip('BigQueryClientFactory', () => {
 
       await factory.getClient('test-project');
 
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           retry: expect.objectContaining({
             maxRetries: 3,
@@ -325,7 +333,7 @@ describe.skip('BigQueryClientFactory', () => {
   });
 
   describe('Client Removal', () => {
-    it.skip('should remove client successfully', async () => {
+    it('should remove client successfully', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
       await factory.getClient('test-project');
@@ -353,7 +361,7 @@ describe.skip('BigQueryClientFactory', () => {
       await expect(factory.removeClient('nonexistent')).resolves.not.toThrow();
     });
 
-    it.skip('should handle client shutdown errors', async () => {
+    it('should handle client shutdown errors', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
       await factory.getClient('test-project');
@@ -378,7 +386,7 @@ describe.skip('BigQueryClientFactory', () => {
       expect(healthyHandler).toHaveBeenCalled();
     });
 
-    it.skip('should detect unhealthy clients', async () => {
+    it('should detect unhealthy clients', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
       const unhealthyHandler = jest.fn();
 
@@ -394,7 +402,7 @@ describe.skip('BigQueryClientFactory', () => {
       expect(unhealthyHandler).toHaveBeenCalled();
     });
 
-    it.skip('should remove clients with too many errors', async () => {
+    it('should remove clients with too many errors', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
       await factory.getClient('test-project');
@@ -404,13 +412,15 @@ describe.skip('BigQueryClientFactory', () => {
       const metadata = (factory as any).clients.get('test-project');
       metadata.errorCount = 10;
 
-      jest.advanceTimersByTime(60000);
+      // Removal happens inside the async health check (`await removeClient`),
+      // so the pending microtasks must be flushed as well as the timer.
+      await jest.advanceTimersByTimeAsync(60000);
 
       // Client should be removed
       expect(factory.hasClient('test-project')).toBe(false);
     });
 
-    it.skip('should emit health:check events', async () => {
+    it('should emit health:check events', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
       const healthCheckHandler = jest.fn();
 
@@ -444,7 +454,7 @@ describe.skip('BigQueryClientFactory', () => {
   });
 
   describe('Event Forwarding', () => {
-    it.skip('should forward query:started events', async () => {
+    it('should forward query:started events', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
       const queryStartedHandler = jest.fn();
 
@@ -466,7 +476,7 @@ describe.skip('BigQueryClientFactory', () => {
       );
     });
 
-    it.skip('should forward query:completed events', async () => {
+    it('should forward query:completed events', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
       const queryCompletedHandler = jest.fn();
 
@@ -489,7 +499,7 @@ describe.skip('BigQueryClientFactory', () => {
       );
     });
 
-    it.skip('should forward error events and increment error count', async () => {
+    it('should forward error events and increment error count', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
       const errorHandler = jest.fn();
 
@@ -514,7 +524,7 @@ describe.skip('BigQueryClientFactory', () => {
       expect(metrics.clients[0].errorCount).toBeGreaterThan(0);
     });
 
-    it.skip('should forward cache events', async () => {
+    it('should forward cache events', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
       const cacheHitHandler = jest.fn();
       const cacheMissHandler = jest.fn();
@@ -610,7 +620,7 @@ describe.skip('BigQueryClientFactory', () => {
   });
 
   describe('Cache Management', () => {
-    it.skip('should invalidate all caches', async () => {
+    it('should invalidate all caches', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
       await factory.getClient('project-1');
@@ -621,7 +631,7 @@ describe.skip('BigQueryClientFactory', () => {
       expect(mockBigQueryClient.invalidateCache).toHaveBeenCalledTimes(2);
     });
 
-    it.skip('should invalidate caches with pattern', async () => {
+    it('should invalidate caches with pattern', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
       await factory.getClient('test-project');
@@ -646,7 +656,7 @@ describe.skip('BigQueryClientFactory', () => {
   });
 
   describe('Shutdown', () => {
-    it.skip('should shutdown all clients', async () => {
+    it('should shutdown all clients', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
       await factory.getClient('project-1');
@@ -674,7 +684,7 @@ describe.skip('BigQueryClientFactory', () => {
       expect(shutdownCompletedHandler).toHaveBeenCalled();
     });
 
-    it.skip('should handle multiple shutdown calls gracefully', async () => {
+    it('should handle multiple shutdown calls gracefully', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
       await factory.getClient('test-project');
@@ -685,16 +695,18 @@ describe.skip('BigQueryClientFactory', () => {
       expect(mockBigQueryClient.shutdown).toHaveBeenCalledTimes(1);
     });
 
-    it.skip('should prevent new clients after shutdown', async () => {
+    it('should prevent new clients after shutdown', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
       await factory.shutdown();
 
-      await expect(factory.getClient('test-project')).rejects.toThrow(ClientFactoryError);
-      await expect(factory.getClient('test-project')).rejects.toThrow('factory is shutting down');
+      // getClient() is synchronous and throws; it does not return a promise,
+      // so `.rejects` never matched.
+      expect(() => factory.getClient('test-project')).toThrow(ClientFactoryError);
+      expect(() => factory.getClient('test-project')).toThrow('factory is shutting down');
     });
 
-    it.skip('should handle client shutdown errors gracefully', async () => {
+    it('should handle client shutdown errors gracefully', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
       await factory.getClient('project-1');
@@ -750,20 +762,22 @@ describe.skip('BigQueryClientFactory', () => {
   });
 
   describe('Error Handling', () => {
-    it.skip('should throw ClientFactoryError on client creation failure', async () => {
+    it('should throw ClientFactoryError on client creation failure', () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
-      (BigQueryClient as jest.MockedClass<typeof BigQueryClient>).mockImplementation(() => {
+      MockBigQueryClient.mockImplementation(() => {
         throw new Error('Client creation failed');
       });
 
-      await expect(factory.getClient('test-project')).rejects.toThrow(ClientFactoryError);
+      // getClient() is synchronous and throws; it does not return a promise,
+      // so `.rejects` never matched.
+      expect(() => factory.getClient('test-project')).toThrow(ClientFactoryError);
     });
 
     it('should include error details in ClientFactoryError', async () => {
       const factory = new BigQueryClientFactory(defaultConfig);
 
-      (BigQueryClient as jest.MockedClass<typeof BigQueryClient>).mockImplementation(() => {
+      MockBigQueryClient.mockImplementation(() => {
         throw new Error('Invalid credentials');
       });
 
@@ -790,7 +804,7 @@ describe.skip('BigQueryClientFactory', () => {
 
       await factory.getClient('test-project');
 
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           connectionPool: undefined,
         })
@@ -807,7 +821,7 @@ describe.skip('BigQueryClientFactory', () => {
 
       await factory.getClient('test-project');
 
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           datasetManager: undefined,
         })
@@ -824,7 +838,7 @@ describe.skip('BigQueryClientFactory', () => {
 
       await factory.getClient('test-project');
 
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           retry: undefined,
         })
@@ -842,7 +856,7 @@ describe.skip('BigQueryClientFactory', () => {
 
       await factory.getClient('test-project');
 
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           credentials: customCredentials,
         })
@@ -859,7 +873,7 @@ describe.skip('BigQueryClientFactory', () => {
 
       await factory.getClient('test-project');
 
-      expect(BigQueryClient).toHaveBeenCalledWith(
+      expect(MockBigQueryClient).toHaveBeenCalledWith(
         expect.objectContaining({
           keyFilename: '/path/to/key.json',
         })

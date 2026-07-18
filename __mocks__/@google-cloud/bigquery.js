@@ -4,6 +4,22 @@
  */
 
 /**
+ * Jobs staged by tests, shared across all mock BigQuery instances because the
+ * connection pool hands out more than one.
+ */
+const mockJobs = new Map();
+
+/** Stage a job with specific metadata (e.g. a failed or still-running job). */
+export function setMockJob(jobId, metadata) {
+  mockJobs.set(jobId, new Job(jobId, [], metadata));
+}
+
+/** Clear staged jobs between tests. */
+export function resetMockJobs() {
+  mockJobs.clear();
+}
+
+/**
  * Mock BigQuery Job
  */
 export class Job {
@@ -45,13 +61,24 @@ export class Job {
  * Mock BigQuery Table
  */
 export class Table {
-  constructor(id = 'mock-table', datasetId = 'mock-dataset', schema = []) {
+  // `exists` mirrors real BigQuery semantics: `dataset.table(id)` returns a
+  // lazy handle for any id and never throws, but getMetadata() on a table that
+  // was never created fails with a 404. Tables registered through the Dataset
+  // constructor / addDataset() are real; handles minted on demand are not.
+  constructor(id = 'mock-table', datasetId = 'mock-dataset', schema = [], exists = true) {
     this.id = id;
     this.datasetId = datasetId;
     this.schema = schema;
+    this.exists = exists;
   }
 
   async getMetadata() {
+    if (!this.exists) {
+      const error = new Error(`Not found: Table ${this.datasetId}.${this.id}`);
+      error.code = 404;
+      throw error;
+    }
+
     return [
       {
         id: this.id,
@@ -94,12 +121,13 @@ export class Dataset {
   }
 
   table(tableId) {
-    let table = this.tables.get(tableId);
-    if (!table) {
-      table = new Table(tableId, this.id, []);
-      this.tables.set(tableId, table);
+    const table = this.tables.get(tableId);
+    if (table) {
+      return table;
     }
-    return table;
+    // Lazy handle for an unknown table. Deliberately NOT stored in `tables`,
+    // so it cannot surface as a phantom entry from getTables().
+    return new Table(tableId, this.id, [], false);
   }
 
   async getMetadata() {
@@ -232,6 +260,29 @@ export class BigQuery {
     }
 
     return [Array.from(this.datasets.values())];
+  }
+
+  // Look up an existing job by id. Backs BigQueryClient.getJob(), which serves
+  // the `bigquery://jobs/{jobId}` resource template.
+  //
+  // Jobs are stored module-level, not per-instance: the connection pool hands
+  // out distinct BigQuery instances, so a job staged via setJob() must be
+  // visible to whichever instance the pool later acquires.
+  job(jobId) {
+    const existing = mockJobs.get(jobId);
+    if (existing) {
+      return existing;
+    }
+    const job = new Job(jobId, [], {
+      status: { state: 'DONE' },
+      statistics: {
+        startTime: '1700000000000',
+        endTime: '1700000001500',
+        query: { totalBytesProcessed: '2048', cacheHit: false },
+      },
+    });
+    mockJobs.set(jobId, job);
+    return job;
   }
 
   dataset(datasetId) {

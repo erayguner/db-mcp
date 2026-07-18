@@ -72,8 +72,27 @@ const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   },
 };
 
-export function getToolAnnotations(toolName: string): ToolAnnotations {
-  return TOOL_ANNOTATIONS[toolName] || readOnlyAnnotations();
+/** Tools that execute caller-supplied SQL and can therefore write when the tenant permits it. */
+const SQL_EXECUTING_TOOLS = new Set(['query_bigquery', 'execute_query']);
+
+export function getToolAnnotations(toolName: string, canWrite = false): ToolAnnotations {
+  const base = TOOL_ANNOTATIONS[toolName] || readOnlyAnnotations();
+
+  // `readOnlyHint` drives auto-approval in MCP clients: a tool marked read-only
+  // may be invoked without prompting the user. The SQL tools accept arbitrary
+  // statements, so for a tenant whose writeMode permits DML/DDL they can run
+  // DELETE or DROP TABLE. Advertising them as read-only in that case would let a
+  // client silently auto-approve a destructive statement. Only claim read-only
+  // when the tenant policy actually blocks writes.
+  if (canWrite && SQL_EXECUTING_TOOLS.has(toolName)) {
+    return {
+      ...base,
+      readOnlyHint: false,
+      destructiveHint: true,
+    };
+  }
+
+  return base;
 }
 
 /**

@@ -1,65 +1,91 @@
 /**
  * Performance Benchmarks
+ *
+ * Correctness assertions (row counts, completion of every queued operation,
+ * validation verdicts) run on every `npm test`. Pure wall-clock budgets go
+ * through `expectTiming` and are enforced only under `npm run test:performance`
+ * — see tests/helpers/perf-timing.ts for the rationale.
  */
 
+import { BigQuery } from '@google-cloud/bigquery';
 import { BigQueryClient } from '../../src/bigquery/client.js';
 import { SecurityMiddleware } from '../../src/security/middleware.js';
-import { createMockBigQueryClient } from '../fixtures/mocks.js';
+import { expectTiming } from '../helpers/perf-timing.js';
 
-const skipPerf = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
-const describePerf = skipPerf ? describe.skip : describe;
+/**
+ * Force every pooled BigQuery connection to return `rows` for the next query.
+ *
+ * The pool builds its own `new BigQuery(...)` instances (see
+ * ConnectionPool.createConnection), and the module under test resolves
+ * '@google-cloud/bigquery' to the shared mock in __mocks__/ — which Jest
+ * applies automatically for node_modules packages. There is therefore no
+ * instance to hand a local mock to; the only seam that reaches every pooled
+ * connection is the prototype.
+ */
+function stubQueryRows(rows: unknown[]): jest.SpyInstance {
+  const job = {
+    id: 'job-123',
+    getQueryResults: () => Promise.resolve([rows, {}, {}]),
+    getMetadata: () => Promise.resolve([{ statistics: { query: {} } }]),
+  };
 
-describePerf('Performance Benchmarks', () => {
+  return jest
+    .spyOn(BigQuery.prototype, 'createQueryJob')
+    .mockImplementation((() => Promise.resolve([job])) as never);
+}
+
+describe('Performance Benchmarks', () => {
   describe('Query Performance', () => {
     let client: BigQueryClient;
-    let mockBQClient: ReturnType<typeof createMockBigQueryClient>;
 
     beforeEach(() => {
-      mockBQClient = createMockBigQueryClient();
       client = new BigQueryClient({
         projectId: 'test-project',
         location: 'EU',
       });
-      (client as any).client = mockBQClient;
+    });
+
+    afterEach(async () => {
+      jest.restoreAllMocks();
+      await client.shutdown();
     });
 
     it('should execute simple query in <100ms', async () => {
       // Arrange
       const sql = 'SELECT * FROM dataset.table LIMIT 10';
-      const mockJob = {
-        id: 'job-123',
-        getQueryResults: jest.fn().mockResolvedValue([[]]),
-      };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
 
       // Act
       const startTime = performance.now();
-      await client.query(sql);
+      const result = await client.query({ query: sql });
       const duration = performance.now() - startTime;
 
-      // Assert
-      expect(duration).toBeLessThan(100);
+      // Assert — correctness: the query actually round-tripped
+      expect(result.jobId).toBeDefined();
+      expect(Array.isArray(result.rows)).toBe(true);
+      expect(result.totalRows).toBe(result.rows.length);
+
+      // Assert — budget
+      expectTiming(duration, 'simple query').toBeLessThan(100);
     });
 
     it('should handle 100 sequential queries efficiently', async () => {
       // Arrange
       const sql = 'SELECT * FROM dataset.table LIMIT 1';
-      const mockJob = {
-        id: 'job-123',
-        getQueryResults: jest.fn().mockResolvedValue([[]]),
-      };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
 
       // Act
       const startTime = performance.now();
+      const results = [];
       for (let i = 0; i < 100; i++) {
-        await client.query(sql);
+        results.push(await client.query({ query: sql }));
       }
       const duration = performance.now() - startTime;
 
-      // Assert
-      expect(duration).toBeLessThan(5000); // <5s for 100 queries
-      console.log(`100 sequential queries: ${duration.toFixed(2)}ms`);
+      // Assert — correctness: every query completed
+      expect(results).toHaveLength(100);
+      expect(results.every((r) => r.jobId !== undefined)).toBe(true);
+
+      // Assert — budget
+      expectTiming(duration, '100 sequential queries').toBeLessThan(5000);
     });
 
     it('should process large result sets efficiently', async () => {
@@ -70,22 +96,20 @@ describePerf('Performance Benchmarks', () => {
           id: i,
           data: `data-${i}`,
         }));
-
-      const mockJob = {
-        id: 'job-123',
-        getQueryResults: jest.fn().mockResolvedValue([largeResults]),
-      };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
+      stubQueryRows(largeResults);
 
       // Act
       const startTime = performance.now();
-      const results = await client.query('SELECT * FROM large_table');
+      const results = await client.query({ query: 'SELECT * FROM large_table' });
       const duration = performance.now() - startTime;
 
-      // Assert
-      expect((results as any).rows?.length ?? (results as any).length).toBe(10000);
-      expect(duration).toBeLessThan(1000); // <1s for 10k rows
-      console.log(`Large result set (10k rows): ${duration.toFixed(2)}ms`);
+      // Assert — correctness: all 10k rows survive the client layer
+      expect(results.rows).toHaveLength(10000);
+      expect(results.totalRows).toBe(10000);
+      expect(results.rows[9999]).toEqual({ id: 9999, data: 'data-9999' });
+
+      // Assert — budget
+      expectTiming(duration, 'large result set (10k rows)').toBeLessThan(1000);
     });
   });
 
@@ -111,12 +135,14 @@ describePerf('Performance Benchmarks', () => {
 
       // Act
       const startTime = performance.now();
-      await security.validateRequest(request);
+      const result = await security.validateRequest(request);
       const duration = performance.now() - startTime;
 
-      // Assert
-      expect(duration).toBeLessThan(10);
-      console.log(`Security validation: ${duration.toFixed(2)}ms`);
+      // Assert — correctness: a benign request is allowed
+      expect(result.allowed).toBe(true);
+
+      // Assert — budget
+      expectTiming(duration, 'security validation').toBeLessThan(10);
     });
 
     it('should handle 1000 validations efficiently', async () => {
@@ -131,12 +157,15 @@ describePerf('Performance Benchmarks', () => {
 
       // Act
       const startTime = performance.now();
-      await Promise.all(requests.map((req) => security.validateRequest(req)));
+      const results = await Promise.all(requests.map((req) => security.validateRequest(req)));
       const duration = performance.now() - startTime;
 
-      // Assert
-      expect(duration).toBeLessThan(5000); // <5s for 1000 validations
-      console.log(`1000 security validations: ${duration.toFixed(2)}ms`);
+      // Assert — correctness: every validation produced a verdict
+      expect(results).toHaveLength(1000);
+      expect(results.every((r) => typeof r.allowed === 'boolean')).toBe(true);
+
+      // Assert — budget
+      expectTiming(duration, '1000 security validations').toBeLessThan(5000);
     });
 
     it('should detect injections without significant overhead', async () => {
@@ -155,18 +184,20 @@ describePerf('Performance Benchmarks', () => {
 
       // Act
       const safeStart = performance.now();
-      await security.validateRequest(safeRequest);
+      const safeResult = await security.validateRequest(safeRequest);
       const safeDuration = performance.now() - safeStart;
 
       const maliciousStart = performance.now();
-      await security.validateRequest(maliciousRequest);
+      const maliciousResult = await security.validateRequest(maliciousRequest);
       const maliciousDuration = performance.now() - maliciousStart;
 
-      // Assert
-      // Malicious detection should not be significantly slower
+      // Assert — correctness: the detection actually fires
+      expect(safeResult.allowed).toBe(true);
+      expect(maliciousResult.allowed).toBe(false);
+
+      // Assert — budget: malicious detection should not be significantly slower
       const overhead = maliciousDuration - safeDuration;
-      expect(overhead).toBeLessThan(50); // <50ms overhead
-      console.log(`Injection detection overhead: ${overhead.toFixed(2)}ms`);
+      expectTiming(overhead, 'injection detection overhead').toBeLessThan(50);
     });
   });
 
@@ -198,9 +229,6 @@ describePerf('Performance Benchmarks', () => {
 
       // Assert - Memory increase should be minimal
       expect(memoryIncrease).toBeLessThan(10 * 1024 * 1024); // <10MB
-      console.log(
-        `Memory increase after ${iterations} operations: ${(memoryIncrease / 1024 / 1024).toFixed(2)}MB`
-      );
     });
 
     it('should handle rate limiter cleanup efficiently', () => {
@@ -212,12 +240,14 @@ describePerf('Performance Benchmarks', () => {
       const initialMemory = process.memoryUsage().heapUsed;
 
       // Act - Create many rate limit entries
+      const verdicts = [];
       for (let i = 0; i < 1000; i++) {
-        security.getRateLimiter().checkRateLimit(`user-${i}`);
+        verdicts.push(security.getRateLimiter().checkRateLimit(`user-${i}`));
       }
 
-      // Wait for cleanup
-      jest.advanceTimersByTime(200);
+      // Assert - correctness: distinct users are each admitted
+      expect(verdicts).toHaveLength(1000);
+      expect(verdicts.every((v) => v.allowed)).toBe(true);
 
       if (global.gc) {
         global.gc();
@@ -237,25 +267,22 @@ describePerf('Performance Benchmarks', () => {
       const client = new BigQueryClient({
         projectId: 'test-project',
       });
-      const mockBQClient = createMockBigQueryClient();
-      (client as any).client = mockBQClient;
-
-      const mockJob = {
-        id: 'job-123',
-        getQueryResults: jest.fn().mockResolvedValue([[]]),
-      };
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob as any]);
 
       const queries = Array(50).fill('SELECT * FROM dataset.table');
 
       // Act
       const startTime = performance.now();
-      await Promise.all(queries.map((q) => client.query(q)));
+      const results = await Promise.all(queries.map((q) => client.query({ query: q })));
       const duration = performance.now() - startTime;
 
-      // Assert
-      expect(duration).toBeLessThan(2000); // <2s for 50 concurrent queries
-      console.log(`50 concurrent queries: ${duration.toFixed(2)}ms`);
+      // Assert — correctness: all 50 resolved, no deadlock on the pool
+      expect(results).toHaveLength(50);
+      expect(results.every((r) => r.jobId !== undefined)).toBe(true);
+
+      // Assert — budget
+      expectTiming(duration, '50 concurrent queries').toBeLessThan(2000);
+
+      await client.shutdown();
     });
 
     it('should maintain performance under mixed workload', async () => {
@@ -275,16 +302,19 @@ describePerf('Performance Benchmarks', () => {
 
       // Act
       const startTime = performance.now();
-      await Promise.all(
+      const results = await Promise.all(
         Array(100)
           .fill(null)
           .map((_, i) => operations[i % operations.length]())
       );
       const duration = performance.now() - startTime;
 
-      // Assert
-      expect(duration).toBeLessThan(3000); // <3s for 100 mixed operations
-      console.log(`100 mixed operations: ${duration.toFixed(2)}ms`);
+      // Assert — correctness: every operation produced a verdict
+      expect(results).toHaveLength(100);
+      expect(results.every((r) => typeof r.allowed === 'boolean')).toBe(true);
+
+      // Assert — budget
+      expectTiming(duration, '100 mixed operations').toBeLessThan(3000);
     });
   });
 });

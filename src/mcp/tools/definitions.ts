@@ -38,7 +38,13 @@ function toJsonSchema2020(zodType: z.ZodType): Record<string, unknown> {
  * Generate tool definitions combining input and output schemas.
  */
 export function generateToolDefinitions(
-  getDescription: (name: string) => string
+  getDescription: (name: string) => string,
+  /**
+   * Whether the calling tenant's policy permits write statements. This flips the
+   * SQL tools' `readOnlyHint`/`destructiveHint` so clients do not auto-approve a
+   * statement that can modify data. Defaults to false (the safe, read-only claim).
+   */
+  canWrite = false
 ): ToolDefinition[] {
   const entries = Object.entries(TOOL_SCHEMAS);
 
@@ -47,13 +53,15 @@ export function generateToolDefinitions(
     const outputZod = OUTPUT_SCHEMAS[name as keyof typeof OUTPUT_SCHEMAS] as z.ZodType | undefined;
     const outputSchema = outputZod ? toJsonSchema2020(outputZod) : undefined;
     const description = getDescription(name);
+    const annotations = getToolAnnotations(name, canWrite);
     return {
       name,
-      title: description,
+      // Short display label for UIs; the description carries the selection detail.
+      title: annotations.title ?? description,
       description,
       inputSchema,
       outputSchema,
-      annotations: getToolAnnotations(name),
+      annotations,
     };
   });
 }

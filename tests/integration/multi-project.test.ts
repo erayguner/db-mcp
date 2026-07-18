@@ -7,10 +7,42 @@
 
 import { BigQueryClient } from '../../src/bigquery/client.js';
 
-const skipMulti = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
-const describeMulti = skipMulti ? describe.skip : describe;
+/** The fault-injection lever the mocked BigQuery exposes per instance. */
+interface PooledMockConnection {
+  setShouldFail(shouldFail: boolean, error?: Error): void;
+}
 
-describeMulti('Multi-Project Connection Management', () => {
+interface PoolInternals {
+  connections: Map<string, { client: PooledMockConnection }>;
+}
+
+/**
+ * Arm every pooled connection of `client` to fail, run `fn`, then disarm.
+ *
+ * The fault is injected at the connection rather than by stubbing
+ * `BigQueryClient.query`, so the client's real acquire / execute / release and
+ * error-wrapping paths still run - which is the point of an isolation test.
+ * Every connection is armed because the pool hands out whichever one is idle.
+ * Disarming afterwards matters: these clients are shared with later tests.
+ */
+async function withFailingConnections<T>(
+  client: BigQueryClient,
+  error: Error,
+  fn: () => Promise<T>
+): Promise<T> {
+  const pool = (client as unknown as { connectionPool: PoolInternals }).connectionPool;
+  const connections = Array.from(pool.connections.values()).map((entry) => entry.client);
+
+  connections.forEach((connection) => connection.setShouldFail(true, error));
+
+  try {
+    return await fn();
+  } finally {
+    connections.forEach((connection) => connection.setShouldFail(false));
+  }
+}
+
+describe('Multi-Project Connection Management', () => {
   let clients: Map<string, BigQueryClient>;
   const testProjects = ['project-a', 'project-b', 'project-c'];
 
@@ -155,26 +187,34 @@ describeMulti('Multi-Project Connection Management', () => {
       const client1 = clients.get('project-a')!;
       const client2 = clients.get('project-b')!;
 
-      // Force an error in client1
-      const promise1 = client1
-        .query({
-          query: 'INVALID SQL QUERY HERE',
-          retry: false,
-        })
-        .catch((error) => ({ error: error.message }));
+      // The mocked BigQuery accepts any SQL, so the failure that a real
+      // backend would raise for this query is injected into client1's own
+      // connections. client2 is untouched.
+      const syntaxError = new Error('Syntax error: Unexpected keyword INVALID at [1:1]');
 
-      // Valid query in client2
-      const promise2 = client2
-        .query({
-          query: 'SELECT 1',
-          dryRun: true,
-        })
-        .then((result) => ({ success: true, jobId: result.jobId }));
+      const [result1, result2] = await withFailingConnections(client1, syntaxError, () =>
+        Promise.all([
+          // Force an error in client1
+          client1
+            .query({
+              query: 'INVALID SQL QUERY HERE',
+              retry: false,
+            })
+            .catch((error) => ({ error: error.message })),
 
-      const [result1] = await Promise.all([promise1, promise2]);
+          // Valid query in client2
+          client2
+            .query({
+              query: 'SELECT 1',
+              dryRun: true,
+            })
+            .then((result) => ({ success: true, jobId: result.jobId })),
+        ])
+      );
 
       // client1 should have error, client2 should succeed (in mock env)
       expect(result1).toHaveProperty('error');
+      expect(result2).toMatchObject({ success: true });
       // client2 health should not be affected
       expect(client2.isHealthy()).toBe(true);
     });
@@ -306,7 +346,13 @@ describeMulti('Multi-Project Connection Management', () => {
         },
       });
 
-      await expect(invalidClient.query({ query: 'SELECT 1' })).rejects.toThrow();
+      // The mocked BigQuery never validates credentials, so the auth failure
+      // these credentials would really produce is injected at the connection.
+      const authError = new Error('invalid_grant: Invalid JWT Signature.');
+
+      await withFailingConnections(invalidClient, authError, async () => {
+        await expect(invalidClient.query({ query: 'SELECT 1' })).rejects.toThrow(/invalid_grant/);
+      });
 
       // Other clients should not be affected
       const validClient = clients.get('project-a')!;

@@ -131,7 +131,10 @@ describe('Tool Handlers', () => {
 
       expect(response._meta?.streaming).toBe(true);
       expect(response._meta?.totalItems).toBe(250);
-      expect(response.content[0].text).toContain('"totalItems": 250');
+      expect(response._meta?.chunks).toBe(3);
+      // The payload conforms to QueryExecutedOutputSchema; chunking lives in _meta.
+      expect(response.content[0].text).toContain('"rowCount": 250');
+      expect((response.structuredContent as { rows: unknown[] }).rows).toHaveLength(250);
     });
   });
 

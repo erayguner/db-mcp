@@ -560,180 +560,52 @@ async function handleRequest(req: Request): Promise<Response> {
 
 ## Health Checks
 
-### Comprehensive Health Endpoint
+The server exposes three probe surfaces. Liveness and readiness are deliberately separate implementations, because their
+failure consequences differ: a failed liveness probe restarts the container, while a failed readiness probe only drains
+the instance from the load balancer.
 
-```typescript
-interface HealthCheck {
-  status: 'healthy' | 'degraded' | 'unhealthy';
-  version: string;
-  uptime: number;
-  timestamp: string;
-  checks: {
-    [key: string]: ComponentHealth;
-  };
-}
+### Liveness — `GET /health`, `GET /health/live`
 
-interface ComponentHealth {
-  status: 'up' | 'down' | 'degraded';
-  message?: string;
-  latency?: number;
-  details?: any;
-}
+Dependency-free by design. Reaching the handler proves the event loop is turning and the process can serve HTTP, which
+is all liveness should assert.
 
-class HealthChecker {
-  async check(): Promise<HealthCheck> {
-    const startTime = Date.now();
-
-    // Run all health checks in parallel
-    const [bigqueryHealth, authHealth, cacheHealth, diskHealth] = await Promise.all([
-      this.checkBigQuery(),
-      this.checkAuth(),
-      this.checkCache(),
-      this.checkDisk(),
-    ]);
-
-    const checks = {
-      bigquery: bigqueryHealth,
-      auth: authHealth,
-      cache: cacheHealth,
-      disk: diskHealth,
-    };
-
-    // Determine overall status
-    const status = this.aggregateStatus(checks);
-
-    return {
-      status,
-      version: process.env.npm_package_version!,
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      checks,
-    };
-  }
-
-  private async checkBigQuery(): Promise<ComponentHealth> {
-    try {
-      const start = Date.now();
-
-      // Simple query to test connectivity
-      await this.bigquery.query({
-        query: 'SELECT 1',
-        location: 'EU',
-      });
-
-      return {
-        status: 'up',
-        latency: Date.now() - start,
-      };
-    } catch (error) {
-      return {
-        status: 'down',
-        message: error.message,
-      };
-    }
-  }
-
-  private async checkAuth(): Promise<ComponentHealth> {
-    try {
-      const start = Date.now();
-
-      // Verify token is valid
-      const token = await this.authManager.getToken();
-
-      // Check if token is expiring soon
-      const expiresIn = token.expiresAt.getTime() - Date.now();
-      const status = expiresIn < 300000 ? 'degraded' : 'up'; // Degraded if < 5min
-
-      return {
-        status,
-        latency: Date.now() - start,
-        details: {
-          expiresIn: Math.floor(expiresIn / 1000),
-          tokenSource: token.source,
-        },
-      };
-    } catch (error) {
-      return {
-        status: 'down',
-        message: error.message,
-      };
-    }
-  }
-
-  private async checkCache(): Promise<ComponentHealth> {
-    try {
-      const stats = this.cache.getStats();
-
-      // Degraded if cache is full
-      const status = stats.size >= stats.maxSize * 0.9 ? 'degraded' : 'up';
-
-      return {
-        status,
-        details: {
-          size: stats.size,
-          maxSize: stats.maxSize,
-          hitRate: stats.hitRate,
-        },
-      };
-    } catch (error) {
-      return {
-        status: 'down',
-        message: error.message,
-      };
-    }
-  }
-
-  private async checkDisk(): Promise<ComponentHealth> {
-    try {
-      const diskUsage = await checkDiskSpace('/');
-
-      // Degraded if > 80% full
-      const usagePercent = (diskUsage.used / diskUsage.total) * 100;
-      const status = usagePercent > 80 ? 'degraded' : 'up';
-
-      return {
-        status,
-        details: {
-          usagePercent: Math.round(usagePercent),
-          freeGB: Math.round(diskUsage.free / 1024 / 1024 / 1024),
-        },
-      };
-    } catch (error) {
-      return {
-        status: 'down',
-        message: error.message,
-      };
-    }
-  }
-
-  private aggregateStatus(checks: Record<string, ComponentHealth>): HealthCheck['status'] {
-    const statuses = Object.values(checks).map((c) => c.status);
-
-    if (statuses.includes('down')) {
-      return 'unhealthy';
-    }
-
-    if (statuses.includes('degraded')) {
-      return 'degraded';
-    }
-
-    return 'healthy';
-  }
-}
-
-// Health check endpoint
-app.get('/health', async (req, res) => {
-  const health = await healthChecker.check();
-
-  const statusCode = {
-    healthy: 200,
-    degraded: 200,
-    unhealthy: 503,
-  }[health.status];
-
-  res.status(statusCode).json(health);
-});
+```json
+{ "status": "healthy", "uptimeSeconds": 1234, "timestamp": "2026-07-18T12:00:00.000Z" }
 ```
+
+A dependency check here would convert a BigQuery outage into a fleet-wide crash-loop, since restarting cannot repair a
+remote dependency.
+
+### Readiness — `GET /readiness`, `GET /health/ready`
+
+Evaluates the probes in the `ReadinessRegistry` (`src/monitoring/readiness.ts`). Returns `200` when every probe passes
+and `503` naming the failing dependency otherwise.
+
+```json
+{
+  "ready": false,
+  "checks": [{ "name": "bigquery", "ok": false, "durationMs": 87, "error": "ECONNREFUSED" }],
+  "failed": ["bigquery"],
+  "cached": false,
+  "timestamp": "2026-07-18T12:00:00.000Z"
+}
+```
+
+Probes run in parallel under a 2s per-probe timeout, verdicts are cached for 5s, and concurrent evaluations are
+de-duplicated into one in-flight run. A probe that throws, rejects, or times out is recorded as a failed check rather
+than propagating — a probe endpoint that throws looks like a crashed server to an orchestrator.
+
+The BigQuery probe issues a dry-run `SELECT 1`, which proves connectivity, authentication and authorization while
+scanning zero bytes. Before the lazily-initialised client exists the probe reports ready on purpose: reporting not-ready
+would drain the instance so it never receives the request that triggers initialization.
+
+### Metrics — `GET /metrics`
+
+Prometheus text exposition format from the OpenTelemetry exporter, which is constructed with `preventServerStart: true`
+and mounted on this route. Returns `503` before telemetry is initialised, since an empty `200` would misreport the
+server as having no metrics.
+
+See [health-monitoring.md](../health-monitoring.md) for the registry API and probe-authoring guidance.
 
 ## Alerting Rules
 

@@ -22,6 +22,7 @@ import {
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
   CompleteRequestSchema,
+  SetLevelRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
@@ -54,10 +55,10 @@ import {
   recordErrorByCode,
 } from './mcp/mcp-metrics.js';
 import { PromptRegistry } from './mcp/handlers/prompt-handlers.js';
-import { SessionManager } from './mcp/handlers/session-manager.js';
 import { ProgressNotifier } from './mcp/handlers/progress-notifier.js';
 import { BehavioralAnomalyDetector } from './security/anomaly-detector.js';
 import { EffectivenessTracker } from './monitoring/effectiveness-metrics.js';
+import { readinessRegistry } from './monitoring/readiness.js';
 import { GracefulDegradationHandler } from './bigquery/graceful-degradation.js';
 import { readFileSync } from 'node:fs';
 import { AuthMiddleware } from './auth/auth-middleware.js';
@@ -70,12 +71,64 @@ import { StreamableHttpTransport, AuthResolver } from './mcp/transports/http-tra
 /** Server version — single source of truth */
 const SERVER_VERSION = '1.0.0';
 
-/** Tool descriptions — single source of truth */
+/** RFC 5424 severities used by the MCP `logging` capability, lowest first. */
+type MCPLogLevel =
+  | 'debug'
+  | 'info'
+  | 'notice'
+  | 'warning'
+  | 'error'
+  | 'critical'
+  | 'alert'
+  | 'emergency';
+
+const MCP_LOG_SEVERITY: Record<MCPLogLevel, number> = {
+  debug: 0,
+  info: 1,
+  notice: 2,
+  warning: 3,
+  error: 4,
+  critical: 5,
+  alert: 6,
+  emergency: 7,
+};
+
+/**
+ * Tool descriptions — single source of truth.
+ *
+ * These are the primary signal a model uses to choose between tools, so they
+ * state what each tool does, when to prefer it, and which parameter
+ * interactions matter (notably the dry-run and cost-confirmation flows).
+ */
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  query_bigquery: 'Execute a SQL query on BigQuery datasets',
-  list_datasets: 'List all available BigQuery datasets',
-  list_tables: 'List tables in a dataset',
-  get_table_schema: 'Get schema for a specific table',
+  query_bigquery: [
+    'Run a GoogleSQL query against BigQuery and return the result rows.',
+    'Use this for any question that requires reading actual data rather than metadata.',
+    'Prefer discovering structure first with list_datasets/list_tables/get_table_schema, then querying — this avoids SELECT * on large tables.',
+    'Set dryRun:true to get a byte/cost estimate WITHOUT running the query.',
+    'If the estimated scan exceeds the server cost threshold, the call returns status:"requires_confirmation" and does NOT execute; re-invoke with confirmCost:true only after the user agrees to the cost.',
+    'Accessible datasets and whether writes (INSERT/UPDATE/DELETE/DDL) are permitted are restricted per tenant; disallowed queries are rejected.',
+    'Columns covered by the tenant masking policy are returned masked, and listed in provenance.maskedColumns.',
+  ].join(' '),
+  execute_query: [
+    'Deprecated alias for query_bigquery with identical behaviour and parameters.',
+    'Prefer query_bigquery; this name is retained only for backward compatibility with existing clients.',
+  ].join(' '),
+  list_datasets: [
+    'List BigQuery datasets the caller is allowed to access, with location and timestamps.',
+    'Use this first when you do not yet know which dataset holds the data.',
+    'Cheap metadata call — it does not scan table data.',
+  ].join(' '),
+  list_tables: [
+    'List the tables in one dataset, including row counts and byte sizes where available.',
+    'Use after list_datasets to find the right table, and read numRows/numBytes to judge how expensive querying it will be.',
+    'Cheap metadata call — it does not scan table data.',
+  ].join(' '),
+  get_table_schema: [
+    'Get the column names, types and modes for one table, plus optional table metadata.',
+    'Call this before writing a query against an unfamiliar table so column names and types are correct rather than guessed.',
+    'Cheap metadata call — it does not scan table data.',
+  ].join(' '),
 };
 
 /**
@@ -181,7 +234,6 @@ export class MCPBigQueryServer {
 
   // MCP protocol compliance gap implementations
   private promptRegistry: PromptRegistry;
-  private sessionManager: SessionManager;
   public progressNotifier: ProgressNotifier;
   private anomalyDetector: BehavioralAnomalyDetector;
   private effectivenessTracker: EffectivenessTracker;
@@ -194,6 +246,10 @@ export class MCPBigQueryServer {
   private authMiddleware: AuthMiddleware | null = null;
   private tenantRegistry: TenantRegistry | null = null;
   private tenantContextFactory: TenantContextFactory | null = null;
+  /** Minimum severity the client wants via `notifications/message`. */
+  private clientLogLevel: MCPLogLevel = 'info';
+  /** Servers with a live connection to notify. Weak so closed servers can be GC'd. */
+  private readonly loggingServers = new Set<Server>();
 
   // Shared request pipelines (assigned in setupHandlers; invoked by both the
   // stdio SDK request handlers and the HTTP JSON-RPC dispatcher).
@@ -222,7 +278,6 @@ export class MCPBigQueryServer {
 
     // Initialize gap implementation components
     this.promptRegistry = new PromptRegistry();
-    this.sessionManager = new SessionManager();
     this.progressNotifier = new ProgressNotifier();
     this.anomalyDetector = new BehavioralAnomalyDetector();
     this.effectivenessTracker = new EffectivenessTracker();
@@ -452,6 +507,15 @@ export class MCPBigQueryServer {
           );
           recordErrorByCode(ErrorCode.SECURITY_VALIDATION_FAILED, name);
 
+          // Surface security refusals to the client over the logging capability
+          // so an operator watching the session sees them, not just server logs.
+          this.sendMcpLog('warning', {
+            event: 'security_validation_failed',
+            tool: name,
+            reason: validation.error,
+            requestId,
+          });
+
           return {
             content: [
               {
@@ -493,6 +557,12 @@ export class MCPBigQueryServer {
           recordRequest(name, false, request.tenantContext?.tenantId);
           stopTimer(false);
           recordErrorByCode(ErrorCode.SECURITY_VALIDATION_FAILED, name);
+          this.sendMcpLog('warning', {
+            event: 'tool_blocked_by_tenant_policy',
+            tool: name,
+            tenant: request.tenantContext?.tenantId,
+            requestId,
+          });
           return {
             content: [
               {
@@ -705,7 +775,10 @@ export class MCPBigQueryServer {
     // ==========================================
     // Read Resource Handler (pipeline stored as a field; registered per server)
     // ==========================================
-    this.readResourceHandler = async (request: { params: { uri: string } }) => {
+    this.readResourceHandler = async (request: {
+      params: { uri: string };
+      tenantContext?: TenantContext;
+    }) => {
       const { uri } = request.params;
 
       logger.info('Handling read_resource request', { uri });
@@ -797,11 +870,22 @@ export class MCPBigQueryServer {
         }
         const sampleSql = `SELECT * FROM \`${projectId}.${datasetId}.${tableId}\` LIMIT 10`;
         const result = await this.bigQueryClient!.query({ query: sampleSql });
+
+        // Apply the tenant's column-masking policy before returning sample rows.
+        const sampleTenant = request.tenantContext;
+        const sampleMasked = sampleTenant
+          ? sampleTenant.masking.maskQueryRows(
+              result.rows,
+              [{ datasetId, tableId }],
+              result.schema as Array<{ name: string; type: string }> | undefined
+            )
+          : { rows: result.rows, maskedColumns: [] as string[] };
+
         const response = {
           datasetId,
           tableId,
-          rows: result.rows,
-          rowCount: Array.isArray(result.rows) ? result.rows.length : 0,
+          rows: sampleMasked.rows,
+          rowCount: Array.isArray(sampleMasked.rows) ? sampleMasked.rows.length : 0,
           provenance: {
             source: 'bigquery',
             projectId,
@@ -809,7 +893,13 @@ export class MCPBigQueryServer {
             tableId,
             retrievedAt: now,
             freshness: 'real-time',
-            note: 'Up to 10 rows; honors tenant column-masking policies if applied at query time.',
+            ...(sampleMasked.maskedColumns.length > 0
+              ? { maskedColumns: sampleMasked.maskedColumns }
+              : {}),
+            note:
+              sampleMasked.maskedColumns.length > 0
+                ? `Up to 10 rows. Tenant column-masking applied to: ${sampleMasked.maskedColumns.join(', ')}.`
+                : 'Up to 10 rows. No column-masking rules matched this table.',
             consoleUrl: `https://console.cloud.google.com/bigquery?project=${encodeURIComponent(projectId)}&d=${encodeURIComponent(datasetId)}&t=${encodeURIComponent(tableId)}&page=table`,
           },
         };
@@ -827,15 +917,7 @@ export class MCPBigQueryServer {
         if (!/^[A-Za-z0-9_\-:.]+$/.test(jobId)) {
           throw new Error(`Invalid job id in URI: ${uri}`);
         }
-        // Defer to the BigQuery client; if it lacks a getJob helper, surface a clear error.
-        const client = this.bigQueryClient as unknown as {
-          getJob?: (id: string) => Promise<unknown>;
-        };
-        if (typeof client.getJob !== 'function') {
-          throw new Error(
-            'Job resource requires BigQueryClient.getJob() — not implemented in this build'
-          );
-        }
+        const client = this.bigQueryClient!;
         const job = await client.getJob(jobId);
         const response = {
           jobId,
@@ -994,10 +1076,15 @@ export class MCPBigQueryServer {
    * stdio transport it is absent (single-tenant, local).
    */
   private registerHandlers(server: Server): void {
-    server.setRequestHandler(ListToolsRequestSchema, () => {
+    server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => {
       recordProtocolMethod('list_tools');
-      const tools = generateToolDefinitions(this.getToolDescription.bind(this));
-      logger.debug('Listed tools', { count: tools.length });
+      const authInfo = (extra as { authInfo?: { extra?: Record<string, unknown> } } | undefined)
+        ?.authInfo;
+      const listTenant = authInfo?.extra?.tenantContext as TenantContext | undefined;
+      // Advertise destructive/non-read-only hints when this tenant may write.
+      const canWrite = listTenant?.policy.canWrite() ?? false;
+      const tools = generateToolDefinitions(this.getToolDescription.bind(this), canWrite);
+      logger.debug('Listed tools', { count: tools.length, canWrite });
       return { tools };
     });
 
@@ -1007,11 +1094,57 @@ export class MCPBigQueryServer {
       const principal = authInfo?.extra?.principal as AuthenticatedPrincipal | undefined;
       const tenantContext = authInfo?.extra?.tenantContext as TenantContext | undefined;
       const input = request as CallToolInput;
+
+      // MCP progress notifications: when the client supplies a progressToken in
+      // request _meta, report lifecycle so long queries don't look hung. The
+      // ProgressNotifier/ProgressTracker infrastructure already existed but was
+      // never connected to a request — no progressToken was ever read.
+      const progressToken = (
+        input.params as { _meta?: { progressToken?: string | number } } | undefined
+      )?._meta?.progressToken;
+
+      if (progressToken === undefined) {
+        return this.callToolHandler({
+          params: input.params,
+          ...(principal?.subject ? { userId: principal.subject } : {}),
+          ...(tenantContext ? { tenantContext } : {}),
+        });
+      }
+
+      const notify = (progress: number, message: string): void => {
+        void (
+          server as unknown as {
+            notification?: (n: { method: string; params: unknown }) => Promise<void>;
+          }
+        )
+          .notification?.({
+            method: 'notifications/progress',
+            params: { progressToken, progress, message },
+          })
+          ?.catch(() => {
+            /* client gone — progress is advisory, never fail the call for it */
+          });
+      };
+
+      const tracker = this.progressNotifier.createTracker(String(progressToken), (update) =>
+        notify(update.progress, update.message ?? '')
+      );
+      tracker.running();
+
       return this.callToolHandler({
         params: input.params,
         ...(principal?.subject ? { userId: principal.subject } : {}),
         ...(tenantContext ? { tenantContext } : {}),
-      });
+      }).then(
+        (result) => {
+          tracker.complete();
+          return result;
+        },
+        (error: unknown) => {
+          tracker.error(error instanceof Error ? error.message : String(error));
+          throw error;
+        }
+      );
     });
 
     server.setRequestHandler(ListResourcesRequestSchema, () => {
@@ -1059,14 +1192,59 @@ export class MCPBigQueryServer {
       };
     });
 
-    server.setRequestHandler(ReadResourceRequestSchema, (request) =>
-      this.readResourceHandler(request as { params: { uri: string } })
-    );
+    server.setRequestHandler(ReadResourceRequestSchema, (request, extra) => {
+      const authInfo = (extra as { authInfo?: { extra?: Record<string, unknown> } } | undefined)
+        ?.authInfo;
+      const tenantContext = authInfo?.extra?.tenantContext as TenantContext | undefined;
+      return this.readResourceHandler({
+        params: (request as { params: { uri: string } }).params,
+        ...(tenantContext ? { tenantContext } : {}),
+      });
+    });
 
     // completion/complete — argument autocompletion (MCP 2025-11-25 completions)
     server.setRequestHandler(CompleteRequestSchema, (request) =>
       this.completeHandler(request as CompleteInput)
     );
+
+    // logging/setLevel — required by the advertised `logging` capability.
+    // Without this handler the server claimed a capability it did not implement,
+    // and any client calling setLevel got a method-not-found error.
+    server.setRequestHandler(SetLevelRequestSchema, (request) => {
+      const level = (request as { params: { level: MCPLogLevel } }).params.level;
+      this.clientLogLevel = level;
+      this.loggingServers.add(server);
+      recordProtocolMethod('set_level');
+      logger.info('Client set MCP log level', { level });
+      return {};
+    });
+
+    this.loggingServers.add(server);
+  }
+
+  /**
+   * Send a `notifications/message` to connected clients, honouring the level
+   * set via `logging/setLevel`. Failures are swallowed: a disconnected client
+   * must never break the operation that produced the log line.
+   */
+  private sendMcpLog(level: MCPLogLevel, data: unknown, loggerName = 'bigquery-mcp'): void {
+    if (MCP_LOG_SEVERITY[level] < MCP_LOG_SEVERITY[this.clientLogLevel]) {
+      return;
+    }
+    for (const server of this.loggingServers) {
+      void (
+        server as unknown as {
+          notification?: (n: { method: string; params: unknown }) => Promise<void>;
+        }
+      )
+        .notification?.({
+          method: 'notifications/message',
+          params: { level, logger: loggerName, data },
+        })
+        ?.catch(() => {
+          /* client gone or transport closed — not fatal */
+        });
+    }
   }
 
   /**
@@ -1258,6 +1436,29 @@ export class MCPBigQueryServer {
       // 2. Setup MCP request handlers
       this.setupHandlers();
 
+      // 2b. Register the BigQuery readiness probe at startup.
+      //
+      // The client is initialized lazily on first use, so this probe cannot be
+      // registered inside initializeBigQuery() — until a request arrived the
+      // registry would hold no probes and /readiness could never fail, which is
+      // the exact hole this closes.
+      //
+      // Before initialization the probe reports ready: an instance that has not
+      // yet served a request has nothing known to be broken, and reporting
+      // not-ready would drain it from the load balancer, so it would never
+      // receive the request that triggers initialization — a cold-start
+      // deadlock. Once the client exists, its real reachability decides.
+      readinessRegistry.register('bigquery', async () => {
+        const client = this.bigQueryClient;
+        if (!client) {
+          return;
+        }
+        if (!client.isHealthy()) {
+          throw new Error('BigQuery connection pool is unavailable');
+        }
+        await client.query({ query: 'SELECT 1', dryRun: true, retry: false });
+      });
+
       // 3. Start the MCP server (handles transport and lifecycle)
       await this.serverFactory.start();
 
@@ -1332,7 +1533,6 @@ export class MCPBigQueryServer {
       this.bigQueryClient = null;
 
       // 4. Cleanup gap components
-      this.sessionManager.dispose();
       this.anomalyDetector.destroy();
 
       logger.info('Server shutdown complete');

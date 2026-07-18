@@ -12,6 +12,12 @@ export const ProvenanceSchema = z.object({
   jobId: z.string().optional(),
   bytesProcessed: z.string().optional(),
   query: z.string().optional(),
+  /**
+   * Columns whose values were rewritten by the tenant's column-masking policy.
+   * Present only when masking actually altered the result, so its absence is a
+   * truthful signal that no masking was applied.
+   */
+  maskedColumns: z.array(z.string()).optional(),
 });
 
 export type Provenance = z.infer<typeof ProvenanceSchema>;
@@ -31,7 +37,10 @@ export const SchemaContextSchema = z.object({
 
 export type SchemaContext = z.infer<typeof SchemaContextSchema>;
 
-export const QueryBigQueryOutputSchema = z.object({
+/**
+ * A query that actually ran and returned rows.
+ */
+export const QueryExecutedOutputSchema = z.object({
   rowCount: z.number().int().nonnegative(),
   rows: z.array(z.record(z.unknown())), // replaced any with unknown
   schema: z.array(z.object({}).passthrough()).optional(), // generic schema fields passthrough
@@ -41,7 +50,46 @@ export const QueryBigQueryOutputSchema = z.object({
   totalBytesProcessed: z.string().optional(),
   provenance: ProvenanceSchema.optional(),
   schemaContext: SchemaContextSchema.optional(),
+  /** Present on the chunked path for very large result sets. */
+  truncated: z.boolean().optional(),
 });
+
+/**
+ * A `dryRun: true` request: nothing executed, cost estimate only.
+ */
+export const QueryDryRunOutputSchema = z.object({
+  dryRun: z.literal(true),
+  totalBytesProcessed: z.string().optional(),
+  estimatedCostUSD: z.number().nonnegative().optional(),
+  provenance: ProvenanceSchema.optional(),
+});
+
+/**
+ * The cost-elicitation gate tripped: the query was NOT executed and the caller
+ * must re-invoke with `confirmCost: true`.
+ */
+export const QueryConfirmationRequiredOutputSchema = z.object({
+  status: z.literal('requires_confirmation'),
+  reason: z.literal('cost_threshold_exceeded'),
+  message: z.string(),
+  estimate: z.object({
+    totalBytesProcessed: z.number().nonnegative(),
+    estimatedCostUSD: z.number().nonnegative(),
+    thresholdBytes: z.number().nonnegative(),
+    usdPerTiB: z.number().nonnegative(),
+  }),
+});
+
+/**
+ * The query tools have three legitimate success shapes. Declaring only the
+ * executed shape made the dry-run and confirmation paths violate the tool's own
+ * advertised outputSchema, which strict MCP clients reject.
+ */
+export const QueryBigQueryOutputSchema = z.union([
+  QueryExecutedOutputSchema,
+  QueryDryRunOutputSchema,
+  QueryConfirmationRequiredOutputSchema,
+]);
 
 export const ListDatasetsOutputSchema = z.object({
   count: z.number().int().nonnegative(),

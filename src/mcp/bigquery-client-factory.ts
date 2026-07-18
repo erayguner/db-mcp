@@ -306,6 +306,14 @@ export class BigQueryClientFactory extends EventEmitter {
         logger.error('Health check error', { error: err.message });
       });
     }, this.config.monitoring.healthCheckIntervalMs);
+    // A background health sweep must never be the reason the process stays
+    // alive. Without this, every factory that is constructed but not shut down
+    // pins the event loop for its full interval — which is why Jest reported
+    // "A worker process has failed to exit gracefully". Matches ConnectionPool,
+    // MCPServerFactory and DatasetManager, all of which already unref.
+    if (typeof this.healthCheckInterval.unref === 'function') {
+      this.healthCheckInterval.unref();
+    }
 
     logger.info('Health monitoring started', {
       intervalMs: this.config.monitoring.healthCheckIntervalMs,
@@ -316,6 +324,10 @@ export class BigQueryClientFactory extends EventEmitter {
    * Perform health check on all clients
    */
   private async performHealthCheck(): Promise<void> {
+    // Announce each sweep so consumers can observe that monitoring is alive
+    // (and that it stops on shutdown), mirroring MCPServerFactory.
+    this.emit('health:check', { clientCount: this.clients.size });
+
     const checks = Array.from(this.clients.entries()).map(async ([projectId, metadata]) => {
       try {
         const healthy = metadata.client.isHealthy();

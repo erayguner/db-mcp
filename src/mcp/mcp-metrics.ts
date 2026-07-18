@@ -22,7 +22,8 @@ export type McpMethod =
   | 'read_resource'
   | 'list_prompts'
   | 'get_prompt'
-  | 'complete';
+  | 'complete'
+  | 'set_level';
 export type SecurityEvent = 'rate_limited' | 'injection_blocked' | 'unauthorized' | 'tool_blocked';
 
 interface McpMetricInstruments {

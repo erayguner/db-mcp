@@ -13,8 +13,10 @@ jest.mock('@google-cloud/bigquery', () => BigQueryMockModule);
 
 // Set test environment
 process.env.NODE_ENV = 'test';
-process.env.USE_MOCK_BIGQUERY = 'true';
-process.env.MOCK_FAST = 'true';
+// NOTE: `USE_MOCK_BIGQUERY` / `MOCK_FAST` used to live here. Nothing in src/
+// ever read them — their only effect was to trip `describe.skip` gates in 20
+// suites, silencing 439 tests while CI still reported green. BigQuery is mocked
+// by the manual mock below, not by an env flag, so they have been removed.
 process.env.GCP_PROJECT_ID = 'test-project';
 process.env.GCP_REGION = 'europe-west2';
 process.env.WORKLOAD_IDENTITY_POOL_ID = 'test-pool';

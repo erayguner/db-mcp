@@ -385,59 +385,53 @@ gcloud monitoring slos describe latency \
 
 ## Uptime Checks
 
-### Health Check Configuration
+### Which endpoint to check
 
-**Endpoint**: `https://${cloud_run_url}/health` **Method**: GET **Frequency**: Every 60 seconds **Timeout**: 10 seconds
-**Expected**: HTTP 200 + body contains "healthy"
+Uptime checks should target **`/readiness`**, not `/health`. Liveness (`/health`) is dependency-free and stays `200`
+while the process runs, so it cannot detect a BigQuery outage — that is by design, since a failing liveness probe
+restarts the container. Readiness runs the real dependency probes and returns `503` when BigQuery is unreachable.
 
-### Health Check Response
+**Endpoint**: `https://${cloud_run_url}/readiness` **Method**: GET **Frequency**: Every 60 seconds **Timeout**: 10
+seconds **Expected**: HTTP 200 + body contains `"ready":true`
+
+### Readiness response
 
 ```json
 {
-  "status": "healthy",
-  "timestamp": "2025-10-27T12:00:00Z",
-  "version": "1.0.0",
-  "checks": {
-    "bigquery": "ok",
-    "workload_identity": "ok",
-    "memory": "ok"
-  }
+  "ready": true,
+  "checks": [{ "name": "bigquery", "ok": true, "durationMs": 42 }],
+  "failed": [],
+  "cached": false,
+  "timestamp": "2026-07-18T12:00:00.000Z"
 }
 ```
 
-### Implement Health Endpoint
+When a dependency is down the endpoint returns `503` and names the failing check:
 
-```typescript
-// src/index.ts
-app.get('/health', async (req, res) => {
-  try {
-    // Check BigQuery connection
-    const bqHealthy = await bigquery.testConnection();
-
-    // Check memory usage
-    const memUsage = process.memoryUsage();
-    const memHealthy = memUsage.heapUsed < memUsage.heapTotal * 0.9;
-
-    const healthy = bqHealthy && memHealthy;
-
-    res.status(healthy ? 200 : 503).json({
-      status: healthy ? 'healthy' : 'unhealthy',
-      timestamp: new Date().toISOString(),
-      version: '1.0.0',
-      checks: {
-        bigquery: bqHealthy ? 'ok' : 'failed',
-        workload_identity: 'ok',
-        memory: memHealthy ? 'ok' : 'high',
-      },
-    });
-  } catch (error) {
-    res.status(503).json({
-      status: 'unhealthy',
-      error: error.message,
-    });
-  }
-});
+```json
+{
+  "ready": false,
+  "checks": [
+    { "name": "bigquery", "ok": false, "durationMs": 87, "error": "ECONNREFUSED bigquery.googleapis.com:443" }
+  ],
+  "failed": ["bigquery"],
+  "cached": false,
+  "timestamp": "2026-07-18T12:00:00.000Z"
+}
 ```
+
+Verdicts are cached for 5 seconds, so an uptime check polling more often than that will see repeated `cached: true`
+responses rather than fresh BigQuery round trips.
+
+Endpoint semantics, the registry API, and the cold-start reasoning behind the probes are documented in
+[health-monitoring.md](./health-monitoring.md).
+
+### Prometheus scrape endpoint
+
+`GET /metrics` serves the OpenTelemetry Prometheus exporter's registry in text exposition format
+(`text/plain; version=0.0.4`). It returns `503` with a comment body when telemetry has not been initialised. All metrics
+listed under [OpenTelemetry Metrics](#opentelemetry-metrics) are exposed there in addition to being exported to Cloud
+Monitoring.
 
 ---
 

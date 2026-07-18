@@ -86,6 +86,15 @@ export interface AccessPattern {
   accessFrequency: 'VERY_HIGH' | 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW';
   peakAccessTimes: Date[];
   averageQueryDurationMs: number;
+  /**
+   * Number of accesses we actually measured a duration for.
+   *
+   * Distinct from `totalAccesses`, which is seeded from the dataset's
+   * historical `accessCount` and therefore includes accesses that carry no
+   * duration sample. Averaging over `totalAccesses` biases the mean toward
+   * zero, so the running average must divide by this counter instead.
+   */
+  durationSampleCount: number;
 }
 
 /**
@@ -358,6 +367,7 @@ export class DatasetDiscovery extends EventEmitter {
       accessFrequency: this.calculateAccessFrequency(dataset.accessCount),
       peakAccessTimes: [],
       averageQueryDurationMs: 0,
+      durationSampleCount: 0,
     };
 
     // Calculate popularity score (0-100)
@@ -538,7 +548,13 @@ export class DatasetDiscovery extends EventEmitter {
           const key = this.getDatasetKey(dataset.id, dataset.projectId);
           const existing = this.discoveredDatasets.get(key);
 
-          if (!existing || dataset.modifiedAt > existing.lastUpdatedAt) {
+          // Compare the upstream modification time against the upstream
+          // modification time we last recorded. Comparing it against
+          // `lastUpdatedAt` (our local cache-write clock) is never meaningful:
+          // that timestamp is set to `now` on every enhance, so any real
+          // dataset's `modifiedAt` is always in the past and no change was
+          // ever detected.
+          if (!existing || dataset.modifiedAt > existing.modifiedAt) {
             const enhanced = this.enhanceDatasetMetadata(dataset);
 
             if (existing) {
@@ -582,11 +598,12 @@ export class DatasetDiscovery extends EventEmitter {
       dataset.accessPattern.lastAccessedAt = new Date();
       dataset.accessPattern.peakAccessTimes.push(new Date());
 
-      // Update average query duration
-      const currentTotal =
-        dataset.accessPattern.averageQueryDurationMs * (dataset.accessPattern.totalAccesses - 1);
+      // Update average query duration over measured samples only.
+      const previousSamples = dataset.accessPattern.durationSampleCount;
+      const currentTotal = dataset.accessPattern.averageQueryDurationMs * previousSamples;
+      dataset.accessPattern.durationSampleCount = previousSamples + 1;
       dataset.accessPattern.averageQueryDurationMs =
-        (currentTotal + durationMs) / dataset.accessPattern.totalAccesses;
+        (currentTotal + durationMs) / dataset.accessPattern.durationSampleCount;
 
       // Recalculate access frequency
       dataset.accessPattern.accessFrequency = this.calculateAccessFrequency(

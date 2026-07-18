@@ -1,26 +1,46 @@
+import { jest } from '@jest/globals';
 import { EventEmitter } from 'events';
-import {
-  MCPServerFactory,
-  ServerFactoryConfig,
-  ServerState,
-  ServerFactoryError,
-} from '../../../src/mcp/server-factory.js';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { ServerFactoryConfig } from '../../../src/mcp/server-factory.js';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import type { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
-// Mock dependencies
-jest.mock('@modelcontextprotocol/sdk/server/index.js');
-jest.mock('@modelcontextprotocol/sdk/server/stdio.js');
-jest.mock('../../../src/utils/logger', () => ({
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  },
+// ESM-native mocking: `jest.mock()` does not intercept static ESM imports under
+// the ts-jest ESM preset, so the real SDK class was being loaded and
+// `Server.mockImplementation` did not exist. `jest.unstable_mockModule` +
+// a dynamic `await import()` of the module under test is the supported
+// pattern, and it scopes these mocks to this file instead of swapping a stub
+// SDK into every suite via a global moduleNameMapper entry.
+const MockServer = jest.fn();
+const MockStdioServerTransport = jest.fn();
+
+jest.unstable_mockModule('@modelcontextprotocol/sdk/server/index.js', () => ({
+  Server: MockServer,
 }));
 
-describe.skip('MCPServerFactory', () => {
+jest.unstable_mockModule('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+  StdioServerTransport: MockStdioServerTransport,
+}));
+
+const loggerMock = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+};
+
+jest.unstable_mockModule('../../../src/utils/logger.js', () => ({
+  logger: loggerMock,
+  default: loggerMock,
+}));
+
+// Must be imported dynamically, after the mock registrations above.
+const { MCPServerFactory, ServerState, ServerFactoryError } =
+  await import('../../../src/mcp/server-factory.js');
+
+/** The process events MCPServerFactory hooks for graceful shutdown. */
+const SHUTDOWN_EVENTS = ['SIGTERM', 'SIGINT', 'uncaughtException', 'unhandledRejection'] as const;
+
+describe('MCPServerFactory', () => {
   let mockServer: jest.Mocked<Server>;
   let mockTransport: jest.Mocked<StdioServerTransport>;
 
@@ -54,10 +74,8 @@ describe.skip('MCPServerFactory', () => {
       close: jest.fn(),
     } as any;
 
-    (Server as jest.MockedClass<typeof Server>).mockImplementation(() => mockServer);
-    (StdioServerTransport as jest.MockedClass<typeof StdioServerTransport>).mockImplementation(
-      () => mockTransport
-    );
+    MockServer.mockImplementation(() => mockServer);
+    MockStdioServerTransport.mockImplementation(() => mockTransport);
   });
 
   afterEach(() => {
@@ -143,7 +161,7 @@ describe.skip('MCPServerFactory', () => {
 
       new MCPServerFactory(config);
 
-      expect(Server).toHaveBeenCalledWith(
+      expect(MockServer).toHaveBeenCalledWith(
         {
           name: 'test-server',
           version: '1.5.0',
@@ -327,20 +345,35 @@ describe.skip('MCPServerFactory', () => {
     });
 
     it('should timeout shutdown if exceeds graceful timeout', async () => {
-      const config = createDefaultConfig({
-        gracefulShutdownTimeoutMs: 100,
-      });
-      const factory = new MCPServerFactory(config);
+      // 1000ms is the schema minimum for gracefulShutdownTimeoutMs; the old
+      // value of 100 failed Zod validation in the constructor, so this test
+      // never reached the shutdown path it claims to cover. Fake timers keep
+      // the run instant while still exercising the real timeout race.
+      jest.useFakeTimers();
 
-      mockServer.connect.mockResolvedValue(undefined);
-      mockTransport.close = jest
-        .fn()
-        .mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 500)));
+      try {
+        const config = createDefaultConfig({ gracefulShutdownTimeoutMs: 1000 });
+        const factory = new MCPServerFactory(config);
 
-      await factory.start();
+        mockServer.connect.mockResolvedValue(undefined);
+        // Transport close never settles, so the graceful timeout must win.
+        mockTransport.close = jest.fn().mockImplementation(() => new Promise(() => {}));
 
-      await expect(factory.shutdown()).rejects.toThrow(ServerFactoryError);
-      await expect(factory.shutdown()).rejects.toThrow('Shutdown timeout');
+        await factory.start();
+
+        // Attach the rejection assertion before advancing the clock, otherwise
+        // the timer fires while the promise still has no handler and Jest
+        // reports it as an unhandled rejection.
+        const firstShutdown = expect(factory.shutdown()).rejects.toThrow(ServerFactoryError);
+        await jest.advanceTimersByTimeAsync(1000);
+        await firstShutdown;
+
+        const secondShutdown = expect(factory.shutdown()).rejects.toThrow('Shutdown timeout');
+        await jest.advanceTimersByTimeAsync(1000);
+        await secondShutdown;
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 
@@ -352,24 +385,42 @@ describe.skip('MCPServerFactory', () => {
       mockServer.connect.mockResolvedValue(undefined);
       await factory.start();
 
-      expect(StdioServerTransport).toHaveBeenCalled();
+      expect(MockStdioServerTransport).toHaveBeenCalled();
       expect(mockServer.connect).toHaveBeenCalledWith(mockTransport);
     });
 
     it('should throw error for unimplemented transport types', async () => {
-      const config = createDefaultConfig({ transport: 'sse' });
-      const factory = new MCPServerFactory(config);
+      // A fresh factory per assertion: a failed start() leaves the factory in
+      // ERROR, so a second start() on the same instance would reject with
+      // "Cannot start server in state: error" rather than the transport error.
+      await expect(
+        new MCPServerFactory(createDefaultConfig({ transport: 'sse' })).start()
+      ).rejects.toThrow(ServerFactoryError);
 
-      await expect(factory.start()).rejects.toThrow(ServerFactoryError);
-      await expect(factory.start()).rejects.toThrow('not yet implemented');
+      await expect(
+        new MCPServerFactory(createDefaultConfig({ transport: 'sse' })).start()
+      ).rejects.toThrow('not yet implemented');
     });
 
     it('should throw error for unknown transport type', async () => {
-      const config = createDefaultConfig({ transport: 'invalid' as any });
-      const factory = new MCPServerFactory(config);
+      // The Zod enum rejects an unknown transport at construction time, so the
+      // UNKNOWN_TRANSPORT guard in createTransport() is only reachable by
+      // bypassing validation. Poke the private config to exercise that
+      // defensive branch (the suite already does this for `state` elsewhere).
+      const makeFactoryWithBadTransport = () => {
+        const factory = new MCPServerFactory(createDefaultConfig());
+        (factory as any).config.transport = 'invalid';
+        return factory;
+      };
 
-      await expect(factory.start()).rejects.toThrow(ServerFactoryError);
-      await expect(factory.start()).rejects.toThrow('Unknown transport');
+      await expect(makeFactoryWithBadTransport().start()).rejects.toThrow(ServerFactoryError);
+      await expect(makeFactoryWithBadTransport().start()).rejects.toThrow('Unknown transport');
+    });
+
+    it('should reject an unknown transport at construction time', () => {
+      expect(() => {
+        new MCPServerFactory(createDefaultConfig({ transport: 'invalid' as any }));
+      }).toThrow();
     });
   });
 
@@ -523,11 +574,9 @@ describe.skip('MCPServerFactory', () => {
       const config = createDefaultConfig();
       const factory = new MCPServerFactory(config);
 
-      (StdioServerTransport as jest.MockedClass<typeof StdioServerTransport>).mockImplementation(
-        () => {
-          throw new Error('Transport creation failed');
-        }
-      );
+      MockStdioServerTransport.mockImplementation(() => {
+        throw new Error('Transport creation failed');
+      });
 
       await expect(factory.start()).rejects.toThrow(ServerFactoryError);
     });
@@ -564,10 +613,86 @@ describe.skip('MCPServerFactory', () => {
 
       mockServer.connect.mockResolvedValue(undefined);
 
+      const before = SHUTDOWN_EVENTS.map((e) => process.listenerCount(e));
+
       await factory.start();
 
-      // Verify shutdown handlers are registered only once
-      expect((factory as any).shutdownHandlersRegistered).toBe(true);
+      // Assert on the real process listener counts, not on a private flag. The
+      // flag was true while four listeners per instance leaked, which is how
+      // MaxListenersExceededWarning went unnoticed.
+      SHUTDOWN_EVENTS.forEach((event, i) => {
+        expect(process.listenerCount(event)).toBe(before[i] + 1);
+      });
+
+      await factory.shutdown();
+    });
+  });
+
+  describe('Process listener lifecycle', () => {
+    it('removes every process listener it registered on shutdown', async () => {
+      const factory = new MCPServerFactory(createDefaultConfig());
+      mockServer.connect.mockResolvedValue(undefined);
+
+      const before = SHUTDOWN_EVENTS.map((e) => process.listenerCount(e));
+
+      await factory.start();
+      await factory.shutdown();
+
+      SHUTDOWN_EVENTS.forEach((event, i) => {
+        expect(process.listenerCount(event)).toBe(before[i]);
+      });
+    });
+
+    it('does not leak listeners across repeated construct/start/shutdown cycles', async () => {
+      mockServer.connect.mockResolvedValue(undefined);
+
+      const before = SHUTDOWN_EVENTS.map((e) => process.listenerCount(e));
+
+      // Well past Node's default max-listeners threshold of 10. Before the fix
+      // this left 60 orphaned listeners and emitted MaxListenersExceededWarning.
+      for (let i = 0; i < 15; i++) {
+        const factory = new MCPServerFactory(createDefaultConfig());
+        await factory.start();
+        await factory.shutdown();
+      }
+
+      SHUTDOWN_EVENTS.forEach((event, i) => {
+        expect(process.listenerCount(event)).toBe(before[i]);
+      });
+    });
+
+    it('releases listeners even when closing the transport fails', async () => {
+      const factory = new MCPServerFactory(createDefaultConfig());
+      mockServer.connect.mockResolvedValue(undefined);
+      mockTransport.close = jest.fn().mockRejectedValue(new Error('Close error'));
+
+      const before = SHUTDOWN_EVENTS.map((e) => process.listenerCount(e));
+
+      await factory.start();
+      await expect(factory.shutdown()).rejects.toThrow();
+
+      SHUTDOWN_EVENTS.forEach((event, i) => {
+        expect(process.listenerCount(event)).toBe(before[i]);
+      });
+    });
+
+    it('registers a single set of listeners even if start is retried', async () => {
+      const factory = new MCPServerFactory(createDefaultConfig());
+      mockServer.connect.mockResolvedValue(undefined);
+
+      const before = SHUTDOWN_EVENTS.map((e) => process.listenerCount(e));
+
+      await factory.start();
+      // A second start() is rejected by the state machine, but registration
+      // must be idempotent regardless of how it is reached.
+      await expect(factory.start()).rejects.toThrow(ServerFactoryError);
+      (factory as any).registerShutdownHandlers();
+
+      SHUTDOWN_EVENTS.forEach((event, i) => {
+        expect(process.listenerCount(event)).toBe(before[i] + 1);
+      });
+
+      await factory.shutdown();
     });
   });
 

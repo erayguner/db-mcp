@@ -87,9 +87,11 @@ drwxr-xr-x    2 root     root          4096 Oct 27 07:29 utils
 ## Security Features
 
 ✅ **Non-root execution**: Runs as mcp:mcp (uid/gid 1001) ✅ **Minimal attack surface**: Alpine Linux base ✅ **No build
-tools**: Production image only contains runtime ✅ **Health checks**: Built-in container health monitoring ✅
-**Read-only filesystem**: Compatible with read-only root ✅ **MCP-compliant logging**: All logs to stderr (JSON-RPC on
-stdout)
+tools**: Production image only contains runtime ✅ **Read-only filesystem**: Compatible with read-only root ✅
+**MCP-compliant logging**: All logs to stderr (JSON-RPC on stdout)
+
+The image declares no `HEALTHCHECK`; probing is delegated to the orchestrator via the HTTP endpoints described under
+[Health Checks](#health-checks).
 
 ---
 
@@ -226,31 +228,47 @@ The following environment variables are set in the container image:
 
 ### Optional
 
-| Variable               | Default | Description           |
-| ---------------------- | ------- | --------------------- |
-| `BIGQUERY_MAX_RETRIES` | `3`     | Query retry attempts  |
-| `BIGQUERY_TIMEOUT`     | `60000` | Query timeout (ms)    |
-| `LOG_LEVEL`            | `info`  | Logging level         |
-| `USE_MOCK_BIGQUERY`    | `false` | Mock mode (local dev) |
+| Variable               | Default | Description                          |
+| ---------------------- | ------- | ------------------------------------ |
+| `BIGQUERY_MAX_RETRIES` | `3`     | Query retry attempts                 |
+| `BIGQUERY_TIMEOUT`     | `60000` | Query timeout (ms)                   |
+| `LOG_LEVEL`            | `info`  | Logging level                        |
+| `USE_MOCK_BIGQUERY`    | —       | No effect; read by nothing in `src/` |
 
 ---
 
 ## Health Checks
 
-### Container Health Check
+The image declares no `HEALTHCHECK` instruction — probing is left to the orchestrator (Cloud Run / Kubernetes), which
+polls the HTTP endpoints below. These are only served when `MCP_TRANSPORT=http`; under stdio there is no HTTP listener.
+
+### Liveness
 
 ```bash
-# Built-in health check (every 30s)
-docker inspect mcp-bigquery-server:latest \
-  --format='{{.Config.Healthcheck}}'
+curl http://localhost:8080/health
 ```
 
-### Manual Health Check
+Dependency-free, so it stays `200` while the process runs. A failed liveness probe restarts the container, which is why
+it deliberately does not check BigQuery — an upstream outage must not crash-loop the fleet.
+
+### Readiness
 
 ```bash
-# Check if server responds
-docker exec <container-id> node -e "console.log('healthy')"
+curl -i http://localhost:8080/readiness
 ```
+
+Runs the real dependency probes. Returns `503` with `failed: ["bigquery"]` and the underlying cause when BigQuery is
+unreachable, draining the instance from the load balancer without restarting it.
+
+### Metrics
+
+```bash
+curl http://localhost:8080/metrics
+```
+
+Prometheus text exposition format; `503` before telemetry is initialised.
+
+Full endpoint semantics: [health-monitoring.md](./health-monitoring.md).
 
 ---
 

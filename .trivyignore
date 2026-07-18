@@ -14,3 +14,13 @@ CVE-2026-33672
 
 # brace-expansion DoS — in npm's bundled minimatch, not ours
 CVE-2026-33750
+
+# sigstore accepts unauthorized certificates (ignored `certificateOIDs`) — in
+# npm's bundled sigstore at /usr/local/lib/node_modules/npm/node_modules/sigstore,
+# used by `npm audit signatures` / provenance verification. It is absent from our
+# package-lock.json and never invoked by application code at runtime.
+# Unlike the entries above, this one is NOT yet fixed by updating the base image:
+# node:22-alpine (latest, verified 2026-07-18) still bundles sigstore 3.1.0, and
+# the fix landed in 4.1.1. Re-check and remove this entry once a Node base image
+# ships npm with sigstore >= 4.1.1.
+CVE-2026-48815

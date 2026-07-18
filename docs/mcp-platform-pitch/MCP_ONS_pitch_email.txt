@@ -1,0 +1,97 @@
+Subject: A safe first step into the agent era: an MCP server for ONS
+
+OFFICIAL · For discussion
+
+Dear [Name],
+
+The way data is consumed is shifting. A new generation of AI "agents" is moving
+into everyday use across government, and these agents increasingly expect to reach
+trusted data directly, machine to machine — not through a person navigating a
+portal. I'd like your support to take a small, deliberate first step that places
+ONS at the front of that shift, safely.
+
+The proposal is to stand up a proof-of-concept Model Context Protocol (MCP) server.
+MCP is an emerging open standard — already adopted across the major AI providers —
+that gives an AI agent a single, governed way to discover, query and correctly cite
+our data. In plain terms, it is a secure "front door" through which approved agents
+reach approved data, with every request logged.
+
+WHY THIS IS A SAFE BET, NOT A GAMBLE
+
+  - No model lock-in. MCP is not tied to any one AI model or vendor. It works with
+    whatever models ONS, departments or partners choose — today, and as they change.
+
+  - Builds on what we have. It sits on top of our existing platform and governance,
+    reusing — not replacing — current APIs and controls.
+
+  - Public data first. The proof of concept uses only already-published data, so
+    there is no new data risk. It is low-cost, time-boxed and fully reversible.
+
+WHY MCP — AND WHY IT LASTS
+
+Some consumers already automate retrieval — scraping our published outputs or
+hard-wiring to fixed endpoints. That breaks the moment a format changes, and it
+pulls numbers without their meaning, so an agent can easily misread or misquote
+them. MCP gives an agent what a feed cannot: it discovers what exists and what it
+means as it asks; every figure arrives with its definition, provenance and
+citation; and one governed, audited route replaces dozens of brittle integrations.
+The data is already being pulled — this brings that demand into a controlled
+channel rather than leaving it on the open web.
+
+And it is built to last. MCP is an open, vendor-neutral standard, so it is not a
+bet on any one model or supplier — it adapts as they change. As AI agents become
+the normal way work gets done, the route to data is shifting from screens and
+one-off integrations to an agent-native standard. Building to it now is additive
+and low-regret: it layers onto our existing platform, and every dataset we expose
+becomes reusable by every future agent and department — not something we retrofit
+later.
+
+ALREADY HAPPENING IN GOVERNMENT
+
+  - DBT has connected its AI assistant to live CRM data through an MCP server on
+    its existing GOV.UK sign-on, with answers cited back to source.
+  - India's national statistics office has launched an MCP server over its
+    official statistics (~22 datasets) for AI tools.
+
+We would be following a proven path — and GDS guidance already recommends MCP for
+connecting AI to government data.
+
+WHAT IT UNLOCKS
+
+ONS could be the first to give internal teams and other government departments a
+direct, governed route for their AI agents — a markedly better experience than
+today's portals and manual requests, and a reusable capability the wider public
+sector can build on. It reinforces our role as the trusted, AI-ready source of
+data and insight.
+
+WHY THIS MATTERS FOR ONS
+
+There is a sharper reason for ONS to act. In an AI-mediated world, people will
+increasingly ask assistants "what is inflation?" or "how has unemployment changed?"
+— and they will get an answer whether or not it is correct. An MCP server lets
+those assistants return ONS's authoritative, cited figure rather than a
+plausible-sounding guess — protecting the integrity of official statistics and our
+role as the UK's trusted source. It also aligns squarely with the government's AI
+agenda, including the AI Playbook for Government and the drive to treat
+public-sector data as a strategic national asset.
+
+[ Model-agnostic · No LLM lock-in · Open standard · Public data first ]
+
+THE ASK
+
+I'm seeking your endorsement to scope a small, public-data proof of concept —
+modest cost, a few weeks, with security and information-governance review built in
+before anything goes further. No sensitive data enters scope without explicit
+approval.
+
+Could I have 20 minutes to walk you through it? I'll work around your diary.
+
+With thanks,
+[Your name]
+[Role] · [Team]
+[email] · [phone]
+
+---
+OFFICIAL · Prepared for discussion · [Date]
+MCP (Model Context Protocol) is an open, vendor-neutral standard for connecting
+AI agents to data and tools.

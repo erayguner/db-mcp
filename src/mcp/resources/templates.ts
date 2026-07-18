@@ -39,7 +39,7 @@ export const BIGQUERY_RESOURCE_TEMPLATES: BigQueryResourceTemplate[] = [
     uriTemplate: 'bigquery://datasets/{datasetId}/tables/{tableId}/sample',
     name: 'Table sample rows',
     description:
-      'Up to 10 representative rows from a table, useful for grounding without scanning the full table. Honors tenant column-masking policies.',
+      'Up to 10 representative rows from a table, useful for grounding without scanning the full table. Tenant column-masking rules are applied to the returned rows; any columns that were masked are listed in provenance.maskedColumns.',
     mimeType: 'application/json',
   },
   {

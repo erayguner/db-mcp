@@ -200,7 +200,10 @@ resources using short-lived tokens.
 1. **Token Signature Validation**
    - Google signs tokens with RSA keys
    - Public keys available at: `https://www.googleapis.com/oauth2/v3/certs`
-   - GCP automatically validates signatures (no manual verification needed)
+   - **This server verifies signatures itself**, via `jose` against the configured JWKS endpoint. GCP only validates a
+     token that is actually presented to it during token exchange; a token this server merely inspects locally is never
+     seen by Google, so an unverified decode would accept any attacker-supplied claims. `WIFAuthenticator` therefore
+     refuses to construct without a `jwksUri` unless `allowUnverifiedTokens: true` is set explicitly.
 
 2. **Issuer Verification**
 
@@ -222,6 +225,7 @@ resources using short-lived tokens.
    - No manual expiration checking required
 
 5. **Email Verification**
+
    ```typescript
    // Require verified emails in attribute conditions
    'assertion.email_verified == true';
@@ -638,6 +642,7 @@ const groupStructure = {
    - Allow only security keys (FIDO U2F) for high-privilege accounts
 
 2. **Attribute Condition for MFA**:
+
    ```typescript
    "assertion.amr.contains('mfa')";
    ```

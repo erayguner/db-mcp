@@ -428,9 +428,13 @@ gcloud monitoring time-series list \
   --filter='metric.type="run.googleapis.com/request_count"' \
   --format json
 
-# Test health endpoint
+# Test liveness (always 200 while the process runs)
 curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
   https://mcp-bigquery-server-xxx.run.app/health
+
+# Test readiness (503 if BigQuery is unreachable, naming the failing dependency)
+curl -i -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  https://mcp-bigquery-server-xxx.run.app/readiness
 ```
 
 ---
@@ -582,12 +586,14 @@ npm test -- tests/integration/
 # Install load testing tool
 npm install -g autocannon
 
-# Test rate limiting
-autocannon -c 150 -d 10 \
+# Test rate limiting — must target /mcp; the probe endpoints are not rate limited
+autocannon -c 150 -d 10 -m POST \
   -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
-  https://your-service.run.app/health
+  -H "Content-Type: application/json" \
+  -b '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  https://your-service.run.app/mcp
 
-# Expected: Some requests blocked after hitting rate limit
+# Expected: 429s after MCP_HTTP_RATE_LIMIT_MAX (default 600) requests per minute
 ```
 
 ---
@@ -610,13 +616,14 @@ autocannon -c 150 -d 10 \
 
 #### Mock Mode
 
-| Variable            | Required | Default | Description      |
-| ------------------- | -------- | ------- | ---------------- |
-| `USE_MOCK_BIGQUERY` | No       | `false` | Enable mock mode |
+| Variable            | Required | Default | Description          |
+| ------------------- | -------- | ------- | -------------------- |
+| `USE_MOCK_BIGQUERY` | No       | —       | No effect (see note) |
 
-> **Note**: `USE_MOCK_BIGQUERY` is referenced in documentation and Docker examples but is NOT validated in the server's
-> Zod environment schema. It is handled as a conventional environment variable check, not a schema-enforced config
-> field.
+> **Note**: `USE_MOCK_BIGQUERY` is **read by nothing**. It appears in older documentation and Docker examples, but no
+> code in `src/` inspects it and it is not part of the Zod environment schema — setting it does not enable a mock mode.
+> Tests mock BigQuery through `jest.mock('@google-cloud/bigquery')` in `tests/setup.ts`, not via this variable. It is
+> retained in examples only to avoid breaking copied command lines and can be dropped safely.
 
 #### Security Settings
 

@@ -3,19 +3,20 @@
  */
 
 import { BigQueryClient, BigQueryClientConfig } from '../../src/bigquery/client.js';
-import { BigQuery } from '@google-cloud/bigquery';
 
-// Skip when global mock setup conflicts with per-test mocks.
-// TODO: Fix mock infrastructure so these 24 tests can run alongside setup.ts global mocks.
-const skipClient = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
-const describeClient = skipClient ? describe.skip : describe;
-
-// Mock the BigQuery SDK
-jest.mock('@google-cloud/bigquery');
+// tests/setup.ts installs a global manual mock for '@google-cloud/bigquery'
+// (a real class, not an automock). A local `jest.mock('@google-cloud/bigquery')`
+// therefore does NOT turn the exported BigQuery into a jest.MockedClass, and
+// calling `BigQuery.mockImplementation(...)` threw for every test in this file.
+//
+// No SDK-level mock is needed here: every test drives the client through the
+// injected connectionPool/datasetManager doubles below, and the constructor is
+// satisfied by the global mock. The pool double resolves `mockBQClient`, which
+// is what the assertions actually check.
 jest.mock('../../src/bigquery/connection-pool');
 jest.mock('../../src/bigquery/dataset-manager');
 
-describeClient('BigQueryClient', () => {
+describe('BigQueryClient', () => {
   let client: BigQueryClient;
   let mockBQClient: any;
   let mockJob: any;
@@ -35,8 +36,6 @@ describeClient('BigQueryClient', () => {
       dataset: jest.fn(),
       getDatasets: jest.fn(),
     };
-
-    (BigQuery as jest.MockedClass<typeof BigQuery>).mockImplementation(() => mockBQClient);
 
     // Mock connection pool
     mockConnectionPool = {

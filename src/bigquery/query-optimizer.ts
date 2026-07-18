@@ -1,5 +1,7 @@
-import { BigQueryClient } from './client.js';
+import { BigQueryClient, QueryPlan } from './client.js';
 import { logger } from '../utils/logger.js';
+
+export type { QueryPlan, QueryPlanStage } from './client.js';
 
 /**
  * Query Validation Result
@@ -23,24 +25,17 @@ export interface CostEstimate {
 }
 
 /**
- * Query Plan Analysis
+ * Static shape of a query, derived purely from its SQL text.
+ *
+ * This is syntax inspection, not execution data. It deliberately carries no
+ * slot, row or record counters: those can only come from a job that actually
+ * ran, and are available via {@link QueryOptimizer.getQueryPlan}.
  */
-export interface QueryPlan {
-  stages: QueryStage[];
-  totalSlotMs: number;
-  estimatedRows: number;
+export interface QueryShape {
   hasSort: boolean;
   hasJoin: boolean;
   hasAggregation: boolean;
   complexity: 'simple' | 'moderate' | 'complex';
-}
-
-export interface QueryStage {
-  name: string;
-  status: string;
-  recordsRead: number;
-  recordsWritten: number;
-  steps: string[];
 }
 
 /**
@@ -305,44 +300,44 @@ export class QueryOptimizer {
   }
 
   /**
-   * Analyze query plan (mock implementation - would use BigQuery API in production)
+   * Inspect the SQL text and report the query's structural shape.
+   *
+   * Purely syntactic — no BigQuery call is made, and nothing here is measured.
+   * For real execution data (stages, slot time, records read/written) use
+   * {@link getQueryPlan}, which reads the statistics of a job that actually ran.
    */
-  analyzeQueryPlan(query: string): QueryPlan {
-    // This is a simplified mock. In production, you would:
-    // 1. Execute query with explain plan
-    // 2. Parse the execution plan from BigQuery
-    // 3. Extract stage information
-
+  analyzeQueryShape(query: string): QueryShape {
     const hasSort = /order\s+by/i.test(query);
     const hasJoin = /join/i.test(query);
     const hasAggregation = /(group\s+by|sum|count|avg|max|min)\s*\(/i.test(query);
 
-    let complexity: 'simple' | 'moderate' | 'complex' = 'simple';
+    let complexity: QueryShape['complexity'] = 'simple';
     if (hasSort && hasJoin && hasAggregation) {
       complexity = 'complex';
     } else if (hasSort || hasJoin || hasAggregation) {
       complexity = 'moderate';
     }
 
-    const plan: QueryPlan = {
-      stages: [
-        {
-          name: 'S00: Input',
-          status: 'COMPLETE',
-          recordsRead: 0,
-          recordsWritten: 0,
-          steps: ['READ'],
-        },
-      ],
-      totalSlotMs: 0,
-      estimatedRows: 0,
-      hasSort,
-      hasJoin,
-      hasAggregation,
-      complexity,
-    };
+    logger.debug('Query shape analyzed', { complexity });
 
-    logger.debug('Query plan analyzed', { complexity });
+    return { hasSort, hasJoin, hasAggregation, complexity };
+  }
+
+  /**
+   * Fetch the real execution plan for a query job from BigQuery job statistics.
+   *
+   * Requires a job that has already run: a plan cannot be obtained from SQL text
+   * alone, nor from a dry run. Jobs served entirely from cache legitimately
+   * report no stages.
+   */
+  async getQueryPlan(jobId: string): Promise<QueryPlan> {
+    const plan = await this.client.getQueryPlan(jobId);
+
+    logger.debug('Query plan retrieved', {
+      jobId,
+      stages: plan.stages.length,
+      totalSlotMs: plan.totalSlotMs,
+    });
 
     return plan;
   }
@@ -374,22 +369,23 @@ export class QueryOptimizer {
   async generateReport(query: string): Promise<{
     validation: ValidationResult;
     cost: CostEstimate;
-    plan: QueryPlan;
+    shape: QueryShape;
     suggestions: OptimizationSuggestion[];
     score: number; // 0-100, higher is better
   }> {
     const validation = this.validate(query);
     const cost = await this.estimateCost(query);
-    const plan = this.analyzeQueryPlan(query);
+    const shape = this.analyzeQueryShape(query);
     const suggestions: OptimizationSuggestion[] = [];
 
-    // Calculate optimization score
+    // Calculate optimization score. Every input is either measured (cost, from a
+    // real dry run) or syntactic (validation, shape) — nothing is invented.
     let score = 100;
 
     if (!validation.valid) score -= 50;
     if (validation.warnings.length > 0) score -= validation.warnings.length * 5;
     if (cost.isExpensive) score -= 20;
-    if (plan.complexity === 'complex') score -= 10;
+    if (shape.complexity === 'complex') score -= 10;
     if (!/limit\s+\d+/i.test(query)) score -= 10;
 
     score = Math.max(0, score);
@@ -399,7 +395,7 @@ export class QueryOptimizer {
     return {
       validation,
       cost,
-      plan,
+      shape,
       suggestions,
       score,
     };
