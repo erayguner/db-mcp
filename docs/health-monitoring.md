@@ -1,645 +1,305 @@
-# Health Monitoring System
+# Health and Readiness Probes
 
-Comprehensive health monitoring for the BigQuery MCP server with Cloud Run compatibility.
+Liveness, readiness, and Prometheus scrape endpoints served by the Streamable HTTP transport
+(`src/mcp/transports/http-transport.ts`), backed by the readiness registry in `src/monitoring/readiness.ts`.
 
 ## Overview
 
-The health monitoring system provides:
+The server exposes three distinct operational surfaces on its HTTP port:
 
-- **Component Health Checks**: Monitor all system components individually
-- **Readiness Probes**: Determine if the service is ready to accept requests
-- **Liveness Probes**: Verify the service is running and not deadlocked
-- **Performance Metrics**: Track query performance, cache efficiency, and resource utilization
-- **Alert Integration**: Emit events for unhealthy states
-- **Cloud Run Compatible**: Standard health check endpoints
+| Endpoint                      | Question answered                            | Failure consequence            |
+| ----------------------------- | -------------------------------------------- | ------------------------------ |
+| `/health`, `/health/live`     | Is this process still able to run code?      | Orchestrator **restarts** it   |
+| `/readiness`, `/health/ready` | Can this instance serve a request right now? | Orchestrator **drains** it     |
+| `/metrics`                    | What are the current metric values?          | Scrape gap in Cloud Monitoring |
 
-## Architecture
+These are not aliases of each other. The distinction is load-bearing and is covered by
+`tests/unit/mcp/http-health-probes.test.ts`.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Health Monitor                          │
-│                                                             │
-│  ┌─────────────────┐  ┌──────────────────┐                │
-│  │ Connection Pool │  │ Dataset Manager  │                │
-│  │  Health Check   │  │   Cache Check    │                │
-│  └─────────────────┘  └──────────────────┘                │
-│                                                             │
-│  ┌─────────────────┐  ┌──────────────────┐                │
-│  │ WIF Token       │  │ Query Performance│                │
-│  │   Validation    │  │    Tracking      │                │
-│  └─────────────────┘  └──────────────────┘                │
-│                                                             │
-│  ┌─────────────────────────────────────────────┐          │
-│  │         Health Check Aggregator             │          │
-│  │   (Readiness, Liveness, Status)            │          │
-│  └─────────────────────────────────────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-         │                    │                    │
-         ▼                    ▼                    ▼
-    /health           /health/ready        /health/live
-```
+## Liveness: `/health` and `/health/live`
 
-## Components Monitored
-
-### 1. Connection Pool Health
-
-**Checks:**
-
-- Active vs idle connection ratio
-- Waiting request queue length
-- Connection failure rate
-- Pool availability and uptime
-- Average acquire time
-
-**Thresholds:**
-
-- Minimum healthy connections: 1
-- Maximum waiting requests: 10
-- Maximum failure rate: 10%
-
-**Status Determination:**
-
-- **Healthy**: All metrics within thresholds
-- **Degraded**: Metrics approaching limits (within 1.5x)
-- **Unhealthy**: Metrics exceeding thresholds
-
-### 2. Dataset Manager Cache
-
-**Checks:**
-
-- Dataset cache hit rate
-- Table cache hit rate
-- Cache utilization (size vs capacity)
-- LRU eviction rate
-
-**Thresholds:**
-
-- Minimum hit rate: 30%
-- Maximum cache utilization: 90% (degraded), 95% (unhealthy)
-
-**Metrics:**
-
-```typescript
-{
-  datasets: {
-    size: number,        // Current cache entries
-    maxSize: number,     // Maximum capacity
-    hitRate: number      // Cache hit percentage
-  },
-  tables: {
-    size: number,
-    maxSize: number,
-    hitRate: number
-  }
-}
-```
-
-### 3. WIF Token Health
-
-**Checks:**
-
-- WIF configuration validity
-- Token system operational status
-- Provider and pool availability
-
-**Note:** Active token validation occurs during token exchange operations.
-
-### 4. Query Performance
-
-**Checks:**
-
-- Query error rate
-- Average query latency
-- Cache effectiveness
-- Cost efficiency
-
-**Thresholds:**
-
-- Maximum error rate: 10%
-- Maximum average latency: 5000ms
-- Minimum cache hit rate: 20%
-- Average cost threshold: $0.10
-
-**Metrics:**
-
-```typescript
-{
-  errorRate: number,           // Percentage of failed queries
-  averageDuration: number,     // Average query time in ms
-  cacheHitRate: number,        // Query cache effectiveness
-  averageCost: number,         // Average cost per query in USD
-  slowQueries: QueryMetrics[], // Queries exceeding threshold
-  expensiveQueries: QueryMetrics[] // High-cost queries
-}
-```
-
-## Health Endpoints
-
-### Liveness Probe
-
-**Endpoint:** `GET /health/live`
-
-**Purpose:** Determines if the service is alive and responsive.
-
-**Response Codes:**
-
-- `200`: Service is alive
-- `503`: Service is not responding
-
-**Example Response:**
+Liveness is **deliberately dependency-free**. Reaching the handler proves the event loop is turning and the process can
+serve HTTP, which is all liveness should assert.
 
 ```json
 {
-  "status": "alive",
-  "timestamp": 1699000000000,
-  "uptime": 3600000
+  "status": "healthy",
+  "uptimeSeconds": 1234,
+  "timestamp": "2026-07-18T12:00:00.000Z"
 }
 ```
 
-**Cloud Run Configuration:**
+Always `200` while the process runs. Responses set `Cache-Control: no-store`.
+
+### Why liveness must not check BigQuery
+
+A failed liveness probe restarts the container. If liveness depended on BigQuery, a BigQuery outage would roll the
+entire fleet — turning a recoverable upstream incident into a crash-loop that cannot recover, because restarting does
+nothing to fix a remote dependency. Dependency checks belong on readiness, which only removes the instance from the load
+balancer and lets it rejoin automatically once the dependency recovers.
+
+## Readiness: `/readiness` and `/health/ready`
+
+Readiness runs the probes registered in the `ReadinessRegistry` and reports the aggregate verdict. Ready responses are
+`200`; a failed dependency yields `503` naming the failing check and its cause, so an operator can see _which_
+dependency is down without reading logs.
+
+Ready:
+
+```json
+{
+  "ready": true,
+  "checks": [{ "name": "bigquery", "ok": true, "durationMs": 42 }],
+  "failed": [],
+  "cached": false,
+  "timestamp": "2026-07-18T12:00:00.000Z"
+}
+```
+
+Not ready (HTTP `503`):
+
+```json
+{
+  "ready": false,
+  "checks": [
+    {
+      "name": "bigquery",
+      "ok": false,
+      "durationMs": 87,
+      "error": "ECONNREFUSED bigquery.googleapis.com:443"
+    }
+  ],
+  "failed": ["bigquery"],
+  "cached": false,
+  "timestamp": "2026-07-18T12:00:00.000Z"
+}
+```
+
+When no probes are registered the endpoint answers `200` but says so explicitly rather than implying dependencies were
+verified:
+
+```json
+{
+  "ready": true,
+  "checks": [],
+  "note": "No readiness probes registered; dependency health is unverified.",
+  "timestamp": "2026-07-18T12:00:00.000Z"
+}
+```
+
+## The readiness registry
+
+`ReadinessRegistry` (`src/monitoring/readiness.ts`) holds named probes. A probe signals failure by throwing or
+rejecting; the thrown message becomes the reported cause.
+
+```typescript
+export type ReadinessProbe = () => Promise<void> | void;
+
+const registry = new ReadinessRegistry({
+  timeoutMs: 2_000, // DEFAULT_PROBE_TIMEOUT_MS
+  cacheTtlMs: 5_000, // DEFAULT_READINESS_CACHE_MS
+});
+
+registry.register('bigquery', async () => {
+  await client.query({ query: 'SELECT 1', dryRun: true, retry: false });
+});
+```
+
+A process-wide singleton, `readinessRegistry`, is exported and is what the HTTP transport reads by default. The
+transport accepts a `readiness` config option so tests can supply an isolated registry.
+
+### Per-probe timeout
+
+Each probe runs under a timeout (2s default). A hung dependency must not hang the probe request itself: an orchestrator
+only interprets a non-answering probe as a failure after its own, much longer, timeout — during which the instance keeps
+receiving traffic it cannot serve. A probe that outlives its budget is recorded as `error: "timed out after 2000ms"`.
+
+### Result caching and single-flight
+
+Verdicts are cached for 5s by default, and concurrent evaluations are de-duplicated into a single in-flight run. Probe
+traffic is periodic and redundant — Cloud Run, the load balancer, and uptime checks all poll independently — so without
+caching every probe would issue a fresh BigQuery round trip. Responses served from cache carry `"cached": true`.
+
+Registering or unregistering a probe invalidates the cache so the change is reflected on the next probe.
+
+### Failure containment
+
+`check()` never rejects. A probe that throws, rejects, or times out is recorded as a failed check rather than
+propagating — a probe endpoint that throws is indistinguishable from a crashed server to an orchestrator, which would
+escalate a drain into a restart.
+
+## The BigQuery probe
+
+Registered at server startup in `src/index.ts`. It asserts both that the client is locally usable (`isHealthy()`) and
+that the BigQuery API is reachable with valid credentials.
+
+Reachability uses a **dry-run `SELECT 1`**: BigQuery validates and plans the query without executing it, so the round
+trip proves connectivity, authentication, and authorization while scanning zero bytes and incurring zero cost. Combined
+with the registry cache this issues at most one API call per cache window regardless of probe volume. The probe passes
+`retry: false` — retrying a dependency that is already failing only delays the not-ready verdict past the probe's
+timeout budget.
+
+### Why an uninitialised client reports ready
+
+The BigQuery client is initialized lazily on first use. Before that initialization the probe **deliberately reports
+ready**:
+
+```typescript
+readinessRegistry.register('bigquery', async () => {
+  const client = this.bigQueryClient;
+  if (!client) {
+    return; // Not yet initialised — ready. See below.
+  }
+  if (!client.isHealthy()) {
+    throw new Error('BigQuery connection pool is unavailable');
+  }
+  await client.query({ query: 'SELECT 1', dryRun: true, retry: false });
+});
+```
+
+An instance that has not yet served a request has nothing known to be broken. Reporting not-ready would drain it from
+the load balancer — so it would never receive the request that triggers initialization, and would never become ready.
+That is a **cold-start deadlock**: the instance would sit permanently drained, waiting for traffic it has excluded
+itself from receiving.
+
+The probe is also registered at startup rather than inside `initializeBigQuery()` for a related reason: until a request
+arrived, the registry would hold no probes at all, and `/readiness` could never fail — the exact hole this closes.
+
+Once the client exists, its real reachability decides the verdict.
+
+## Metrics: `/metrics`
+
+Serves the OpenTelemetry Prometheus exporter's registry in Prometheus text exposition format
+(`text/plain; version=0.0.4`).
+
+The exporter is constructed with `preventServerStart: true` (`src/telemetry/metrics.ts`) so it does not bind a port of
+its own; this route is the mount point it expects.
+
+Before telemetry is initialised there is no registry to scrape. That is a scrape failure rather than an empty result, so
+the endpoint answers `503` with a comment body rather than an empty `200` that would misreport the server as having no
+metrics:
+
+```text
+# Prometheus metrics unavailable: telemetry is not initialised
+```
+
+Metric names and attributes are documented in [MONITORING-GUIDE.md](./MONITORING-GUIDE.md).
+
+## Deployment configuration
+
+### Cloud Run
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  failureThreshold: 3
+
+startupProbe:
+  httpGet:
+    path: /health
+  periodSeconds: 5
+  failureThreshold: 12
+```
+
+Cloud Run has no readiness probe concept for request routing; use `/readiness` from uptime checks and from your load
+balancer's backend health check instead.
+
+### Kubernetes
 
 ```yaml
 livenessProbe:
   httpGet:
     path: /health/live
     port: 8080
-  initialDelaySeconds: 10
-  periodSeconds: 10
-  timeoutSeconds: 5
+  periodSeconds: 30
   failureThreshold: 3
-```
 
-### Readiness Probe
-
-**Endpoint:** `GET /health/ready`
-
-**Purpose:** Determines if the service is ready to accept requests.
-
-**Response Codes:**
-
-- `200`: Service is ready
-- `503`: Service is not ready
-
-**Example Response:**
-
-```json
-{
-  "status": "ready",
-  "components": {
-    "connectionPool": true,
-    "datasetManager": true,
-    "wifAuth": true,
-    "queryMetrics": true
-  },
-  "timestamp": 1699000000000
-}
-```
-
-**Cloud Run Configuration:**
-
-```yaml
 readinessProbe:
   httpGet:
     path: /health/ready
     port: 8080
-  initialDelaySeconds: 5
-  periodSeconds: 5
-  timeoutSeconds: 3
-  failureThreshold: 3
+  periodSeconds: 10
+  failureThreshold: 2
 ```
 
-### Comprehensive Health Check
-
-**Endpoint:** `GET /health`
-
-**Purpose:** Provides detailed health information for all components.
-
-**Response Codes:**
-
-- `200`: System is healthy or degraded (still accepting requests)
-- `503`: System is unhealthy
-
-**Example Response:**
-
-```json
-{
-  "status": "healthy",
-  "timestamp": 1699000000000,
-  "uptime": 3600000,
-  "components": [
-    {
-      "name": "connection-pool",
-      "status": "healthy",
-      "checks": {
-        "activeConnections": {
-          "status": "healthy",
-          "message": "2/5 connections active",
-          "details": {
-            "active": 2,
-            "idle": 3,
-            "total": 5
-          },
-          "timestamp": 1699000000000,
-          "duration": 5
-        },
-        "waitingRequests": {
-          "status": "healthy",
-          "message": "0 requests waiting",
-          "details": { "waitingRequests": 0 },
-          "timestamp": 1699000000000,
-          "duration": 5
-        }
-      },
-      "lastCheck": 1699000000000
-    }
-  ],
-  "metrics": {
-    "totalChecks": 8,
-    "healthyChecks": 7,
-    "degradedChecks": 1,
-    "unhealthyChecks": 0
-  },
-  "version": "1.0.0"
-}
-```
-
-### Component-Specific Health
-
-**Endpoint:** `GET /health/component/{name}`
-
-**Available Components:**
-
-- `connection-pool`
-- `dataset-manager-cache`
-- `wif-authentication`
-- `query-performance`
-
-**Example:** `GET /health/component/connection-pool`
-
-## Usage
-
-### Basic Setup
-
-```typescript
-import { HealthMonitor } from './monitoring/health-monitor.js';
-import { ConnectionPool } from './bigquery/connection-pool.js';
-import { DatasetManager } from './bigquery/dataset-manager.js';
-import { WorkloadIdentityFederation } from './auth/workload-identity.js';
-import { QueryMetricsTracker } from './bigquery/query-metrics.js';
-
-// Initialize components
-const connectionPool = new ConnectionPool(poolConfig);
-const datasetManager = new DatasetManager(datasetConfig);
-const wifAuth = new WorkloadIdentityFederation(wifConfig);
-const queryMetrics = new QueryMetricsTracker();
-
-// Create health monitor
-const healthMonitor = new HealthMonitor({
-  checkInterval: 30000, // 30 seconds
-  enableAutoChecks: true,
-  connectionPoolThresholds: {
-    minHealthyConnections: 2,
-    maxWaitingRequests: 5,
-    maxFailureRate: 0.05, // 5%
-  },
-  cacheThresholds: {
-    minHitRate: 0.4, // 40%
-    maxEvictionRate: 0.3, // 30%
-  },
-  queryThresholds: {
-    maxErrorRate: 0.05, // 5%
-    maxAverageLatency: 3000, // 3 seconds
-  },
-});
-
-// Register components
-healthMonitor.registerComponents({
-  connectionPool,
-  datasetManager,
-  wifAuth,
-  queryMetrics,
-});
-```
-
-### Manual Health Check
-
-```typescript
-// Perform comprehensive health check
-const report = await healthMonitor.performHealthCheck();
-
-console.log(`System Status: ${report.status}`);
-console.log(`Total Components: ${report.components.length}`);
-console.log(`Healthy Checks: ${report.metrics.healthyChecks}`);
-
-// Check specific component
-const poolHealth = healthMonitor.getComponentHealth('connection-pool');
-if (poolHealth?.status === HealthStatus.UNHEALTHY) {
-  console.error('Connection pool is unhealthy!', poolHealth.checks);
-}
-```
-
-### Health Event Listeners
-
-```typescript
-// Listen for health check events
-healthMonitor.on('health:check', (report) => {
-  console.log(`Health check completed: ${report.status}`);
-});
-
-// Listen for alerts
-healthMonitor.on('health:alert', ({ severity, report }) => {
-  if (severity === 'critical') {
-    // Send alert to monitoring system
-    sendAlert({
-      title: 'BigQuery MCP Server Critical Health Issue',
-      severity: 'critical',
-      details: report,
-    });
-  }
-});
-```
-
-### MCP Integration
-
-```typescript
-import { HealthEndpoints } from './monitoring/health-endpoints.js';
-
-const healthEndpoints = new HealthEndpoints(healthMonitor);
-
-// Add MCP resource
-server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-  resources: [
-    {
-      uri: 'health://system',
-      name: 'System Health',
-      description: 'Comprehensive system health report',
-      mimeType: 'application/json',
-    },
-  ],
-}));
-
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-  if (request.params.uri === 'health://system') {
-    return {
-      contents: [await healthEndpoints.getMCPHealthResource()],
-    };
-  }
-});
-
-// Add MCP health check tool
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
-    {
-      name: 'check_health',
-      description: 'Get system health status and component information',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          component: {
-            type: 'string',
-            description: 'Optional: specific component to check',
-            enum: ['connection-pool', 'dataset-manager-cache', 'wif-authentication', 'query-performance'],
-          },
-        },
-      },
-    },
-  ],
-}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === 'check_health') {
-    const { component } = request.params.arguments as { component?: string };
-
-    if (component) {
-      const health = await healthEndpoints.handleComponentHealth(component);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: health.body,
-          },
-        ],
-      };
-    }
-
-    const summary = await healthEndpoints.getHealthSummary();
-    return {
-      content: [
-        {
-          type: 'text',
-          text: summary,
-        },
-      ],
-    };
-  }
-});
-```
-
-## Cloud Monitoring Integration
-
-### Custom Metrics
-
-The health monitor emits events that can be integrated with Cloud Monitoring:
-
-```typescript
-import { getMetrics } from './telemetry/metrics.js';
-
-healthMonitor.on('health:check', (report) => {
-  const metrics = getMetrics();
-
-  // Record overall health status
-  metrics.healthStatus.record(
-    report.status === HealthStatus.HEALTHY ? 1 : report.status === HealthStatus.DEGRADED ? 0.5 : 0
-  );
-
-  // Record component health
-  for (const component of report.components) {
-    metrics.componentHealth.record(component.status === HealthStatus.HEALTHY ? 1 : 0, { component: component.name });
-  }
-});
-```
-
-### Alerting Policies
-
-Create Cloud Monitoring alert policies based on health metrics:
-
-```yaml
-# Example alerting policy
-displayName: 'BigQuery MCP Server Unhealthy'
-conditions:
-  - displayName: 'Health check failure'
-    conditionThreshold:
-      filter: 'metric.type="custom.googleapis.com/mcp/health/status"'
-      comparison: COMPARISON_LT
-      thresholdValue: 0.5
-      duration: 300s
-      aggregations:
-        - alignmentPeriod: 60s
-          perSeriesAligner: ALIGN_MEAN
-notificationChannels:
-  - projects/PROJECT_ID/notificationChannels/CHANNEL_ID
-```
+Keep the readiness period at or above the registry cache TTL to avoid probing more often than the verdict can change.
 
 ## Troubleshooting
 
-### High Connection Pool Failure Rate
+### Readiness returns 503 with `failed: ["bigquery"]`
 
-**Symptoms:**
+Read the `error` on the failing check — it carries the underlying cause verbatim.
 
-- `failureRate` check shows `degraded` or `unhealthy`
-- High `totalFailed` metric
+| Error text contains          | Cause                                                      |
+| ---------------------------- | ---------------------------------------------------------- |
+| `not initialised`            | Client absent or connection pool unavailable               |
+| `ECONNREFUSED` / `ENOTFOUND` | Network egress or DNS to `bigquery.googleapis.com` blocked |
+| `timed out after`            | BigQuery reachable but not answering within the budget     |
+| `PERMISSION_DENIED`          | Service account lacks `bigquery.jobs.create`               |
+| `invalid_grant` / auth text  | WIF or OIDC credential exchange failing                    |
 
-**Possible Causes:**
+Liveness staying `200` throughout is correct and expected — the instance is healthy, its dependency is not.
 
-- BigQuery API rate limiting
-- Network connectivity issues
-- Invalid credentials
+### Readiness always returns 200 with a `note`
 
-**Resolution:**
+No probes are registered. In an HTTP deployment this means startup did not reach probe registration; check the startup
+logs for `Readiness probe registered`.
 
-1. Check BigQuery API quotas in Cloud Console
-2. Review connection pool configuration
-3. Verify WIF token exchange is working
-4. Increase `maxRetries` and `retryDelayMs`
+### `/metrics` returns 503
 
-### Low Cache Hit Rate
+Telemetry was never initialised. Confirm `initializeMetrics()` ran at startup and that telemetry is not disabled by
+configuration.
 
-**Symptoms:**
+### Readiness verdict looks stale
 
-- `datasetCacheHitRate` or `tableCacheHitRate` below threshold
-- Excessive BigQuery API calls
+Verdicts are cached for `DEFAULT_READINESS_CACHE_MS` (5s). A recovery can take up to that long to appear. `cached` on
+the response tells you whether you are seeing a fresh evaluation.
 
-**Possible Causes:**
-
-- Cache size too small
-- TTL too short
-- High dataset/table volatility
-
-**Resolution:**
-
-1. Increase `cacheSize` configuration
-2. Extend `cacheTTLMs` if data is relatively static
-3. Monitor cache eviction patterns
-4. Consider different caching strategies
-
-### High Query Error Rate
-
-**Symptoms:**
-
-- `errorRate` check shows `unhealthy`
-- Many failed queries in metrics
-
-**Possible Causes:**
-
-- Invalid SQL queries
-- Insufficient permissions
-- Quota exceeded
-- Table/dataset not found
-
-**Resolution:**
-
-1. Review query error logs
-2. Validate SQL syntax
-3. Check BigQuery permissions
-4. Monitor quota usage
-5. Implement query validation
-
-### Service Not Ready
-
-**Symptoms:**
-
-- Readiness check returns `503`
-- One or more components not ready
-
-**Possible Causes:**
-
-- Connection pool not initialized
-- Minimum connections not established
-- Component initialization failure
-
-**Resolution:**
-
-1. Check component initialization logs
-2. Verify configuration is correct
-3. Ensure BigQuery API is accessible
-4. Review startup sequence
-
-## Performance Impact
-
-The health monitoring system is designed for minimal performance impact:
-
-- **Health checks**: ~10-50ms per check cycle
-- **Memory overhead**: ~1MB for metrics tracking
-- **CPU usage**: <1% during health checks
-- **Network**: No additional BigQuery API calls (uses existing metrics)
-
-### Auto-Check Interval Recommendations
-
-- **Production**: 30-60 seconds
-- **Development**: 10-30 seconds
-- **High-traffic**: 60-120 seconds (reduce overhead)
-
-## Best Practices
-
-1. **Enable Auto-Checks**: Set `enableAutoChecks: true` for continuous monitoring
-2. **Set Appropriate Thresholds**: Tune thresholds based on your workload
-3. **Monitor Degraded States**: Act on degraded status before it becomes unhealthy
-4. **Integrate Alerts**: Connect health events to your alerting system
-5. **Review Metrics**: Regularly analyze health reports for trends
-6. **Test Health Checks**: Verify health endpoints during deployment
-7. **Document Baselines**: Establish normal operating ranges for metrics
-
-## API Reference
-
-### HealthMonitor
+## API reference
 
 ```typescript
-class HealthMonitor {
-  constructor(config?: Partial<HealthMonitorConfig>);
+class ReadinessRegistry {
+  constructor(options?: ReadinessRegistryOptions);
 
-  registerComponents(components: {
-    connectionPool?: ConnectionPool;
-    datasetManager?: DatasetManager;
-    wifAuth?: WorkloadIdentityFederation;
-    queryMetrics?: QueryMetricsTracker;
-  }): void;
+  register(name: string, probe: ReadinessProbe): void;
+  unregister(name: string): boolean;
+  clear(): void;
+  invalidate(): void;
+  check(): Promise<ReadinessResult>;
 
-  async performHealthCheck(): Promise<SystemHealthReport>;
-  async checkReadiness(): Promise<ReadinessCheckResult>;
-  async checkLiveness(): Promise<LivenessCheckResult>;
-
-  getLastHealthReport(): SystemHealthReport | null;
-  getComponentHealth(name: string): ComponentHealth | null;
-  getUptime(): number;
-
-  stopAutoChecks(): void;
-  shutdown(): void;
-
-  // Events
-  on('health:check', (report: SystemHealthReport) => void): void;
-  on('health:alert', ({ severity, report }) => void): void;
+  get size(): number;
+  probeNames(): string[];
 }
+
+interface ReadinessResult {
+  ready: boolean;
+  checks: ReadinessProbeResult[];
+  checkedAt: string;
+  cached: boolean;
+}
+
+interface ReadinessProbeResult {
+  name: string;
+  ok: boolean;
+  durationMs: number;
+  error?: string;
+}
+
+// Registers a probe asserting client health plus a dry-run `SELECT 1`.
+function registerBigQueryReadinessProbe(
+  target: BigQueryReadinessTarget,
+  options?: { registry?: ReadinessRegistry; name?: string }
+): void;
 ```
 
-### HealthEndpoints
-
-```typescript
-class HealthEndpoints {
-  constructor(healthMonitor: HealthMonitor);
-
-  async handleLiveness(): Promise<HealthEndpointResponse>;
-  async handleReadiness(): Promise<HealthEndpointResponse>;
-  async handleHealth(): Promise<HealthEndpointResponse>;
-  async handleComponentHealth(name: string): Promise<HealthEndpointResponse>;
-
-  async getMCPHealthResource(): Promise<MCPResource>;
-  async getHealthSummary(): Promise<string>;
-}
-```
+Exported from `src/monitoring/index.ts` alongside `readinessRegistry`, `DEFAULT_PROBE_TIMEOUT_MS`, and
+`DEFAULT_READINESS_CACHE_MS`.
 
 ## See Also
 
-- [Connection Pool Configuration](./connection-pool.md)
-- [Dataset Manager Caching](./dataset-manager.md)
-- [Query Metrics Tracking](./query-metrics.md)
-- [Cloud Run Health Checks](https://cloud.google.com/run/docs/configuring/healthchecks)
+- [MONITORING-GUIDE.md](./MONITORING-GUIDE.md) — OpenTelemetry metrics, alerts, dashboards, SLOs
+- [architecture/06-observability.md](./architecture/06-observability.md) — observability architecture
+- [DOCKER-DEPLOYMENT.md](./DOCKER-DEPLOYMENT.md) — container and Cloud Run deployment

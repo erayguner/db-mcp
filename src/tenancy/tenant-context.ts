@@ -1,6 +1,7 @@
 import { TenantRegistry } from './tenant-registry.js';
 import { TenantConfig } from './tenant-config.js';
 import { DatasetPolicy } from './dataset-policy.js';
+import { ColumnMaskingEngine } from '../security/column-masking.js';
 import { AuthenticatedPrincipal } from '../auth/oidc-authenticator.js';
 import { logger } from '../utils/logger.js';
 
@@ -11,6 +12,11 @@ export interface TenantContext {
   principal: AuthenticatedPrincipal;
   policy: DatasetPolicy;
   config: TenantConfig;
+  /**
+   * Column-masking engine built from this tenant's `columnMasking` config.
+   * Always present; it is a no-op passthrough when masking is disabled.
+   */
+  masking: ColumnMaskingEngine;
 }
 
 export class TenantResolutionError extends Error {
@@ -42,12 +48,23 @@ export class TenantContextFactory {
     }
 
     const policy = new DatasetPolicy(tenant);
+    // `columnMasking` carries a Zod default, but TenantConfig values can reach us
+    // without having gone through the schema. Treat a missing block as "no rules"
+    // rather than throwing, which would fail tenant resolution outright.
+    const maskingConfig = tenant.columnMasking ?? { enabled: false, rules: [] };
+    const masking = new ColumnMaskingEngine({
+      enabled: maskingConfig.enabled,
+      rules: maskingConfig.rules,
+      defaultMaskType: 'redact',
+    });
 
     logger.info('Tenant context created', {
       tenantId: tenant.id,
       principal: principal.email,
       allowedDatasets: tenant.allowedDatasets,
       writeMode: tenant.writeMode,
+      maskingEnabled: maskingConfig.enabled,
+      maskingRuleCount: maskingConfig.rules.length,
     });
 
     return {
@@ -57,6 +74,7 @@ export class TenantContextFactory {
       principal,
       policy,
       config: tenant,
+      masking,
     };
   }
 }

@@ -112,6 +112,73 @@ export class ColumnMaskingEngine {
   }
 
   /**
+   * Mask rows returned by an arbitrary query that may touch several tables.
+   *
+   * Rules from *every* referenced table are unioned before matching column
+   * names. This deliberately over-masks: a join between a table with a rule on
+   * `email` and one without still masks `email` in the output. Over-masking is
+   * the safe failure direction, because the alternative — resolving each output
+   * column back to its source table — is not possible without a full SQL
+   * parser, and guessing wrong would leak the value the rule exists to protect.
+   *
+   * If no table references could be extracted from the query (`refs` empty) and
+   * masking is enabled with at least one rule, every rule is applied by column
+   * name alone, again to avoid leaking on an unparseable query.
+   */
+  maskQueryRows(
+    rows: Record<string, unknown>[],
+    refs: Array<{ datasetId: string; tableId: string }>,
+    schema?: Array<{ name: string; type: string }>
+  ): { rows: Record<string, unknown>[]; maskedColumns: string[] } {
+    if (!this.config.enabled || this.compiledRules.length === 0 || rows.length === 0) {
+      return { rows, maskedColumns: [] };
+    }
+
+    const applicable =
+      refs.length > 0
+        ? this.compiledRules.filter((cr) =>
+            refs.some(
+              (ref) => cr.datasetRegex.test(ref.datasetId) && cr.tableRegex.test(ref.tableId)
+            )
+          )
+        : // Unparseable query: fall back to matching on column name alone.
+          this.compiledRules;
+
+    if (applicable.length === 0) {
+      return { rows, maskedColumns: [] };
+    }
+
+    const schemaMap = new Map(schema?.map((s) => [s.name, s.type]) ?? []);
+    const maskedColumns = new Set<string>();
+
+    const maskedRows = rows.map((row) => {
+      const masked = { ...row };
+      for (const columnName of Object.keys(masked)) {
+        const rule = applicable.find((cr) => cr.columnRegex.test(columnName))?.rule;
+        if (rule) {
+          masked[columnName] = this.applyMask(
+            masked[columnName],
+            rule.maskType,
+            schemaMap.get(columnName)
+          );
+          maskedColumns.add(columnName);
+        }
+      }
+      return masked;
+    });
+
+    if (maskedColumns.size > 0) {
+      logger.info('Column masking applied to query result', {
+        maskedColumns: Array.from(maskedColumns),
+        rowCount: maskedRows.length,
+        tableRefs: refs.length,
+      });
+    }
+
+    return { rows: maskedRows, maskedColumns: Array.from(maskedColumns) };
+  }
+
+  /**
    * Get all rules that apply to a given dataset and table.
    */
   getApplicableRules(datasetId: string, tableId: string): ColumnMaskingRule[] {

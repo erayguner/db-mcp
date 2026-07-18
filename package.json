@@ -11,7 +11,7 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs",
     "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs tests/unit",
     "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs tests/integration",
-    "test:performance": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs tests/performance",
+    "test:performance": "PERF_TIMING_ASSERTIONS=true PERF_TIMING_REPORT=true NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs --runInBand tests/performance tests/integration/performance.test.ts",
     "test:bdd": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs tests/features",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs --watch",
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs --coverage",

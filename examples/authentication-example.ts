@@ -4,7 +4,6 @@
  * Demonstrates complete authentication flow with:
  * - WIF authentication
  * - Service account impersonation
- * - Permission validation
  * - Audit logging
  * - Token management
  */
@@ -15,7 +14,6 @@ import {
   getAuditLogger,
   AuditEventType,
 } from '../src/auth/index.js';
-import { PermissionValidator } from '../src/security/permission-validator.js';
 import { logger } from '../src/utils/logger.js';
 
 // ==========================================
@@ -163,66 +161,6 @@ export async function credentialManagement() {
 }
 
 // ==========================================
-// Example 4: Permission Validation
-// ==========================================
-
-export async function permissionValidation(principal: string) {
-  console.log('\n=== Example 4: Permission Validation ===\n');
-
-  const validator = new PermissionValidator({
-    cacheTTLMs: 300000, // 5 minutes
-    strictMode: true,
-    auditEnabled: true,
-    parallelValidation: true,
-  });
-
-  try {
-    // Validate query permissions
-    console.log('Validating query permissions...');
-    const result = await validator.validateQueryPermissions({
-      projectId: 'my-project',
-      datasetId: 'my_dataset',
-      tableId: 'my_table',
-      principal,
-    });
-
-    if (result.allowed) {
-      console.log('✅ Query authorized!');
-      console.log('   Principal:', result.principal);
-      console.log('   Cache hit:', result.cacheHit);
-    } else {
-      console.log('❌ Query denied!');
-      console.log('   Missing permissions:', result.missingPermissions?.join(', '));
-      console.log('   Reason:', result.deniedReason);
-    }
-
-    // Batch validation
-    console.log('\n📦 Batch permission validation...');
-    const batchResults = await validator.validateBatchPermissions([
-      { projectId: 'my-project', datasetId: 'dataset1', action: 'query' },
-      { projectId: 'my-project', datasetId: 'dataset2', action: 'query' },
-      { projectId: 'my-project', datasetId: 'dataset3', action: 'query' },
-    ]);
-
-    batchResults.forEach((res, i) => {
-      console.log(`   Dataset ${i + 1}:`, res.allowed ? '✅ Allowed' : '❌ Denied');
-    });
-
-    // Cache statistics
-    const cacheStats = validator.getCacheStats();
-    console.log('\n📊 Permission Cache:');
-    console.log('   Size:', cacheStats.size);
-    console.log('   Max size:', cacheStats.maxSize);
-    console.log('   TTL:', cacheStats.ttlMs / 1000, 'seconds');
-
-    return result;
-  } catch (error) {
-    console.error('❌ Permission validation failed:', error);
-    throw error;
-  }
-}
-
-// ==========================================
 // Example 5: Audit Logging
 // ==========================================
 
@@ -316,11 +254,6 @@ export async function completeAuthFlow(config: AuthConfig) {
       strictValidation: true,
     });
 
-    const permValidator = new PermissionValidator({
-      strictMode: true,
-      auditEnabled: true,
-    });
-
     const auditLogger = getAuditLogger();
 
     // 2. Authenticate
@@ -328,20 +261,9 @@ export async function completeAuthFlow(config: AuthConfig) {
     const authResult = await wifAuth.authenticate(config.oidcToken);
     console.log('   ✅ Authenticated:', authResult.principal);
 
-    // 3. Validate permissions
-    console.log('\nStep 3: Validating permissions...');
-    const permResult = await permValidator.validateQueryPermissions({
-      projectId: config.projectId,
-      datasetId: 'my_dataset',
-      principal: authResult.principal,
-    });
-
-    if (!permResult.allowed) {
-      console.log('   ❌ Permission denied!');
-      console.log('   Missing:', permResult.missingPermissions?.join(', '));
-      throw new Error('Insufficient permissions');
-    }
-    console.log('   ✅ Permissions validated');
+    // 3. Dataset access is enforced by the tenant policy (see DatasetPolicy) and,
+    // for multi-project setups, by MultiProjectManager.validatePermission, which
+    // performs a real Cloud Resource Manager testIamPermissions check.
 
     // 4. Execute query (simulated)
     console.log('\nStep 4: Executing query...');
@@ -400,7 +322,6 @@ export async function runAllExamples() {
     const authResult = await basicWIFAuth(config);
     await serviceAccountImpersonation(config);
     await credentialManagement();
-    await permissionValidation(authResult.principal);
     await auditLogging(authResult.principal);
     await completeAuthFlow(config);
 

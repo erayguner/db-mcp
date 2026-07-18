@@ -108,16 +108,53 @@ const wifAuth = createWIFAuthenticator({
   tokenLifetime: 3600, // 1 hour
   enableTokenCache: true,
 
+  // Signature verification — required unless explicitly opted out
+  jwksUri: 'https://www.googleapis.com/oauth2/v3/certs',
+  clockToleranceSec: 30, // default; max 300
+
   // Security
-  strictValidation: true,
   requireEmailVerification: true,
   allowedIssuers: ['https://accounts.google.com'],
+  allowedAudiences: [
+    '//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/my-pool/providers/my-provider',
+  ],
 
   // Impersonation
   allowImpersonation: true,
   allowedServiceAccounts: ['bigquery-reader@my-project.iam.gserviceaccount.com'],
 });
 ```
+
+### Token signature verification
+
+Inbound OIDC tokens are signature-verified with `jose` against the JWKS endpoint at `jwksUri`. The authenticator **fails
+closed at construction**: without `jwksUri` it throws
+
+```text
+WIFAuthConfig requires `jwksUri` so inbound OIDC tokens can be signature-verified.
+Set `allowUnverifiedTokens: true` only if the signature has already been verified upstream.
+```
+
+`allowUnverifiedTokens: true` (default `false`) is the sole escape hatch, and only appropriate when an upstream layer
+has already verified the signature. Enabling it logs a warning, because unverified token claims are attacker
+controllable.
+
+Claim validation:
+
+| Claim            | Enforcement                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| Signature        | `jose` against the JWKS at `jwksUri`                                                                            |
+| `exp`            | By `jose`, and again explicitly, so the unverified path is still expiry-checked                                 |
+| `iss`            | Passed to `jose` when exactly one `allowedIssuers` entry is configured; otherwise checked against the allowlist |
+| `aud`            | Checked against `allowedAudiences`. **Not validated at all if `allowedAudiences` is unset**                     |
+| `email_verified` | Enforced when `requireEmailVerification` is true and an `email` claim is present                                |
+
+Clock skew tolerance is `clockToleranceSec` (default 30, max 300).
+
+> **Which authenticator runs on the request path?** `OIDCAuthenticator` — not `WIFAuthenticator`. The HTTP transport
+> authenticates inbound requests through `AuthMiddleware` → `OIDCAuthenticator`, which always verifies signatures, has
+> no unverified escape hatch, and requires an `audience`. `WIFAuthenticator` is a library surface for token exchange and
+> impersonation; nothing in the server request path constructs one.
 
 ### Basic Authentication
 
@@ -332,50 +369,80 @@ const csvExport = auditLogger.export('csv');
 await fs.writeFile('audit-trail.csv', csvExport);
 ```
 
-## 4. Permission Validation
+## 4. IAM Permission Validation
 
-### Pre-Query Validation
+Project-level IAM permission checks live in `MultiProjectManager` (`src/bigquery/multi-project-manager.ts`).
+
+> **Scope:** this is the multi-project discovery component. It is **not** on the MCP request path — the running server
+> does not instantiate it. Per-request authorization on the MCP path is enforced by `DatasetPolicy` and the tenant
+> allowlist (see [security-architecture.md](./security-architecture.md)). Use the API below when embedding the manager
+> directly.
+
+### Checking permissions
+
+`validatePermission()` queries the Cloud Resource Manager v3 `projects:testIamPermissions` API. It reports what IAM
+actually returned — it never assumes a permission set from a successful query.
 
 ```typescript
-import { PermissionValidator } from './src/security/permission-validator.js';
+import { MultiProjectManager } from './src/bigquery/index.js';
 
-const validator = new PermissionValidator({
-  cacheTTLMs: 300000, // 5 minutes
-  strictMode: true,
-  auditEnabled: true,
+const manager = new MultiProjectManager({
+  permissionValidation: {
+    enabled: true,
+    cacheValidationResults: true,
+    validationTTLMs: 300_000, // 5 minutes; minimum 60_000
+  },
 });
 
-// Validate query permissions
-const result = await validator.validateQueryPermissions({
-  projectId: 'my-project',
-  datasetId: 'my_dataset',
-  tableId: 'my_table',
-  principal: 'user@example.com',
-});
+const result = await manager.validatePermission('my-project', 'query', ['bigquery.jobs.create']);
 
-if (result.allowed) {
-  // Execute query
-  console.log('Query authorized');
-} else {
-  // Deny query
-  console.log('Missing permissions:', result.missingPermissions);
+if (result.hasAccess) {
+  console.log('Authorized. Verified against IAM:', result.verified);
 }
 ```
 
-### Batch Validation
+### Outcomes
 
-```typescript
-// Validate multiple resources in parallel
-const results = await validator.validateBatchPermissions([
-  { projectId: 'p1', datasetId: 'd1', action: 'query' },
-  { projectId: 'p1', datasetId: 'd2', action: 'query' },
-  { projectId: 'p2', datasetId: 'd1', action: 'query' },
-]);
+Every check resolves to one of three statuses, on both `PermissionCheckOutcome.status` and
+`PermissionValidationResult.status`:
 
-results.forEach((result) => {
-  console.log(`${result.resource}: ${result.allowed}`);
-});
-```
+| Status       | Meaning                                                      | `verified` | `granted`   |
+| ------------ | ------------------------------------------------------------ | ---------- | ----------- |
+| `verified`   | IAM answered; the answer is authoritative                    | `true`     | populated   |
+| `unverified` | The check itself failed; no answer was obtained              | `false`    | always `[]` |
+| `disabled`   | `permissionValidation.enabled` is `false` — no check was run | `false`    | always `[]` |
+
+`granted` is always empty unless `status === 'verified'`, so an empty array can never be mistaken for "checked and found
+nothing".
+
+### Failure modes
+
+Both failure modes deny the operation. They are distinct types so operators and alerting can tell an authorization
+failure apart from an infrastructure fault:
+
+- **`PermissionDeniedError`** (code `PERMISSION_DENIED`) — IAM answered and the principal is missing permissions.
+  Carries `details.missingPermissions`.
+- **`PermissionCheckFailedError`** (code `PERMISSION_CHECK_FAILED`) — IAM never answered. Message ends
+  `Denying access (fail-closed).` Thrown when the API call fails, when the outcome is not `verified`, and when
+  `requiredPermissions` is empty — an empty requirement set must not vacuously grant access.
+
+### Caching
+
+Only genuinely verified answers are cached, and both grants and denials are stored — both are facts. A **failed check is
+never cached**: a transient failure must not become a durable authorization decision in either direction.
+
+A cache hit requires an unexpired entry that covers _every_ requested permission; partial coverage falls through to a
+live IAM call. Invalidate manually with `manager.invalidatePermissionCache(projectId?)`.
+
+Default probe permission set (`DEFAULT_BIGQUERY_PROBE_PERMISSIONS`): `bigquery.jobs.create`, `bigquery.datasets.get`,
+`bigquery.datasets.create`, `bigquery.tables.list`, `bigquery.tables.get`, `bigquery.tables.getData`. Requests are
+batched at 100 permissions per API call.
+
+### Disabling the check
+
+Set `permissionValidation.enabled: false` in the manager config. Every check then returns `hasAccess: true` with
+`status: 'disabled'` and `permissions: []` — nothing is verified, so nothing is asserted. This is an explicit operator
+opt-out, configurable in code only; there is no environment variable for it. The default is enabled.
 
 ## 5. Integration Example
 
@@ -383,7 +450,7 @@ results.forEach((result) => {
 
 ```typescript
 import { createWIFAuthenticator, getAuditLogger } from './src/auth/index.js';
-import { PermissionValidator } from './src/security/permission-validator.js';
+import { MultiProjectManager } from './src/bigquery/index.js';
 
 // 1. Setup
 const wifAuth = createWIFAuthenticator({
@@ -391,12 +458,12 @@ const wifAuth = createWIFAuthenticator({
   workloadIdentityPoolId: process.env.WORKLOAD_IDENTITY_POOL_ID!,
   workloadIdentityProviderId: process.env.WORKLOAD_IDENTITY_PROVIDER_ID!,
   serviceAccountEmail: process.env.MCP_SERVICE_ACCOUNT_EMAIL!,
+  jwksUri: process.env.WIF_JWKS_URI!,
   enableAuditLogging: true,
 });
 
-const permValidator = new PermissionValidator({
-  strictMode: true,
-  auditEnabled: true,
+const projectManager = new MultiProjectManager({
+  permissionValidation: { enabled: true, cacheValidationResults: true, validationTTLMs: 300_000 },
 });
 
 // 2. Authenticate
@@ -417,20 +484,13 @@ async function authenticateUser(oidcToken: string) {
 
 // 3. Validate permissions before query
 async function executeQuery(principal: string, query: string) {
-  // Extract resources from query (simplified)
   const projectId = 'my-project';
-  const datasetId = 'my_dataset';
 
-  // Check permissions
-  const permResult = await permValidator.validateQueryPermissions({
-    projectId,
-    datasetId,
-    principal,
-  });
+  // Throws PermissionDeniedError (IAM said no) or
+  // PermissionCheckFailedError (no answer obtained — fail closed).
+  const permResult = await projectManager.validatePermission(projectId, 'query', ['bigquery.jobs.create']);
 
-  if (!permResult.allowed) {
-    throw new Error(`Permission denied. Missing: ${permResult.missingPermissions?.join(', ')}`);
-  }
+  console.log('Authorized. Verified against IAM:', permResult.verified);
 
   // Execute query
   console.log('Query authorized, executing...');
@@ -474,10 +534,12 @@ main().catch(console.error);
 
 ### Permission Validation
 
-1. **Pre-Query Checks**: Validate permissions before executing queries
-2. **Strict Mode**: Enable strict mode for production
-3. **Cache Permissions**: Use caching to improve performance
-4. **Batch Validation**: Validate multiple resources in parallel
+1. **Never Infer Permissions**: A successful query proves only that one query was allowed; check IAM directly
+2. **Keep Validation Enabled**: `permissionValidation.enabled: false` asserts nothing about access
+3. **Distinguish the Failure Modes**: Alert on `PermissionCheckFailedError` separately — it signals an infrastructure or
+   credential fault, not a policy decision
+4. **Never Cache a Failed Check**: A transient failure must not become a durable authorization decision
+5. **Specify Required Permissions**: An empty requirement set is denied, not vacuously granted
 
 ### Impersonation
 

@@ -39,6 +39,7 @@ Modular architecture documentation:
 - [Error Handling](./architecture/05-error-handling.md)
 - [Observability](./architecture/06-observability.md)
 - [Scalability](./architecture/07-scalability.md)
+- [Disaster Recovery](./architecture/08-disaster-recovery.md)
 
 ### [connection-pooling-design.md](./connection-pooling-design.md)
 
@@ -116,7 +117,7 @@ OpenTelemetry instrumentation, alerts, and dashboards.
 
 ### [health-monitoring.md](./health-monitoring.md)
 
-Health check implementation and endpoints.
+Liveness, readiness, and Prometheus endpoints; the readiness registry and probe semantics.
 
 ---
 
@@ -134,15 +135,16 @@ Cross-project dataset discovery and search.
 
 Multi-project BigQuery management.
 
-### MCP Server Features (New)
+### MCP Server Features
 
 - **Prompt Providers** — 5 BigQuery-specific prompt templates for AI clients
-- **Streamable HTTP Transport** — Production transport for Cloud Run (POST/GET + SSE)
-- **Progress Notifications** — Real-time status for long-running queries
-- **Session Management** — Multi-turn query session tracking
-- **Request Batching** — JSON-RPC batch processing
-- **Column Masking** — Per-tenant column-level data masking
-- **Response Compression** — Gzip compression for large payloads
+- **Streamable HTTP Transport** — Stateless production transport for Cloud Run (POST `/mcp`)
+- **Progress Notifications** — `notifications/progress` when the client supplies a `_meta.progressToken`
+- **MCP Logging** — `logging/setLevel` plus `notifications/message` for security refusals
+- **Resource Templates** — RFC 6570 parameterized `bigquery://` URIs, including job metadata
+- **Column Masking** — Per-tenant column-level masking, reported in `provenance.maskedColumns`
+- **Tenant-Aware Tool Annotations** — `readOnlyHint` reflects the tenant's write mode
+- **Cost Elicitation Gate** — Confirmation required above a configurable byte threshold
 - **Behavioral Anomaly Detection** — Per-user query pattern baselines
 - **Intelligence Effectiveness Metrics** — Tool call quality tracking
 - **Graceful Degradation** — Circuit breaker with stale cache fallback

@@ -490,6 +490,7 @@ const datasets = await discovery.discoverDatasets(['project-1']);
    ```
 
 4. **Filter Early**
+
    ```typescript
    const config = {
      includeRegions: ['EU'], // Only scan EU datasets

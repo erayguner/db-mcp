@@ -166,7 +166,11 @@ export abstract class BaseToolHandler {
           text: JSON.stringify(errorData, null, 2),
         },
       ],
-      structuredContent: errorData,
+      // Deliberately no `structuredContent`: every tool here declares an
+      // outputSchema, and an error payload conforms to none of them. Emitting it
+      // made schema-validating clients reject the error itself. The detail stays
+      // in `content` and `_meta`.
+      _meta: { ...errorData },
       isError: true,
     };
   }
@@ -178,29 +182,35 @@ export abstract class BaseToolHandler {
     items: QueryRow[],
     meta?: Record<string, unknown>
   ): ToolResponse {
-    const chunks: string[] = [];
-    const chunkSize = 100; // Process in chunks of 100 items
+    const chunkSize = 100;
+    const chunkCount = Math.ceil(items.length / chunkSize);
 
-    for (let i = 0; i < items.length; i += chunkSize) {
-      const chunk = items.slice(i, i + chunkSize);
-      chunks.push(JSON.stringify(chunk));
-    }
-    const streamingSummary = {
-      totalItems: items.length,
-      chunks: chunks.length,
-      items,
+    // Must conform to QueryExecutedOutputSchema — the previous
+    // `{totalItems, chunks, items}` shape matched no declared outputSchema.
+    // Chunking is descriptive metadata, so it belongs in `_meta`, not the payload.
+    const payload = {
+      rowCount: items.length,
+      rows: items as Array<Record<string, unknown>>,
+      jobId: (meta?.jobId as string) ?? '',
+      executionTimeMs: (meta?.executionTimeMs as number) ?? 0,
+      ...(meta?.cacheHit !== undefined ? { cacheHit: meta.cacheHit as boolean } : {}),
+      ...(meta?.totalBytesProcessed !== undefined
+        ? { totalBytesProcessed: meta.totalBytesProcessed as string }
+        : {}),
     };
+
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify(streamingSummary, null, 2),
+          text: JSON.stringify(payload, null, 2),
         },
       ],
-      structuredContent: streamingSummary,
+      structuredContent: payload,
       _meta: {
         ...meta,
         streaming: true,
+        chunks: chunkCount,
         totalItems: items.length,
         timestamp: new Date().toISOString(),
       },
@@ -272,8 +282,9 @@ export class QueryBigQueryHandler extends BaseToolHandler {
           location,
         });
 
+        // Conforms to QueryDryRunOutputSchema.
         return this.formatSuccess({
-          dryRun: true,
+          dryRun: true as const,
           totalBytesProcessed: dryRunResult.totalBytesProcessed,
           estimatedCostUSD: dryRunResult.estimatedCostUSD,
         });
@@ -302,30 +313,31 @@ export class QueryBigQueryHandler extends BaseToolHandler {
               thresholdBytes: costCfg.thresholdBytes,
               estimatedCostUSD,
             });
+            const confirmationPayload = {
+              status: 'requires_confirmation' as const,
+              reason: 'cost_threshold_exceeded' as const,
+              message:
+                `This query is estimated to scan ${estimatedBytes.toLocaleString()} bytes ` +
+                `(~$${estimatedCostUSD.toFixed(4)} USD), exceeding the ${costCfg.thresholdBytes.toLocaleString()}-byte threshold. ` +
+                'The query has NOT been executed. Re-invoke the tool with `confirmCost: true` to proceed.',
+              estimate: {
+                totalBytesProcessed: estimatedBytes,
+                estimatedCostUSD,
+                thresholdBytes: costCfg.thresholdBytes,
+                usdPerTiB: costCfg.usdPerTiB,
+              },
+            };
             return {
               content: [
                 {
                   type: 'text',
-                  text: JSON.stringify(
-                    {
-                      status: 'requires_confirmation',
-                      reason: 'cost_threshold_exceeded',
-                      message:
-                        `This query is estimated to scan ${estimatedBytes.toLocaleString()} bytes ` +
-                        `(~$${estimatedCostUSD.toFixed(4)} USD), exceeding the ${costCfg.thresholdBytes.toLocaleString()}-byte threshold. ` +
-                        'Re-invoke the tool with `confirmCost: true` to proceed.',
-                      estimate: {
-                        totalBytesProcessed: estimatedBytes,
-                        estimatedCostUSD,
-                        thresholdBytes: costCfg.thresholdBytes,
-                        usdPerTiB: costCfg.usdPerTiB,
-                      },
-                    },
-                    null,
-                    2
-                  ),
+                  text: JSON.stringify(confirmationPayload, null, 2),
                 },
               ],
+              // Conforms to QueryConfirmationRequiredOutputSchema. Previously this
+              // path returned no structuredContent at all, leaving clients to parse
+              // prose to discover the query had not run.
+              structuredContent: confirmationPayload,
               isError: false,
               _meta: {
                 requiresConfirmation: true,
@@ -392,21 +404,39 @@ export class QueryBigQueryHandler extends BaseToolHandler {
       // Build schema context from result schema for copilot consumption
       const schemaContext = buildSchemaContext(result.schema);
 
+      // Apply tenant column-masking before any row leaves the server.
+      const tenantCtx = this.context.tenantContext;
+      let rows = result.rows as QueryRow[];
+      let maskedColumns: string[] = [];
+      if (tenantCtx) {
+        const masked = tenantCtx.masking.maskQueryRows(
+          rows as Record<string, unknown>[],
+          tenantCtx.policy.extractTableReferences(query),
+          result.schema as Array<{ name: string; type: string }> | undefined
+        );
+        rows = masked.rows as QueryRow[];
+        maskedColumns = masked.maskedColumns;
+      }
+      if (maskedColumns.length > 0) {
+        provenance.maskedColumns = maskedColumns;
+      }
+
       // Use streaming response for large result sets
-      if (result.rows.length > 1000) {
-        return this.formatStreamingResponse(result.rows as QueryRow[], {
+      if (rows.length > 1000) {
+        return this.formatStreamingResponse(rows, {
           totalRows: result.totalRows,
           jobId: result.jobId,
           cacheHit: result.cacheHit,
           executionTimeMs: result.executionTimeMs,
           totalBytesProcessed: result.totalBytesProcessed,
+          ...(maskedColumns.length > 0 ? { maskedColumns } : {}),
         });
       }
 
       return this.formatSuccess(
         {
-          rowCount: result.rows.length,
-          rows: result.rows,
+          rowCount: rows.length,
+          rows,
           schema: result.schema,
           jobId: result.jobId,
           cacheHit: result.cacheHit,

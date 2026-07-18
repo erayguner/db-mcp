@@ -9,8 +9,7 @@ import { BigQueryClient } from '../../src/bigquery/client.js';
 import { DatasetManager } from '../../src/bigquery/dataset-manager.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
-const skipDiscovery = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
-const describeDiscovery = skipDiscovery ? describe.skip : describe;
+const describeDiscovery = describe;
 
 describeDiscovery('Dataset Discovery Integration', () => {
   let client: BigQueryClient;

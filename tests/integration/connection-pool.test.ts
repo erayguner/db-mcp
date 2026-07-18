@@ -8,8 +8,7 @@
 import { ConnectionPool } from '../../src/bigquery/connection-pool.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
-const skipPool = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
-const describePool = skipPool ? describe.skip : describe;
+const describePool = describe;
 
 describePool('Connection Pool Integration Tests', () => {
   let pool: ConnectionPool;
@@ -104,9 +103,17 @@ describePool('Connection Pool Integration Tests', () => {
     });
 
     it('should handle concurrent acquisitions', async () => {
+      // Connections are handed out exclusively and maxConnections is 5, so
+      // holding 10 at once is impossible by construction: waiters are only
+      // served as earlier holders release. Releasing inside each task is what
+      // lets all 10 requests complete.
       const acquisitions = Array(10)
         .fill(null)
-        .map(() => pool.acquire());
+        .map(async () => {
+          const client = await pool.acquire();
+          pool.release(client);
+          return client;
+        });
 
       const clients = await Promise.all(acquisitions);
 
@@ -114,9 +121,6 @@ describePool('Connection Pool Integration Tests', () => {
 
       const metrics = pool.getMetrics();
       expect(metrics.totalConnections).toBeLessThanOrEqual(5); // maxConnections
-
-      // Release all
-      clients.forEach((client) => pool.release(client));
 
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
@@ -182,7 +186,10 @@ describePool('Connection Pool Integration Tests', () => {
       // Try to acquire another (should timeout)
       await expect(quickTimeoutPool.acquire()).rejects.toThrow(/timeout/i);
 
-      pool.release(client);
+      // Release back to the pool the client was acquired from. Releasing to
+      // `pool` instead leaves quickTimeoutPool's only connection marked in-use,
+      // so shutdown() below drains for its full 30s timeout.
+      quickTimeoutPool.release(client);
       await quickTimeoutPool.shutdown();
     });
 
@@ -427,6 +434,40 @@ describePool('Connection Pool Integration Tests', () => {
       expect(shutdownStarted).toBe(true);
       expect(shutdownCompleted).toBe(true);
       expect(testPool.isHealthy()).toBe(false);
+    });
+
+    it('should honour a configured drain timeout instead of the hardcoded 30s', async () => {
+      const drainPool = new ConnectionPool({
+        projectId: 'drain-timeout',
+        minConnections: 1,
+        maxConnections: 1,
+        acquireTimeoutMs: 5000,
+        idleTimeoutMs: 60000,
+        healthCheckIntervalMs: 30000,
+        maxRetries: 3,
+        retryDelayMs: 1000,
+        shutdownDrainTimeoutMs: 300,
+      });
+
+      // Never released, so shutdown must fall back on the drain timeout.
+      await drainPool.acquire();
+
+      const started = Date.now();
+      await drainPool.shutdown();
+      const elapsed = Date.now() - started;
+
+      expect(elapsed).toBeGreaterThanOrEqual(250);
+      expect(elapsed).toBeLessThan(3000);
+    });
+
+    it('should default the drain timeout to the previous hardcoded 30s', () => {
+      const defaultPool = new ConnectionPool({
+        projectId: 'drain-default',
+        minConnections: 1,
+        maxConnections: 1,
+      });
+
+      expect((defaultPool as any).config.shutdownDrainTimeoutMs).toBe(30000);
     });
 
     it('should wait for active connections before shutdown', async () => {

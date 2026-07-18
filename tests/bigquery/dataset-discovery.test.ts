@@ -7,8 +7,7 @@ import { ConnectionPool } from '../../src/bigquery/connection-pool.js';
 import { DatasetManager, DatasetMetadata } from '../../src/bigquery/dataset-manager.js';
 import { BigQuery } from '@google-cloud/bigquery';
 
-const skipDiscovery = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
-const describeDiscovery = skipDiscovery ? describe.skip : describe;
+const describeDiscovery = describe;
 
 describeDiscovery('DatasetDiscovery', () => {
   let discovery: DatasetDiscovery;
@@ -325,12 +324,30 @@ describeDiscovery('DatasetDiscovery', () => {
     });
 
     it('should update access frequency', () => {
+      // Bands are cumulative-access thresholds: >1000 VERY_HIGH, >100 HIGH,
+      // >10 MEDIUM, >0 LOW, 0 VERY_LOW. The fixture seeds accessCount: 10, so
+      // totalAccesses starts at 10 (MEDIUM is already not reached).
+      const seeded = 10;
+
+      // 10 + 150 = 160 accesses -> HIGH
       for (let i = 0; i < 150; i++) {
+        discovery.trackAccess('dataset1', 'project1', `user${i}`, 100);
+      }
+      expect(discovery.getDataset('dataset1', 'project1')?.accessPattern.totalAccesses).toBe(
+        seeded + 150
+      );
+      expect(discovery.getDataset('dataset1', 'project1')?.accessPattern.accessFrequency).toBe(
+        'HIGH'
+      );
+
+      // Push past the top threshold (>1000) -> VERY_HIGH
+      for (let i = 0; i < 900; i++) {
         discovery.trackAccess('dataset1', 'project1', `user${i}`, 100);
       }
 
       const dataset = discovery.getDataset('dataset1', 'project1');
 
+      expect(dataset?.accessPattern.totalAccesses).toBe(seeded + 1050);
       expect(dataset?.accessPattern.accessFrequency).toBe('VERY_HIGH');
     });
 

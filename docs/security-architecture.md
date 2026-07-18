@@ -27,18 +27,19 @@ This document describes the enterprise security architecture implemented for the
 
 **Components:**
 
-- `/src/security/permission-validator.ts` - IAM permission validation
+- `/src/tenancy/dataset-policy.ts` - Application-layer tenant allowlist, enforced per request
+- `/src/security/column-masking.ts` - Per-tenant column-level masking
 - `/src/auth/audit-logger.ts` - Security audit logging
-- `/src/tenancy/dataset-policy.ts` - Application-layer tenant allowlist
+- `/src/bigquery/multi-project-manager.ts` - Cloud Resource Manager `testIamPermissions` checks
 - `terraform/modules/bigquery/main.tf` - IAM Conditions on dataset bindings
 
 **Features:**
 
-- ✅ Pre-query permission checks
-- ✅ IAM policy evaluation
-- ✅ Role-based access control (RBAC)
-- ✅ Permission caching (5-minute TTL)
-- ✅ Batch permission validation
+- ✅ Per-request dataset allowlist enforcement
+- ✅ Column-level data masking with fail-safe over-masking
+- ✅ Real IAM policy evaluation via `testIamPermissions` (never inferred from a successful query)
+- ✅ Verified-only permission caching (5-minute TTL); failed checks are never cached
+- ✅ Fail-closed on an unverifiable check (`PermissionCheckFailedError`)
 - ✅ Comprehensive audit trail
 
 **Defense in depth — tenant dataset access:**
@@ -135,29 +136,29 @@ const cleanup = credManager.enableAutoRefresh(1800); // 30 min
 4. Update cache
 5. Log refresh event
 
-### Pattern 4: Permission Validation
+### Pattern 4: IAM Permission Validation
 
 ```typescript
-// Pre-query permission check
-const validator = new PermissionValidator();
-const result = await validator.validateQueryPermissions({
-  projectId: 'my-project',
-  datasetId: 'my_dataset',
-  principal: 'user@example.com',
-});
+// Project-level IAM check (MultiProjectManager; not on the MCP request path)
+const result = await manager.validatePermission('my-project', 'query', ['bigquery.jobs.create']);
 
-if (!result.allowed) {
-  throw new Error(`Missing: ${result.missingPermissions}`);
+if (!result.hasAccess) {
+  throw new Error(`Missing: ${result.missingPermissions?.join(', ')}`);
 }
 ```
 
 **Flow:**
 
-1. Check permission cache
-2. If miss, call IAM testPermissions API
-3. Cache result (5-minute TTL)
-4. Log authorization decision
-5. Return allow/deny result
+1. Return `status: 'disabled'` immediately if permission validation is switched off
+2. Deny if `requiredPermissions` is empty — an empty set must not vacuously grant access
+3. Check the cache; a hit requires an unexpired entry covering _every_ requested permission
+4. On miss, call the Cloud Resource Manager v3 `projects:testIamPermissions` API
+5. Cache the result only if the answer was genuinely verified (5-minute TTL); never cache a failed check
+6. Throw `PermissionCheckFailedError` if no answer was obtained, `PermissionDeniedError` if IAM said no
+
+The outcome is always one of `verified`, `unverified`, or `disabled`, and `granted` is empty unless the status is
+`verified` — so an empty permission list can never be misread as a completed check. See
+[authentication-guide.md](./authentication-guide.md) for the full API.
 
 ### Pattern 5: Audit Logging
 
@@ -397,13 +398,13 @@ await fs.writeFile('audit-2024-01.csv', csvExport);
 
 ### Authorization
 
-- `/src/security/permission-validator.ts` - 857 lines
-- `/src/security/middleware.ts` - Existing
-- `/src/security/config.ts` - Existing
+- `/src/tenancy/dataset-policy.ts` - Per-request dataset allowlist and write-mode enforcement
+- `/src/security/column-masking.ts` - Column-level masking engine
+- `/src/security/middleware.ts` - Rate limiting, injection detection, identifier validation
+- `/src/security/config.ts` - Security configuration
+- `/src/bigquery/multi-project-manager.ts` - IAM `testIamPermissions` checks
 
 ### Documentation
 
 - `/docs/authentication-guide.md` - Complete usage guide
 - `/docs/security-architecture.md` - This document
-
-Total: ~2,676 lines of enterprise security code

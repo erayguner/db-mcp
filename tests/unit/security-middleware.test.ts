@@ -279,7 +279,7 @@ describe('InputValidator', () => {
   describe('validateDatasetId', () => {
     it('should accept valid dataset IDs', () => {
       // Arrange
-      const validIds = ['dataset1', 'my_dataset', 'data-set-2', 'DS123'];
+      const validIds = ['dataset1', 'my_dataset', 'data_set_2', 'DS123'];
 
       // Act & Assert
       validIds.forEach((id) => {
@@ -290,7 +290,9 @@ describe('InputValidator', () => {
 
     it('should reject invalid characters', () => {
       // Arrange
-      const invalidIds = ['dataset!', 'my dataset', 'data@set', 'dataset#1'];
+      // Hyphens are included deliberately: BigQuery dataset IDs allow only
+      // letters, numbers and underscores, so 'data-set-2' must be rejected.
+      const invalidIds = ['dataset!', 'my dataset', 'data@set', 'dataset#1', 'data-set-2'];
 
       // Act & Assert
       invalidIds.forEach((id) => {
@@ -397,6 +399,59 @@ describe('SensitiveDataDetector', () => {
       expect(result.detected).toBe(true);
       expect(result.fields).toContain('user.credentials.password');
       expect(result.fields).toContain('user.credentials.api_key');
+    });
+
+    it('should collapse array indices so output scales with schema, not row count', () => {
+      // Regression: this reported one path per (row, column) pair, so a
+      // 2000-row result with a password column produced ~2000 field strings,
+      // joined into a single warning that was also written to the audit log.
+      const rows = Array.from({ length: 2000 }, (_, i) => ({
+        id: i,
+        username: `user${i}`,
+        password: `secret${i}`,
+      }));
+
+      const result = detector.detectSensitiveData({ rows });
+
+      expect(result.detected).toBe(true);
+      expect(result.fields).toEqual(['rows[].password']);
+      expect(result.fields.join(', ').length).toBeLessThan(100);
+    });
+
+    it('should still distinguish separate sensitive columns after collapsing', () => {
+      const rows = Array.from({ length: 50 }, (_, i) => ({
+        password: `p${i}`,
+        api_key: `k${i}`,
+        email: `e${i}@example.com`,
+      }));
+
+      const result = detector.detectSensitiveData({ rows });
+
+      expect(result.fields).toContain('rows[].password');
+      expect(result.fields).toContain('rows[].api_key');
+      expect(result.fields).not.toContain('rows[].email');
+      expect(result.fields).toHaveLength(2);
+    });
+
+    it('should cap distinct paths with an explicit "+N more" suffix', () => {
+      // Backstop for pathologically wide objects, where collapsing alone cannot
+      // bound the list because every path really is distinct.
+      const wide: Record<string, string> = {};
+      for (let i = 0; i < 80; i++) {
+        wide[`password_${i}`] = 'x';
+      }
+
+      const result = detector.detectSensitiveData(wide);
+
+      // 50 listed paths + 1 marker.
+      expect(result.fields).toHaveLength(51);
+      expect(result.fields[50]).toBe('... +30 more');
+    });
+
+    it('should report array elements without treating an index as a field name', () => {
+      const result = detector.detectSensitiveData([{ password: 'a' }, { password: 'b' }]);
+
+      expect(result.fields).toEqual(['[].password']);
     });
 
     it('should not detect false positives', () => {

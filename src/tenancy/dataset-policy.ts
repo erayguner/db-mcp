@@ -1,6 +1,11 @@
 import { TenantConfig, WriteMode } from './tenant-config.js';
 import { logger } from '../utils/logger.js';
 
+export interface TableReference {
+  datasetId: string;
+  tableId: string;
+}
+
 export interface QueryValidationResult {
   allowed: boolean;
   reason?: string;
@@ -41,20 +46,39 @@ export class DatasetPolicy {
     return /^\s*(CREATE\s+|DROP\s+|ALTER\s+|TRUNCATE\s+)\b/i.test(query.trim());
   }
 
+  /**
+   * Extract `dataset.table` pairs referenced by a query.
+   *
+   * Used both for dataset authorization and for resolving which column-masking
+   * rules apply to a result set. Recognises backtick-qualified references
+   * (`project.dataset.table`) and unquoted FROM/JOIN/INTO/UPDATE/TABLE clauses.
+   *
+   * This is a lexical scan, not a SQL parser: it cannot resolve CTEs, aliases or
+   * dynamic SQL. Callers applying security controls must treat the result as a
+   * superset hint and fail safe (over-apply) rather than assume completeness.
+   */
+  extractTableReferences(query: string): TableReference[] {
+    const refs = new Map<string, TableReference>();
+    const patterns = [
+      // `project.dataset.table` / `dataset.table`
+      /`(?:[\w-]+\.)?([\w-]+)\.([\w-]+)`/g,
+      // FROM|JOIN|INTO|UPDATE|TABLE project.dataset.table
+      /(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+(?:[\w-]+\.)?([\w-]+)\.([\w-]+)/gi,
+    ];
+
+    for (const pattern of patterns) {
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(query)) !== null) {
+        const ref = { datasetId: match[1], tableId: match[2] };
+        refs.set(`${ref.datasetId}.${ref.tableId}`, ref);
+      }
+    }
+
+    return Array.from(refs.values());
+  }
+
   extractDatasetReferences(query: string): string[] {
-    const datasets = new Set<string>();
-    // Match `project.dataset.table` backtick patterns
-    const backtickPattern = /`(?:[\w-]+\.)?([\w-]+)\.[\w-]+`/g;
-    let match: RegExpExecArray | null;
-    while ((match = backtickPattern.exec(query)) !== null) {
-      datasets.add(match[1]);
-    }
-    // Match unquoted FROM/JOIN/INTO references
-    const unquotedPattern = /(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+(?:[\w-]+\.)?([\w-]+)\.[\w-]+/gi;
-    while ((match = unquotedPattern.exec(query)) !== null) {
-      datasets.add(match[1]);
-    }
-    return Array.from(datasets);
+    return Array.from(new Set(this.extractTableReferences(query).map((r) => r.datasetId)));
   }
 
   validateQuery(query: string): QueryValidationResult {

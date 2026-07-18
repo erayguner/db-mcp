@@ -46,15 +46,15 @@ Target maturity: **L2 — Production-ready** with partial L3 controls.
 
 ## §11 — Data handling
 
-| Control                                               | Status      | Reference                                                                   |
-| ----------------------------------------------------- | ----------- | --------------------------------------------------------------------------- |
-| §11.1 Data classification                             | ✅          | `config/policies/data-classification.json`                                  |
-| §11.2 Input filters (PII / secret / prompt-injection) | ✅          | `src/security/middleware.ts` + patterns in `content-safety.json`            |
-| §11.3 Output filters                                  | ✅          | `src/security/column-masking.ts` (column-level redact/hash/partial/nullify) |
-| §11.4 Provider guardrails                             | ⚠ not wired | Model Armor integration scoped for L3 (no LLM served by this repo)          |
-| §11.6 Session memory                                  | N/A         | No cross-session memory store in db-mcp                                     |
-| §11.7 Data lineage (source versioning)                | ✅          | `src/governance/lineage.ts` + `lineage.sources[]` on `AuditEventSchema`     |
-| §11.8 DLP + k-anonymity                               | ✅          | `src/governance/dlp.ts` — `DlpProvider` interface, `enforceKAnonymity`      |
+| Control                                               | Status      | Reference                                                                                                                                                      |
+| ----------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §11.1 Data classification                             | ✅          | `config/policies/data-classification.json`                                                                                                                     |
+| §11.2 Input filters (PII / secret / prompt-injection) | ✅          | `src/security/middleware.ts` + patterns in `content-safety.json`                                                                                               |
+| §11.3 Output filters                                  | ✅          | `src/security/column-masking.ts`, applied via `TenantContext` on the query path and `…/sample` resource; masked columns reported in `provenance.maskedColumns` |
+| §11.4 Provider guardrails                             | ⚠ not wired | Model Armor integration scoped for L3 (no LLM served by this repo)                                                                                             |
+| §11.6 Session memory                                  | N/A         | No cross-session memory store in db-mcp                                                                                                                        |
+| §11.7 Data lineage (source versioning)                | ⚠ partial   | `lineage.sources[]` on `AuditEventSchema` (`src/auth/audit-logger.ts`); the standalone `governance/lineage.ts` helper was removed as it had no callers         |
+| §11.8 DLP + k-anonymity                               | ✅          | `src/governance/dlp.ts` — `DlpProvider` interface, `enforceKAnonymity`                                                                                         |
 
 ## §12 — Security
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { logger } from '../utils/logger.js';
 import { CredentialManager, CredentialConfig } from './credential-manager.js';
 import {
@@ -49,6 +50,20 @@ export const WIFAuthConfigSchema = z.object({
   requireEmailVerification: z.boolean().default(true),
   allowedIssuers: z.array(z.string()).optional(),
   allowedAudiences: z.array(z.string()).optional(),
+  /**
+   * JWKS endpoint used to cryptographically verify inbound OIDC tokens.
+   *
+   * Required unless `allowUnverifiedTokens` is explicitly set. Without it there
+   * is no way to establish that a token was actually issued by the trusted IdP.
+   */
+  jwksUri: z.string().url().optional(),
+  /**
+   * Escape hatch for tests and for callers that have ALREADY verified the token
+   * signature upstream. Enabling this accepts attacker-suppliable claims at face
+   * value, so it must be a deliberate, explicit choice — never a default.
+   */
+  allowUnverifiedTokens: z.boolean().default(false),
+  clockToleranceSec: z.number().min(0).max(300).default(30),
 
   // Audit
   enableAuditLogging: z.boolean().default(true),
@@ -94,21 +109,49 @@ export interface OIDCTokenClaims {
 class OIDCTokenValidator {
   private config: WIFAuthConfig;
   private auditLogger: SecurityAuditLogger;
+  private jwks: ReturnType<typeof createRemoteJWKSet> | null;
 
   constructor(config: WIFAuthConfig, auditLogger: SecurityAuditLogger) {
     this.config = config;
     this.auditLogger = auditLogger;
+    this.jwks = config.jwksUri ? createRemoteJWKSet(new URL(config.jwksUri)) : null;
+
+    if (!this.jwks && !config.allowUnverifiedTokens) {
+      throw new Error(
+        'WIFAuthConfig requires `jwksUri` so inbound OIDC tokens can be signature-verified. ' +
+          'Set `allowUnverifiedTokens: true` only if the signature has already been verified upstream.'
+      );
+    }
+    if (!this.jwks) {
+      logger.warn(
+        'WIF OIDC token signature verification is DISABLED (allowUnverifiedTokens). ' +
+          'Token claims are attacker-controllable; only use this when an upstream layer has already verified the signature.'
+      );
+    }
   }
 
   /**
-   * Validate OIDC token claims
+   * Verify and validate an inbound OIDC token.
+   *
+   * This performs real cryptographic verification against the IdP's JWKS.
+   *
+   * It previously only base64-decoded the payload, with a comment claiming
+   * "GCP will verify". That was false: `WIFAuthenticator.authenticate()` calls
+   * `credentialManager.getAccessToken()` with NO arguments, so the caller's
+   * token is never forwarded to GCP or STS and no downstream verification ever
+   * occurs. A forged unsigned JWT with a future `exp` and an allowed
+   * `iss`/`aud` therefore yielded a real GCP access token plus an audit record
+   * attributing the action to an attacker-chosen principal.
    */
-  validateToken(token: string): OIDCTokenClaims {
+  async validateToken(token: string): Promise<OIDCTokenClaims> {
     try {
-      // Decode JWT (without verification for now - GCP will verify)
-      const claims = this.decodeJWT(token);
+      const claims = this.jwks
+        ? await this.verifyJWT(token)
+        : // Only reachable when allowUnverifiedTokens was explicitly enabled.
+          this.decodeJWT(token);
 
-      // Validate expiration
+      // Validate expiration. jwtVerify already enforces `exp`, but this path
+      // also covers the explicitly-unverified mode.
       const now = Math.floor(Date.now() / 1000);
       if (claims.exp <= now) {
         throw new Error('Token has expired');
@@ -163,15 +206,28 @@ class OIDCTokenValidator {
   }
 
   /**
-   * Decode JWT without cryptographic signature verification.
+   * Cryptographically verify the token against the configured JWKS.
+   */
+  private async verifyJWT(token: string): Promise<OIDCTokenClaims> {
+    const jwt = token.startsWith('Bearer ') ? token.slice(7) : token;
+    const { payload } = await jwtVerify(jwt, this.jwks!, {
+      clockTolerance: this.config.clockToleranceSec,
+      ...(this.config.allowedIssuers?.length === 1
+        ? { issuer: this.config.allowedIssuers[0] }
+        : {}),
+    });
+    return payload as unknown as OIDCTokenClaims;
+  }
+
+  /**
+   * Decode a JWT payload WITHOUT verifying its signature.
    *
-   * SECURITY NOTE: This relies on GCP's STS endpoint to verify the token
-   * signature during the token exchange step. The local validation here only
-   * performs structural and claims checks (expiry, issuer, audience).
-   * A forged token will pass local validation but will be rejected by GCP.
+   * Only reachable when `allowUnverifiedTokens` is explicitly enabled. Every
+   * claim it returns is attacker-controllable.
    *
-   * Local signature verification via JWKS is handled by OIDCAuthenticator.
-   * See src/auth/oidc-authenticator.ts for full JWKS-based verification.
+   * The previous doc here claimed GCP's STS endpoint would verify the signature
+   * during token exchange, so "a forged token will pass local validation but
+   * will be rejected by GCP". That was false — see validateToken() above.
    */
   private decodeJWT(token: string): OIDCTokenClaims {
     try {
@@ -243,7 +299,7 @@ export class WIFAuthenticator {
   async authenticate(oidcToken: string): Promise<WIFTokenExchangeResult> {
     try {
       // Validate OIDC token
-      const claims = this.tokenValidator.validateToken(oidcToken);
+      const claims = await this.tokenValidator.validateToken(oidcToken);
       const principal = claims.email || claims.sub;
 
       logger.info('OIDC token validated, exchanging for GCP token', {

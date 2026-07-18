@@ -187,9 +187,10 @@ interface HttpTransport {
 **Responsibilities**:
 
 - Express-based Streamable HTTP for Cloud Run deployment
-- Session management
-- Client authentication
-- Request/response handling
+- Stateless request handling (`sessionIdGenerator: undefined`) — a fresh MCP `Server` and SDK transport per request, so
+  any instance can serve any request without sticky sessions
+- Client authentication and tenant resolution
+- Liveness, readiness, and Prometheus endpoints
 
 **Dependencies**:
 

@@ -1,6 +1,6 @@
 import { QueryMetricsTracker } from '../../src/bigquery/query-metrics';
 
-describe.skip('QueryMetricsTracker', () => {
+describe('QueryMetricsTracker', () => {
   let tracker: QueryMetricsTracker;
 
   beforeEach(() => {

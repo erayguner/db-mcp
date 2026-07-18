@@ -166,7 +166,8 @@ if (!result.allowed) {
 **Features**:
 
 - Query length validation (max 10KB)
-- Dataset/Table ID validation (alphanumeric + \_ -)
+- Dataset ID validation (alphanumeric + `_` only — BigQuery dataset IDs do not permit hyphens)
+- Table ID validation (alphanumeric + `_`)
 - SQL injection pattern detection
 - Command injection prevention
 - Comprehensive error messages
@@ -179,11 +180,18 @@ if (!result.allowed) {
 - Blocked patterns: DROP, DELETE, TRUNCATE, ALTER, EXEC
 - SQL injection: UNION SELECT, --, /* */
 
-// Dataset/Table IDs
+// Dataset IDs — /^[a-zA-Z0-9_]+$/
 - Max length: 100 characters
-- Allowed chars: a-zA-Z0-9_-
-- No spaces or special characters
+- Allowed chars: a-zA-Z0-9_
+- No hyphens, spaces, or special characters
+
+// Table IDs — /^[a-zA-Z0-9_]+$/ at the tool-schema layer
+- Allowed chars: a-zA-Z0-9_
 ```
+
+The dataset rule matches `src/mcp/schemas/tool-schemas.ts` exactly. It previously accepted hyphens in the middleware
+while the tool schema rejected them — BigQuery dataset IDs allow only letters, numbers, and underscores, so the looser
+rule was wrong.
 
 **Example**:
 
@@ -198,6 +206,7 @@ if (!result.valid) {
 
 // Validate dataset
 validator.validateDatasetId('my_dataset'); // ✅ valid
+validator.validateDatasetId('my-dataset'); // ❌ hyphens not permitted in dataset IDs
 validator.validateDatasetId('my dataset'); // ❌ invalid chars
 ```
 

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-const skipMP = process.env.MOCK_FAST === 'true' || process.env.USE_MOCK_BIGQUERY === 'true';
-const describeMP = skipMP ? describe.skip : describe;
+import type { GoogleAuth } from 'google-auth-library';
 import {
   MultiProjectManager,
   MultiProjectManagerConfig,
@@ -10,8 +9,37 @@ import {
   PermissionDeniedError,
 } from '../../src/bigquery/multi-project-manager.js';
 
-describeMP('MultiProjectManager', () => {
-  let manager: MultiProjectManager;
+/** Minimal shape of the Resource Manager request the manager issues. */
+type AuthRequestArgs = { url: string; method: string; data: { permissions: string[] } };
+type AuthResponse = { data: { permissions?: string[] } };
+type AuthRequestFn = (opts: AuthRequestArgs) => Promise<AuthResponse>;
+
+/**
+ * Manager with the IAM auth seam stubbed out.
+ *
+ * `getProjectPermissions` performs a real Cloud Resource Manager
+ * `testIamPermissions` call, so without this stub every test that touches
+ * permissions or project discovery would depend on ambient GCP credentials and
+ * network access. The stub answers from `grantedPermissions`, which each test
+ * sets to whatever IAM is supposed to confirm.
+ */
+class TestableManager extends MultiProjectManager {
+  /** Permissions the simulated IAM backend confirms the principal holds. */
+  public grantedPermissions: string[] = [];
+
+  public authRequest: jest.Mock<AuthRequestFn> = jest.fn<AuthRequestFn>(async (opts) => ({
+    data: {
+      permissions: opts.data.permissions.filter((perm) => this.grantedPermissions.includes(perm)),
+    },
+  }));
+
+  protected getAuthClient(): GoogleAuth {
+    return { request: this.authRequest } as unknown as GoogleAuth;
+  }
+}
+
+describe('MultiProjectManager', () => {
+  let manager: TestableManager;
   let mockProjects: ProjectConfig[];
 
   beforeEach(() => {
@@ -56,7 +84,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
 
       // Wait for initialization
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -73,7 +101,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const current = manager.getCurrentProject();
@@ -87,7 +115,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
 
       manager.on('initialization:completed', (data) => {
         expect(data.totalProjects).toBe(2);
@@ -114,7 +142,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
@@ -157,7 +185,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
@@ -190,7 +218,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
 
       const prodProjects = manager.listProjects({
         hasLabel: { env: 'prod' },
@@ -213,7 +241,7 @@ describeMP('MultiProjectManager', () => {
         },
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
@@ -271,23 +299,29 @@ describeMP('MultiProjectManager', () => {
         },
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should validate permissions', async () => {
+      // IAM confirms the principal genuinely holds the permission under test.
+      manager.grantedPermissions = ['bigquery.jobs.create'];
+
       const result = await manager.validatePermission('project-1', 'query', [
         'bigquery.jobs.create',
       ]);
 
-      expect(result.hasAccess).toBeDefined();
+      expect(result.hasAccess).toBe(true);
       expect(result.permissions).toBeInstanceOf(Array);
+      // Only IAM-confirmed permissions are ever reported.
+      expect(result.verified).toBe(true);
+      expect(result.permissions).toEqual(['bigquery.jobs.create']);
     });
 
     it('should throw on missing permissions', async () => {
-      // Mock the permission check to fail
-      const mockGetPermissions = jest.spyOn(manager as any, 'getProjectPermissions');
-      mockGetPermissions.mockResolvedValue([]);
+      // IAM answers, and answers "no": a positive denial, distinct from a
+      // check that could not be completed.
+      manager.grantedPermissions = [];
 
       await expect(
         manager.validatePermission('project-1', 'sensitive_operation', ['bigquery.admin'])
@@ -295,7 +329,12 @@ describeMP('MultiProjectManager', () => {
     });
 
     it('should cache permission results', async () => {
-      const spy = jest.spyOn(manager as any, 'getProjectPermissions');
+      manager.grantedPermissions = ['bigquery.jobs.create'];
+
+      const spy = jest.spyOn(
+        manager as unknown as { getProjectPermissions: (...args: unknown[]) => unknown },
+        'getProjectPermissions'
+      );
 
       // First call
       await manager.validatePermission('project-1', 'query', ['bigquery.jobs.create']);
@@ -303,8 +342,10 @@ describeMP('MultiProjectManager', () => {
       // Second call should use cache
       await manager.validatePermission('project-1', 'query', ['bigquery.jobs.create']);
 
-      // Should only fetch once, second time from cache
+      // Both validations consult getProjectPermissions...
       expect(spy).toHaveBeenCalledTimes(2);
+      // ...but the cache lives inside it, so IAM itself was only asked once.
+      expect(manager.authRequest).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -316,7 +357,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
@@ -346,20 +387,29 @@ describeMP('MultiProjectManager', () => {
       }
     });
 
-    it('should reset quotas daily', (done) => {
-      manager.on('quota:reset', (data) => {
-        expect(data.projectCount).toBeGreaterThan(0);
-        done();
+    it('should reset quotas daily', async () => {
+      const context = manager.getProjectContext('project-1');
+      context.quotaUsage!.queriesExecuted = 100;
+
+      const resetEvent = new Promise<{ projectCount: number }>((resolve) => {
+        manager.once('quota:reset', (data) => resolve(data as { projectCount: number }));
       });
 
-      // Trigger quota reset manually for testing
-      const context = manager.getProjectContext('project-1');
-      if (context.quotaUsage) {
-        context.quotaUsage.queriesExecuted = 100;
+      // The reset fires on a timer scheduled for midnight, so drive the clock
+      // there instead of waiting for it in real time.
+      jest.useFakeTimers();
+      try {
+        (manager as unknown as { startQuotaResetInterval: () => void }).startQuotaResetInterval();
+        jest.advanceTimersByTime(24 * 60 * 60 * 1000);
+      } finally {
+        jest.useRealTimers();
       }
 
-      // Simulate reset
-      (manager as any).startQuotaResetInterval();
+      const data = await resetEvent;
+
+      expect(data.projectCount).toBeGreaterThan(0);
+      // The reset must actually clear the counters, not merely announce itself.
+      expect(context.quotaUsage!.queriesExecuted).toBe(0);
     });
   });
 
@@ -371,7 +421,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
@@ -412,7 +462,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
@@ -433,8 +483,10 @@ describeMP('MultiProjectManager', () => {
       expect(context.displayName).toBe('New Project');
     });
 
-    it('should throw error when adding duplicate project', async () => {
-      await expect(manager.addProject(mockProjects[0])).rejects.toThrow('already exists');
+    it('should throw error when adding duplicate project', () => {
+      // addProject is synchronous, so a duplicate surfaces as a thrown error
+      // rather than a rejected promise.
+      expect(() => manager.addProject(mockProjects[0])).toThrow('already exists');
     });
 
     it('should remove project', async () => {
@@ -463,7 +515,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
@@ -498,7 +550,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
@@ -529,7 +581,7 @@ describeMP('MultiProjectManager', () => {
         autoDiscovery: false,
       };
 
-      manager = new MultiProjectManager(config);
+      manager = new TestableManager(config);
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 

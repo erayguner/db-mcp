@@ -15,6 +15,12 @@ import {
   buildWwwAuthenticateHeader,
   loadOAuthMetadataConfig,
 } from '../../auth/oauth-metadata.js';
+import {
+  ReadinessRegistry,
+  readinessRegistry,
+  type ReadinessResult,
+} from '../../monitoring/readiness.js';
+import { getPrometheusExporter } from '../../telemetry/metrics.js';
 
 /**
  * Zod schema for HTTP transport configuration — used by tests and validation.
@@ -55,6 +61,12 @@ export interface HttpTransportConfig {
   maxRequestBodyBytes: number;
   strictStreamableHttp: boolean;
   oauthMetadata: OAuthMetadataConfig | null;
+  /**
+   * Registry backing `/readiness` and `/health/ready`. Defaults to the
+   * process-wide registry, so server bootstrap can register dependency probes
+   * (see `registerBigQueryReadinessProbe`) without threading them through here.
+   */
+  readiness: ReadinessRegistry;
 }
 
 /** Default configuration values. */
@@ -70,6 +82,7 @@ const DEFAULT_CONFIG: HttpTransportConfig = {
   maxRequestBodyBytes: 1_048_576, // 1 MiB
   strictStreamableHttp: process.env.MCP_TRANSPORT_STRICT === 'streamable',
   oauthMetadata: loadOAuthMetadataConfig(),
+  readiness: readinessRegistry,
 };
 
 /**
@@ -132,8 +145,12 @@ type RequestWithAuth = IncomingMessage & { auth?: AuthInfo };
  * Provides:
  * - `POST /mcp`  MCP Streamable HTTP endpoint (single JSON-RPC request/response)
  * - `GET/DELETE /mcp`  405 (no standalone SSE / sessions in stateless mode)
- * - `GET /health`, `/readiness`  health probes
- * - `GET /metrics`  Prometheus scrape endpoint
+ * - `GET /health`, `/health/live`  liveness probe (dependency-free, always 200
+ *   while the process can run code — a failure here restarts the container)
+ * - `GET /readiness`, `/health/ready`  readiness probe (503 + failing check
+ *   names when a registered dependency probe fails)
+ * - `GET /metrics`  Prometheus scrape endpoint, serving the OpenTelemetry
+ *   Prometheus exporter's registry in text exposition format
  * - `GET /.well-known/oauth-*`  RFC 8414 + RFC 9728 discovery
  * - Host allow-list (DNS-rebinding defense), CORS/Origin enforcement, security
  *   headers, request-id injection, and graceful shutdown with in-flight drain.
@@ -335,25 +352,34 @@ export class StreamableHttpTransport {
    * Register all HTTP routes on the given Express app.
    */
   private registerRoutes(app: express.Application): void {
-    // Health / readiness probes + deployment-probe aliases.
-    const handleHealth = (_req: Request, res: Response): void => {
-      res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-    };
-    const handleReadiness = (_req: Request, res: Response): void => {
-      res.json({ ready: true, timestamp: new Date().toISOString() });
+    // --- Liveness probe + deployment alias ---
+    // Deliberately dependency-free: reaching this handler proves the event loop
+    // is turning and the process can serve HTTP, which is all liveness should
+    // assert. Failing liveness restarts the container, so a BigQuery outage
+    // must NOT surface here — it belongs on readiness, which merely drains the
+    // instance from the load balancer and self-heals when BigQuery recovers.
+    const handleLiveness = (_req: Request, res: Response): void => {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        status: 'healthy',
+        uptimeSeconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+      });
     };
 
-    app.get('/health', handleHealth);
-    app.get('/health/live', handleHealth);
+    // --- Readiness probe + deployment alias ---
+    const handleReadiness = (_req: Request, res: Response): void => {
+      void this.respondReadiness(res);
+    };
+
+    app.get('/health', handleLiveness);
+    app.get('/health/live', handleLiveness);
     app.get('/readiness', handleReadiness);
     app.get('/health/ready', handleReadiness);
 
-    // Prometheus metrics
-    app.get('/metrics', (_req: Request, res: Response) => {
-      res.json({
-        message: 'Metrics available via OpenTelemetry exporter',
-        activeConnections: this?.activeConnections ?? 0,
-      });
+    // --- Prometheus metrics ---
+    app.get('/metrics', (req: Request, res: Response) => {
+      this.handleMetrics(req, res);
     });
 
     // --- OAuth 2.0 discovery (RFC 8414 + RFC 9728) ---
@@ -406,6 +432,93 @@ export class StreamableHttpTransport {
       endpoints,
       oauthDiscovery: !!this.config.oauthMetadata,
     });
+  }
+
+  /**
+   * Evaluate registered readiness probes and answer the probe request.
+   *
+   * Ready responses are 200; a failed dependency yields 503 with the failing
+   * check names and their causes, so an operator (or an incident dashboard)
+   * can tell *why* an instance left the load balancer without reading logs.
+   *
+   * When no probes are registered the server has no dependency to report on and
+   * answers 200 — but says so explicitly in `note` rather than implying that
+   * dependencies were verified.
+   */
+  private async respondReadiness(res: Response): Promise<void> {
+    res.setHeader('Cache-Control', 'no-store');
+
+    const registry = this.config.readiness;
+
+    if (registry.size === 0) {
+      res.status(200).json({
+        ready: true,
+        checks: [],
+        note: 'No readiness probes registered; dependency health is unverified.',
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // `check()` absorbs probe failures and timeouts into the result, so a
+    // throw here would mean the registry itself is broken — still not-ready.
+    let result: ReadinessResult;
+    try {
+      result = await registry.check();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Readiness evaluation failed', { error: message });
+      res.status(503).json({
+        ready: false,
+        checks: [],
+        failed: ['readiness-evaluation'],
+        error: message,
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const failed = result.checks.filter((check) => !check.ok);
+
+    if (!result.ready) {
+      logger.warn('Readiness probe reporting not ready', {
+        failed: failed.map((check) => check.name),
+      });
+    }
+
+    res.status(result.ready ? 200 : 503).json({
+      ready: result.ready,
+      checks: result.checks,
+      failed: failed.map((check) => check.name),
+      cached: result.cached,
+      timestamp: result.checkedAt,
+    });
+  }
+
+  /**
+   * Serve the OpenTelemetry Prometheus exporter's registry in Prometheus text
+   * exposition format (`text/plain; version=0.0.4`).
+   *
+   * The exporter is constructed with `preventServerStart: true` so it does not
+   * bind its own port; this route is the mount point it expects. Metric
+   * definitions live in the telemetry layer — this endpoint only exposes them.
+   *
+   * Before telemetry is initialised there is no registry to scrape, which is a
+   * scrape failure rather than an empty result, so it answers 503.
+   */
+  private handleMetrics(req: Request, res: Response): void {
+    // Guarded: some test suites mock the telemetry module without this export.
+    const exporter = typeof getPrometheusExporter === 'function' ? getPrometheusExporter() : null;
+
+    if (!exporter) {
+      res
+        .status(503)
+        .type('text/plain; version=0.0.4; charset=utf-8')
+        .send('# Prometheus metrics unavailable: telemetry is not initialised\n');
+      return;
+    }
+
+    exporter.getMetricsRequestHandler(req as IncomingMessage, res as ServerResponse);
   }
 
   /**

@@ -13,7 +13,7 @@ This document tracks the MCP protocol compliance of this BigQuery MCP server aga
 
 | Recommendation                                 | Chapter | Status | Implementation                                                                                                                       |
 | ---------------------------------------------- | ------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Tool providers with composability              | Ch 4, 6 | DONE   | `src/mcp/tools/definitions.ts` — 4 tools with Zod schemas, annotations, output schemas                                               |
+| Tool providers with composability              | Ch 4, 6 | DONE   | `src/mcp/tools/definitions.ts` — 5 tools with Zod schemas, annotations, output schemas                                               |
 | Resource providers (browse data)               | Ch 4, 6 | DONE   | `src/index.ts` — `list_resources`/`read_resource` with `bigquery://` URIs                                                            |
 | Prompt providers (AI guidance)                 | Ch 4, 6 | DONE   | `src/mcp/handlers/prompt-handlers.ts` — 5 BigQuery-specific prompt templates                                                         |
 | Security interfaces                            | Ch 4    | DONE   | `src/security/middleware.ts` — auth, rate limit, injection detection, audit                                                          |
@@ -21,8 +21,9 @@ This document tracks the MCP protocol compliance of this BigQuery MCP server aga
 | Client features (sampling, roots, elicitation) | Ch 4    | N/A    | Client-side features, not server responsibility                                                                                      |
 | Streamable HTTP transport                      | Ch 5, 9 | DONE   | `src/mcp/transports/http-transport.ts` — official MCP SDK `StreamableHTTPServerTransport`, stateless (POST `/mcp`; GET/DELETE → 405) |
 | JSON-RPC message format                        | Ch 5    | DONE   | MCP SDK handles JSON-RPC 2.0 framing                                                                                                 |
-| Session management                             | Ch 7    | DONE   | `src/mcp/handlers/session-manager.ts` — multi-turn session tracking                                                                  |
+| Session management                             | Ch 7    | N/A    | Transport is stateless (`sessionIdGenerator: undefined`); per-session server state would be meaningless                              |
 | Capability negotiation                         | Ch 5    | DONE   | MCP SDK handles during connection init                                                                                               |
+| Logging capability                             | Ch 5    | DONE   | `src/index.ts` — `logging/setLevel` handler + `notifications/message` for security refusals                                          |
 
 ### Part 3: Security & Performance (Ch 8-9)
 
@@ -34,7 +35,7 @@ This document tracks the MCP protocol compliance of this BigQuery MCP server aga
 | Context-aware authorization        | Ch 8    | DONE   | `src/tenancy/dataset-policy.ts` — SQL-level dataset enforcement                                                |
 | Rate limiting                      | Ch 8    | DONE   | `src/security/middleware.ts` — per-user/tool with configurable windows                                         |
 | Prompt injection detection         | Ch 8    | DONE   | Pattern-based detection + sanitization                                                                         |
-| Data minimization (column masking) | Ch 8    | DONE   | `src/security/column-masking.ts` — per-tenant column rules                                                     |
+| Data minimization (column masking) | Ch 8    | DONE   | `src/security/column-masking.ts`, applied via `TenantContext` in the query path and the `…/sample` resource    |
 | Data lineage & provenance          | Ch 8    | DONE   | All tool responses include `provenance` metadata                                                               |
 | Comprehensive audit logging        | Ch 8    | DONE   | `src/auth/audit-logger.ts` — 20+ event types, Cloud Logging                                                    |
 | Behavioral anomaly detection       | Ch 8    | DONE   | `src/security/anomaly-detector.ts` — per-user baselines                                                        |
@@ -44,7 +45,7 @@ This document tracks the MCP protocol compliance of this BigQuery MCP server aga
 | Intelligent caching                | Ch 9    | DONE   | `src/bigquery/query-cache.ts` — LRU + TTL + size-based eviction                                                |
 | Streaming / progressive results    | Ch 9    | DONE   | SDK Streamable HTTP supports per-request SSE; this server returns single JSON responses (`enableJsonResponse`) |
 | Request batching                   | Ch 9    | N/A    | Removed from the MCP spec in revision 2025-06-18; the SDK transport rejects JSON-RPC batch arrays              |
-| Response compression               | Ch 9    | DONE   | gzip negotiated at the Cloud Run / load-balancer edge                                                          |
+| Response compression               | Ch 9    | DONE   | gzip negotiated at the Cloud Run / load-balancer edge (no application-level compression middleware)            |
 | Distributed tracing                | Ch 9    | DONE   | `src/telemetry/tracing.ts` — OpenTelemetry + Cloud Trace                                                       |
 | Adaptive resource allocation       | Ch 9    | DONE   | Connection pool auto-scales min→max connections                                                                |
 | Graceful degradation               | Ch 9    | DONE   | `src/bigquery/graceful-degradation.ts` — circuit breaker + stale cache                                         |
@@ -61,12 +62,12 @@ This document tracks the MCP protocol compliance of this BigQuery MCP server aga
 
 ### Part 6: Evaluation & Optimization (Ch 17-19)
 
-| Recommendation                     | Chapter  | Status | Implementation                                          |
-| ---------------------------------- | -------- | ------ | ------------------------------------------------------- |
-| Intelligence effectiveness metrics | Ch 9, 18 | DONE   | `src/monitoring/effectiveness-metrics.ts`               |
-| Performance benchmarking           | Ch 18    | DONE   | Health monitor tracks latency, error rates, cache rates |
-| Continuous monitoring              | Ch 19    | DONE   | `src/monitoring/health-monitor.ts` — auto health checks |
-| Performance profiling              | Ch 9     | DONE   | OpenTelemetry tracing + MCP metrics                     |
+| Recommendation                     | Chapter  | Status | Implementation                                                         |
+| ---------------------------------- | -------- | ------ | ---------------------------------------------------------------------- |
+| Intelligence effectiveness metrics | Ch 9, 18 | DONE   | `src/monitoring/effectiveness-metrics.ts`                              |
+| Performance benchmarking           | Ch 18    | DONE   | `src/bigquery/query-metrics.ts` — latency, error rates, cache rates    |
+| Continuous monitoring              | Ch 19    | DONE   | `src/monitoring/readiness.ts` + `/readiness`, `/metrics` scrape target |
+| Performance profiling              | Ch 9     | DONE   | OpenTelemetry tracing + MCP metrics                                    |
 
 ---
 
@@ -80,9 +81,9 @@ This document tracks the MCP protocol compliance of this BigQuery MCP server aga
                     ┌──────────────▼──────────────────────────────┐
                     │         Transport Layer                      │
                     │   ┌─────────┐  ┌──────────────────────┐    │
-                    │   │  stdio  │  │  Streamable HTTP/SSE  │    │
+                    │   │  stdio  │  │  Streamable HTTP      │    │
                     │   └─────────┘  └──────────────────────┘    │
-                    │   Request Batching │ Compression            │
+                    │   Stateless │ Edge gzip                     │
                     └──────────────┬──────────────────────────────┘
                                    │
                     ┌──────────────▼──────────────────────────────┐
@@ -107,13 +108,13 @@ This document tracks the MCP protocol compliance of this BigQuery MCP server aga
   ┌───────▼────────────────────────▼──────────────────────┐
   │              BigQuery Layer                            │
   │   Connection Pool → Query Cache → Graceful Degradation│
-  │   Progress Notifications → Session Tracking           │
+  │   Progress Notifications                              │
   └───────────────────────┬───────────────────────────────┘
                           │
   ┌───────────────────────▼───────────────────────────────┐
   │              Observability Layer                       │
-  │   OpenTelemetry Tracing → Prometheus Metrics →        │
-  │   Health Monitor → Effectiveness Metrics →            │
+  │   OpenTelemetry Tracing → Prometheus /metrics →       │
+  │   Readiness Probes → Effectiveness Metrics →          │
   │   Behavioral Anomaly Alerts                           │
   └───────────────────────────────────────────────────────┘
 ```
@@ -151,7 +152,9 @@ JSON-RPC batch arrays (batching was removed from the spec in 2025-06-18).
 - **POST /mcp** — single JSON-RPC request → single JSON-RPC response (`enableJsonResponse`)
 - **GET /mcp**, **DELETE /mcp** — `405 Method Not Allowed` with `Allow: POST` (no standalone SSE / sessions in stateless
   mode)
-- **GET /health**, **/readiness** — health probes
+- **GET /health**, **/health/live** — liveness probe (dependency-free, always 200 while the process runs)
+- **GET /readiness**, **/health/ready** — readiness probe (503 naming the failing dependency)
+- **GET /metrics** — Prometheus text exposition format (503 when telemetry is uninitialised)
 - **GET /.well-known/oauth-authorization-server** — RFC 8414 metadata (when `OAUTH_*` env vars set)
 - **GET /.well-known/oauth-protected-resource** — RFC 9728 metadata (when `OAUTH_*` env vars set)
 - Host allow-list (DNS-rebinding defense), CORS / Origin enforcement, security headers
@@ -177,11 +180,16 @@ Enterprise) discover and parameterize without the server enumerating every datas
 | `bigquery://datasets/{datasetId}/tables/{tableId}`          | Full table metadata                           |
 | `bigquery://datasets/{datasetId}/tables/{tableId}/schema`   | Schema-only view (cheap)                      |
 | `bigquery://datasets/{datasetId}/tables/{tableId}/sample`   | Up to 10 preview rows                         |
-| `bigquery://jobs/{jobId}`                                   | Query job result handle                       |
+| `bigquery://jobs/{jobId}`                                   | Job metadata: state, timing, bytes, cache hit |
 | `bigquery://datasets/{datasetId}/information_schema/{view}` | INFORMATION_SCHEMA browse (whitelisted views) |
 
 Identifier validation prevents SQL injection via path parameters; INFORMATION_SCHEMA view names are checked against an
 allow-list (`TABLES`, `COLUMNS`, `VIEWS`, …).
+
+`bigquery://jobs/{jobId}` is backed by `BigQueryClient.getJob()` and returns job metadata only — `jobId`, `state`,
+`startTime`, `endTime`, `durationMs`, `totalBytesProcessed`, `cacheHit`, `error`. It does **not** return result rows.
+Absent BigQuery counters are omitted rather than defaulted to zero. This template was previously advertised but always
+threw on read.
 
 ### 2c. Cost Elicitation Gate
 
@@ -208,26 +216,39 @@ Tunables:
 
 **File**: `src/mcp/handlers/progress-notifier.ts`
 
-Long-running BigQuery operations emit progress updates:
+Clients opt in by including `_meta.progressToken` in the request. The `CallToolRequestSchema` handler reads that token
+and, when present, creates a tracker; when absent it takes a fast path with no tracker at all.
+
+Progress is emitted generically at the dispatch layer, so every tool behaves identically — it is not per-tool. The
+emitted sequence is:
 
 ```
-queued → running → processing (bytes) → complete/error
+running → complete    (or: running → error)
 ```
 
-Clients include a `_meta.progressToken` in their request to opt in. The server sends `notifications/progress` messages
-during execution.
+`notifications/progress` params are `{ progressToken, progress, message }`.
 
-### 4. Session Management
+> **Note:** `ProgressNotifier` also exposes `queued()` and `processing(bytes, total)`, but neither is called on the
+> current dispatch path, so no byte-level progress is reported. The messages `'Queued — waiting for BigQuery slot'` and
+> `'Processing — …'` are therefore never emitted.
 
-**File**: `src/mcp/handlers/session-manager.ts`
+### 4. MCP Logging
 
-Multi-turn session tracking:
+**File**: `src/index.ts` (`SetLevelRequestSchema` handler, `sendMcpLog()`)
 
-- Auto-created on first tool call
-- Tracks query history, bytes processed, tool call count
-- Session context shared across tool calls
-- Auto-cleanup after 1h idle
-- Max 1000 concurrent sessions
+The advertised `logging` capability is backed by a real handler. `logging/setLevel` accepts the full RFC 5424 set —
+`debug`, `info`, `notice`, `warning`, `error`, `critical`, `alert`, `emergency` — defaulting to `info`. Messages below
+the current threshold are dropped.
+
+Two security refusals emit `notifications/message` at level `warning` with logger `bigquery-mcp`:
+
+| Trigger                          | `data` payload                                                        |
+| -------------------------------- | --------------------------------------------------------------------- |
+| Security middleware rejection    | `{ event: 'security_validation_failed', tool, reason, requestId }`    |
+| Tenant tool allow-list rejection | `{ event: 'tool_blocked_by_tenant_policy', tool, tenant, requestId }` |
+
+> **Stateless caveat:** the log level is process-wide, not per-session. Because the HTTP transport is stateless, one
+> client calling `logging/setLevel` changes the threshold for every client on that instance.
 
 ### 5. Argument Completion
 
@@ -266,14 +287,29 @@ columnMasking:
       maskType: hash # SHA-256 hash (preserves referential integrity)
 ```
 
-Mask types: `redact`, `hash`, `partial`, `nullify`
+Mask types: `redact` (`[REDACTED]`), `hash` (SHA-256 hex, preserves referential integrity), `partial` (`j***@domain`,
+`****1234`), `nullify` (`null`). Unset `maskType` defaults to `redact`; masking is disabled by default.
+
+Masking is applied through `TenantContext.masking` in two places: query result rows in `QueryBigQueryHandler`, and the
+`bigquery://datasets/{d}/tables/{t}/sample` resource. Columns actually altered are reported in
+`provenance.maskedColumns` — the field is omitted when nothing was masked, so its absence is a truthful signal rather
+than an ambiguous empty array.
+
+**Multi-table over-masking.** For a query touching several tables, rules from _every_ referenced table are unioned
+before matching column names. A join between a table with a rule on `email` and one without still masks `email`. This is
+deliberate: attributing an output column back to its source table is not possible without a full SQL parser, and
+guessing wrong would leak the value the rule exists to protect. Over-masking is the safe failure direction.
+
+Table references are extracted by a lexical regex scan (`DatasetPolicy.extractTableReferences`), not a parser, so it
+cannot resolve CTEs, aliases, or dynamic SQL. If no references can be extracted at all, every rule is applied by column
+name alone — again failing toward more masking.
+
+> **Caveat:** masking is skipped when no tenant context is resolved (unauthenticated / no-tenant mode). It is a
+> pass-through in that path, not a deny. The `information_schema` resource also returns rows unmasked.
 
 ### 7. Response Compression
 
-**File**: `src/mcp/middleware/compression.ts`
-
-Gzip compression for tool results exceeding 1KB. Enabled by default in HTTP transport. Reduces bandwidth for large query
-result sets.
+Gzip is negotiated at the Cloud Run / load-balancer edge. There is no application-level compression middleware.
 
 ### 8. Behavioral Anomaly Detection
 
@@ -319,24 +355,108 @@ When BigQuery is unavailable:
 2. If no cache, return structured error with retry guidance
 3. Auto-recover when BigQuery comes back
 
+### 11. Tool Output Schemas
+
+**File**: `src/mcp/schemas/output-schemas.ts`
+
+The query tools declare a **union of three response shapes**, because a query call can legitimately return any of them:
+
+| Shape                 | Identified by                                                          |
+| --------------------- | ---------------------------------------------------------------------- |
+| Executed              | `rowCount`, `rows`, `jobId`, `executionTimeMs`                         |
+| Dry run               | `dryRun: true`                                                         |
+| Confirmation required | `status: 'requires_confirmation'`, `reason: 'cost_threshold_exceeded'` |
+
+Both `query_bigquery` and `execute_query` use this union. Previously only the executed shape was declared, so every
+dry-run and cost-gated response violated the tool's own advertised schema.
+
+Errors deliberately emit **no** `structuredContent`, since an error conforms to none of the three shapes.
+
+### 12. Tool Annotations (tenant-aware)
+
+**File**: `src/mcp/tools/annotations.ts`
+
+Annotations for the two SQL-executing tools depend on the calling tenant's write mode, because clients use
+`readOnlyHint` to decide whether a call can be auto-approved without prompting the user. Advertising a tool as read-only
+when the tenant can in fact issue DML would let a destructive statement through unprompted.
+
+| Tenant `writeMode`     | `readOnlyHint` | `destructiveHint` |
+| ---------------------- | -------------- | ----------------- |
+| `blocked` (default)    | `true`         | `false`           |
+| `protected`, `allowed` | `false`        | `true`            |
+
+Affects `query_bigquery` and `execute_query` only. The three metadata tools (`list_datasets`, `list_tables`,
+`get_table_schema`) are always `readOnlyHint: true`, `idempotentHint: true`. With no tenant resolved the hints fall back
+to the safe read-only form.
+
+### 13. Tool Descriptions
+
+**File**: `src/index.ts` (`TOOL_DESCRIPTIONS`)
+
+Descriptions are written for LLM tool selection rather than as identifiers:
+
+| Tool               | Description (first sentence)                                                          |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `query_bigquery`   | Run a GoogleSQL query against BigQuery and return the result rows.                    |
+| `execute_query`    | Deprecated alias for `query_bigquery` with identical behaviour and parameters.        |
+| `list_datasets`    | List BigQuery datasets the caller is allowed to access, with location and timestamps. |
+| `list_tables`      | List the tables in one dataset, including row counts and byte sizes where available.  |
+| `get_table_schema` | Get the column names, types and modes for one table, plus optional table metadata.    |
+
+`execute_query` is retained only for backward compatibility with existing clients; prefer `query_bigquery`.
+
+---
+
+## Breaking Changes
+
+### Large result responses
+
+Queries returning **more than 1000 rows** previously responded with `{ totalItems, chunks, items }`, a shape that
+matched no declared output schema. They now return the standard executed shape:
+
+```json
+{
+  "rowCount": 5000,
+  "rows": [],
+  "jobId": "job_abc123",
+  "executionTimeMs": 1420
+}
+```
+
+Chunk information moved to `_meta`, which is metadata rather than tool output and so is not schema-constrained:
+
+```json
+{
+  "_meta": {
+    "streaming": true,
+    "chunks": 50,
+    "totalItems": 5000,
+    "timestamp": "2026-07-18T12:00:00.000Z"
+  }
+}
+```
+
+Clients reading `items` must switch to `rows`, and `totalItems` to `rowCount` (or `_meta.totalItems`).
+
+> Note that `rows` carries the full result set — `chunks` is advisory metadata, not pagination. Nothing is truncated.
+
 ---
 
 ## Configuration Reference
 
 ### Environment Variables
 
-| Variable                        | Default   | Description                         |
-| ------------------------------- | --------- | ----------------------------------- |
-| `MCP_TRANSPORT`                 | `stdio`   | Transport: `stdio` or `http`        |
-| `MCP_HTTP_PORT`                 | `8080`    | HTTP transport listen port          |
-| `MCP_HTTP_HOST`                 | `0.0.0.0` | HTTP transport bind address         |
-| `MCP_ENABLE_PROMPTS`            | `true`    | Enable prompt providers             |
-| `MCP_ENABLE_SESSIONS`           | `true`    | Enable session management           |
-| `MCP_ENABLE_COMPRESSION`        | `true`    | Enable response compression         |
-| `MCP_ENABLE_ANOMALY_DETECTION`  | `true`    | Enable behavioral anomaly detection |
-| `MCP_SESSION_TTL_MS`            | `3600000` | Session timeout (1h)                |
-| `MCP_CIRCUIT_BREAKER_THRESHOLD` | `5`       | Failures before circuit opens       |
-| `MCP_STALE_CACHE_MAX_AGE_MS`    | `1800000` | Max stale cache age (30min)         |
+| Variable                        | Default   | Description                                    |
+| ------------------------------- | --------- | ---------------------------------------------- |
+| `MCP_TRANSPORT`                 | `stdio`   | Transport: `stdio` or `http`                   |
+| `MCP_TRANSPORT_STRICT`          | unset     | Set to `streamable` for strict Streamable HTTP |
+| `MCP_HTTP_PORT`                 | `8080`    | HTTP transport listen port                     |
+| `MCP_HTTP_HOST`                 | `0.0.0.0` | HTTP transport bind address                    |
+| `MCP_HTTP_RATE_LIMIT_MAX`       | `600`     | Requests per minute on `/mcp`                  |
+| `MCP_AUTH_REQUIRED`             | unset     | Require OIDC authentication on the HTTP path   |
+| `MCP_CIRCUIT_BREAKER_THRESHOLD` | `5`       | Failures before circuit opens                  |
+| `MCP_CIRCUIT_BREAKER_RESET_MS`  | `60000`   | Circuit auto-reset delay                       |
+| `MCP_STALE_CACHE_MAX_AGE_MS`    | `1800000` | Max stale cache age (30min)                    |
 
 ### Tenant Column Masking
 
@@ -375,10 +495,11 @@ columnMasking:
      --set-env-vars MCP_TRANSPORT=http,MCP_HTTP_PORT=8080
    ```
 
-4. Verify health:
+4. Verify the probes:
 
    ```bash
-   curl https://SERVICE_URL/health
+   curl https://SERVICE_URL/health      # liveness — 200 while the process runs
+   curl https://SERVICE_URL/readiness   # readiness — 503 if BigQuery is unreachable
    ```
 
 5. Test MCP endpoint:
@@ -408,15 +529,8 @@ jsonPayload.anomaly=true
 
 If BigQuery is down and circuit is open:
 
-1. Check `/health` — will show `degraded` status
+1. Check `/readiness` — returns `503` with `failed: ["bigquery"]` and the underlying cause. `/health` stays `200`; that
+   is correct, since restarting the container cannot fix an upstream outage.
 2. Check logs for `circuit_breaker_opened` events
 3. Circuit auto-resets after 60s (configurable via `MCP_CIRCUIT_BREAKER_RESET_MS`)
 4. Manual reset: call the server's `reset()` method or restart
-
-### Session Cleanup
-
-Sessions auto-expire after 1h idle. If memory pressure is high:
-
-- Reduce `MCP_SESSION_TTL_MS`
-- Sessions are capped at 1000 concurrent
-- Monitor via effectiveness metrics `averageCallsPerSession`

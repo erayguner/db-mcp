@@ -40,14 +40,17 @@ export const BigQueryClientConfigSchema = z.object({
       healthCheckIntervalMs: z.number().min(1000).default(60000),
       maxRetries: z.number().min(0).default(3),
       retryDelayMs: z.number().min(100).default(1000),
+      // Keep in sync with ConnectionPoolConfigSchema.
+      shutdownDrainTimeoutMs: z.number().min(0).default(30000),
     })
     .default({}),
   datasetManager: z
     .object({
-      cacheSize: z.number().min(10).default(100),
-      cacheTTLMs: z.number().min(1000).default(3600000),
+      // Keep these bounds in sync with DatasetManagerConfigSchema.
+      cacheSize: z.number().min(1).default(100),
+      cacheTTLMs: z.number().min(1).default(3600000),
       autoDiscovery: z.boolean().default(true),
-      discoveryIntervalMs: z.number().min(60000).default(300000),
+      discoveryIntervalMs: z.number().min(1).default(300000),
     })
     .default({}),
   retry: z
@@ -79,6 +82,50 @@ export interface QueryOptions extends Query {
   maxRetries?: number;
 }
 
+/** Metadata for a BigQuery job, as surfaced by `bigquery://jobs/{jobId}`. */
+export interface JobInfo {
+  jobId: string;
+  state: string;
+  startTime?: string;
+  endTime?: string;
+  durationMs?: number;
+  totalBytesProcessed?: string;
+  cacheHit?: boolean;
+  error?: string;
+}
+
+/**
+ * A single stage of a BigQuery query execution plan.
+ *
+ * Every numeric field is optional on purpose: BigQuery omits counters it did
+ * not measure, and an omitted counter must stay `undefined` rather than being
+ * defaulted to `0`, which a caller would read as a measured zero.
+ */
+export interface QueryPlanStage {
+  id?: string;
+  name: string;
+  status?: string;
+  slotMs?: number;
+  recordsRead?: number;
+  recordsWritten?: number;
+  steps: string[];
+}
+
+/**
+ * A BigQuery query execution plan, as reported by the job's statistics.
+ *
+ * A plan only exists for a job BigQuery actually executed. Dry runs, and jobs
+ * fully served from cache, report no stages — in that case `stages` is empty
+ * and `totalSlotMs` is `undefined`. Neither is a measurement of zero.
+ */
+export interface QueryPlan {
+  jobId: string;
+  stages: QueryPlanStage[];
+  totalSlotMs?: number;
+  totalBytesProcessed?: string;
+  cacheHit?: boolean;
+}
+
 export interface QueryResult<T = Record<string, unknown>> {
   rows: T[];
   totalRows: number;
@@ -88,6 +135,23 @@ export interface QueryResult<T = Record<string, unknown>> {
   totalBytesProcessed?: string;
   totalSlotMs?: string;
   executionTimeMs: number;
+}
+
+/**
+ * Build `{ key: n }` from a BigQuery counter, or `{}` when the API did not
+ * report it. Spreading the result keeps unreported counters absent from the
+ * object entirely, instead of coercing a missing value into a fabricated `0`.
+ */
+function toOptionalNumber<K extends string>(
+  key: K,
+  value: string | number | null | undefined
+): Partial<Record<K, number>> {
+  if (value === undefined || value === null || value === '') {
+    return {};
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? ({ [key]: parsed } as Record<K, number>) : {};
 }
 
 export class BigQueryClientError extends Error {
@@ -320,6 +384,89 @@ export class BigQueryClient extends EventEmitter {
   }
 
   /**
+   * Fetch metadata for a previously submitted query job.
+   *
+   * Backs the `bigquery://jobs/{jobId}` resource template, which was advertised
+   * but always failed because this method did not exist.
+   */
+  public async getJob(jobId: string): Promise<JobInfo> {
+    const client = await this.connectionPool.acquire();
+
+    try {
+      const job = client.job(jobId);
+      const metadataResponse = await job.getMetadata();
+      const metadata = metadataResponse[0] as JobMetadata;
+      const stats = metadata.statistics;
+      const query = stats?.query;
+
+      const startMs = stats?.startTime ? Number(stats.startTime) : undefined;
+      const endMs = stats?.endTime ? Number(stats.endTime) : undefined;
+
+      return {
+        jobId,
+        state: (metadata as { status?: { state?: string } }).status?.state ?? 'UNKNOWN',
+        ...(startMs !== undefined ? { startTime: new Date(startMs).toISOString() } : {}),
+        ...(endMs !== undefined ? { endTime: new Date(endMs).toISOString() } : {}),
+        ...(startMs !== undefined && endMs !== undefined ? { durationMs: endMs - startMs } : {}),
+        ...(query?.totalBytesProcessed !== undefined
+          ? { totalBytesProcessed: String(query.totalBytesProcessed) }
+          : {}),
+        ...(query?.cacheHit !== undefined ? { cacheHit: Boolean(query.cacheHit) } : {}),
+        ...((metadata as { status?: { errorResult?: { message?: string } } }).status?.errorResult
+          ? {
+              error: (metadata as { status?: { errorResult?: { message?: string } } }).status!
+                .errorResult!.message,
+            }
+          : {}),
+      };
+    } finally {
+      this.connectionPool.release(client);
+    }
+  }
+
+  /**
+   * Fetch the real execution plan for a previously executed query job.
+   *
+   * Reads `statistics.query.queryPlan` from the job metadata. Counters BigQuery
+   * did not report are left `undefined` rather than zero-filled, so a caller can
+   * always tell "not measured" from "measured as zero".
+   */
+  public async getQueryPlan(jobId: string): Promise<QueryPlan> {
+    const client = await this.connectionPool.acquire();
+
+    try {
+      const job = client.job(jobId);
+      const metadataResponse = await job.getMetadata();
+      const metadata = metadataResponse[0] as JobMetadata;
+      const queryStats = metadata.statistics?.query;
+
+      const stages: QueryPlanStage[] = (queryStats?.queryPlan ?? []).map((stage) => ({
+        ...(stage.id !== undefined ? { id: String(stage.id) } : {}),
+        name: stage.name ?? 'unnamed stage',
+        ...(stage.status !== undefined ? { status: stage.status } : {}),
+        ...toOptionalNumber('slotMs', stage.slotMs),
+        ...toOptionalNumber('recordsRead', stage.recordsRead),
+        ...toOptionalNumber('recordsWritten', stage.recordsWritten),
+        steps: (stage.steps ?? []).flatMap((step) =>
+          step.substeps?.length ? step.substeps : step.kind ? [step.kind] : []
+        ),
+      }));
+
+      return {
+        jobId,
+        stages,
+        ...toOptionalNumber('totalSlotMs', queryStats?.totalSlotMs),
+        ...(queryStats?.totalBytesProcessed !== undefined
+          ? { totalBytesProcessed: String(queryStats.totalBytesProcessed) }
+          : {}),
+        ...(queryStats?.cacheHit !== undefined ? { cacheHit: Boolean(queryStats.cacheHit) } : {}),
+      };
+    } finally {
+      this.connectionPool.release(client);
+    }
+  }
+
+  /**
    * Get dataset metadata with caching
    */
   public async getDataset(datasetId: string, projectId?: string): Promise<DatasetMetadata> {
@@ -414,7 +561,11 @@ export class BigQueryClient extends EventEmitter {
     try {
       const client = await this.connectionPool.acquire();
       try {
-        await client.getDatasets({ maxResults: 1 });
+        // Probe with a dry-run `SELECT 1`, matching ConnectionPool's health
+        // check. Listing datasets only exercises metadata access: a principal
+        // holding bigquery.datasets.list but not bigquery.jobs.create would be
+        // reported healthy while every actual query fails.
+        await client.createQueryJob({ query: 'SELECT 1', dryRun: true });
         return true;
       } finally {
         this.connectionPool.release(client);

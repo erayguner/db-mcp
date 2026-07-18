@@ -1,8 +1,50 @@
 import { z } from 'zod';
 import { EventEmitter } from 'events';
+import { GoogleAuth } from 'google-auth-library';
 import { BigQueryClient, BigQueryClientInputConfig, QueryResult } from './client.js';
 import { ConnectionPool } from './connection-pool.js';
 import { DatasetManager, DatasetMetadata } from './dataset-manager.js';
+
+/**
+ * Cloud Resource Manager v3 endpoint used to perform a *real* IAM permission
+ * check against a GCP project.
+ *
+ * `projects.testIamPermissions` returns the subset of the requested permissions
+ * that the calling principal actually holds. This is the authoritative answer
+ * from IAM - it is never inferred, guessed, or extrapolated from an unrelated
+ * signal such as a successful dry-run query.
+ *
+ * @see https://cloud.google.com/resource-manager/reference/rest/v3/projects/testIamPermissions
+ */
+const RESOURCE_MANAGER_BASE_URL = 'https://cloudresourcemanager.googleapis.com/v3';
+
+/** OAuth scope required by projects.testIamPermissions. */
+const IAM_TEST_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
+
+/** Resource Manager rejects requests carrying more than 100 permissions. */
+const MAX_PERMISSIONS_PER_IAM_REQUEST = 100;
+
+/**
+ * GCP project IDs are 6-30 chars: lowercase letter first, then lowercase
+ * letters, digits or hyphens. Validated before interpolation into the request
+ * URL so a hostile project ID cannot escape the path segment.
+ */
+const PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
+/**
+ * Baseline BigQuery permissions probed during project discovery.
+ *
+ * This is only the set of permissions we *ask IAM about*. Which of them are
+ * reported as held is decided entirely by IAM's response.
+ */
+export const DEFAULT_BIGQUERY_PROBE_PERMISSIONS: readonly string[] = [
+  'bigquery.jobs.create',
+  'bigquery.datasets.get',
+  'bigquery.datasets.create',
+  'bigquery.tables.list',
+  'bigquery.tables.get',
+  'bigquery.tables.getData',
+];
 
 /**
  * Zod Schemas for Multi-Project Manager
@@ -169,12 +211,62 @@ export interface QuotaUsage {
   };
 }
 
+/**
+ * Outcome of a permission check. These three states are deliberately distinct:
+ * a caller must never confuse "IAM says no" with "we could not ask IAM".
+ *
+ * - `verified`   - IAM answered. `granted`/`denied` are facts.
+ * - `unverified` - the IAM call failed (network, auth, API disabled, ...).
+ *                  Nothing is known. `granted` is ALWAYS empty. Callers must
+ *                  fail closed.
+ * - `disabled`   - permission validation is switched off in configuration.
+ *                  Nothing was checked. `granted` is ALWAYS empty.
+ */
+export type PermissionCheckStatus = 'verified' | 'unverified' | 'disabled';
+
+/**
+ * Result of asking IAM about a specific set of permissions.
+ *
+ * INVARIANT: `granted` only ever contains permissions that IAM explicitly
+ * confirmed. When `status !== 'verified'` it is always empty.
+ */
+export interface PermissionCheckOutcome {
+  status: PermissionCheckStatus;
+  /** Permissions we asked IAM about. */
+  requested: string[];
+  /** Permissions IAM confirmed the principal holds. Empty unless verified. */
+  granted: string[];
+  /** Requested permissions IAM confirmed the principal lacks. Empty unless verified. */
+  denied: string[];
+  /** True only for `status === 'verified'`. Convenience for fail-closed guards. */
+  verified: boolean;
+  checkedAt: Date;
+  /** Present only for verified results; when the cached answer goes stale. */
+  expiresAt?: Date;
+  /** Whether this outcome was served from the verified-results cache. */
+  fromCache: boolean;
+  /** Human-readable explanation, primarily for `unverified`/`disabled`. */
+  reason?: string;
+  /** Underlying failure for `status === 'unverified'`. */
+  error?: Error;
+}
+
 export interface PermissionValidationResult {
   hasAccess: boolean;
+  /** Which of the three check states produced this result. */
+  status: PermissionCheckStatus;
+  /**
+   * True only when IAM was actually consulted and answered. When false, the
+   * `permissions` array carries no assertion of real access.
+   */
+  verified: boolean;
+  /** IAM-confirmed permissions only. Empty unless `verified` is true. */
   permissions: string[];
   missingPermissions?: string[];
   validatedAt: Date;
   expiresAt: Date;
+  /** Explanation for non-verified outcomes. */
+  reason?: string;
 }
 
 export interface CrossProjectQueryOptions {
@@ -187,7 +279,16 @@ export interface ProjectDiscoveryResult {
   projectId: string;
   accessible: boolean;
   datasets: DatasetMetadata[];
+  /**
+   * IAM-confirmed permissions only. Empty when `permissionStatus` is not
+   * `verified` - an empty array here NEVER means "definitively has nothing",
+   * check `permissionStatus` to tell the cases apart.
+   */
   permissions: string[];
+  /** Distinguishes verified / unverified (check failed) / disabled. */
+  permissionStatus: PermissionCheckStatus;
+  /** Populated when the IAM check itself failed. */
+  permissionError?: Error;
   quotas?: QuotaUsage;
   error?: Error;
 }
@@ -224,6 +325,27 @@ export class PermissionDeniedError extends MultiProjectManagerError {
   }
 }
 
+/**
+ * Raised when the IAM permission check could not be completed.
+ *
+ * This is explicitly NOT `PermissionDeniedError`: IAM never said "no", we
+ * simply failed to obtain an answer. Both outcomes deny the operation
+ * (fail-closed), but they are separate types so that callers, operators and
+ * alerting can tell a genuine authorization failure apart from an
+ * infrastructure/auth fault that needs fixing.
+ */
+export class PermissionCheckFailedError extends MultiProjectManagerError {
+  constructor(projectId: string, operation: string, reason: string, cause?: unknown) {
+    super(
+      `Unable to verify permissions for operation '${operation}' on project ${projectId}: ${reason}. Denying access (fail-closed).`,
+      'PERMISSION_CHECK_FAILED',
+      projectId,
+      { operation, reason, cause }
+    );
+    this.name = 'PermissionCheckFailedError';
+  }
+}
+
 export class QuotaExceededError extends MultiProjectManagerError {
   constructor(projectId: string, quotaType: string, current: number, limit: number) {
     super(
@@ -233,6 +355,28 @@ export class QuotaExceededError extends MultiProjectManagerError {
       { quotaType, current, limit }
     );
   }
+}
+
+/**
+ * A cached, genuinely-verified IAM answer for one project.
+ */
+interface VerifiedPermissionCacheEntry {
+  /** Permissions IAM confirmed as held. */
+  granted: Set<string>;
+  /** Permissions IAM confirmed as NOT held. */
+  denied: Set<string>;
+  expiresAt: Date;
+}
+
+/** Credentials used to authenticate the IAM permission check for a project. */
+interface ProjectAuthConfig {
+  keyFilename?: string;
+  credentials?: Record<string, unknown>;
+}
+
+/** Shape of the Resource Manager testIamPermissions response body. */
+interface TestIamPermissionsResponse {
+  permissions?: string[];
 }
 
 /**
@@ -253,11 +397,43 @@ export class MultiProjectManager extends EventEmitter {
   private discoveryInterval?: NodeJS.Timeout;
   private isShuttingDown = false;
 
-  // Permission validation cache
-  private permissionCache: Map<string, PermissionValidationResult> = new Map();
+  /**
+   * Cache of *verified* IAM answers only.
+   *
+   * Both `granted` and `denied` are facts returned by IAM, so both are safe to
+   * cache. Failed checks (`unverified`) and skipped checks (`disabled`) are
+   * NEVER written here - caching a non-answer would let a transient outage
+   * masquerade as a durable authorization decision.
+   */
+  private permissionCache: Map<string, VerifiedPermissionCacheEntry> = new Map();
+
+  /**
+   * Per-project credentials used to build the IAM auth client. Held separately
+   * from ProjectContext so credentials are not exposed on the public context
+   * object returned by getProjectContext()/listProjects().
+   */
+  private projectAuthConfigs: Map<string, ProjectAuthConfig> = new Map();
+
+  /** Lazily constructed, per-project GoogleAuth clients for IAM calls. */
+  private authClients: Map<string, GoogleAuth> = new Map();
 
   // Quota tracking
   private quotaResetInterval?: NodeJS.Timeout;
+
+  /**
+   * Lifecycle events raised while the constructor is still running.
+   *
+   * `initialize()` runs from the constructor, so anything emitted there
+   * synchronously is unobservable - a caller cannot attach a listener until
+   * `new MultiProjectManager(...)` has already returned, by which point the
+   * event has been and gone. Construction-time events are therefore buffered
+   * here and flushed on the next microtask, once the caller has had a chance
+   * to subscribe.
+   *
+   * Non-null only during construction; `emitLifecycle` emits directly at any
+   * other time (e.g. `initializeProject` called later via `addProject`).
+   */
+  private pendingLifecycleEvents: Array<{ event: string; payload: unknown }> | null = null;
 
   constructor(config: MultiProjectManagerConfig) {
     super();
@@ -301,11 +477,47 @@ export class MultiProjectManager extends EventEmitter {
   }
 
   /**
+   * Emit a lifecycle event, buffering it when we are still inside the
+   * constructor. See `pendingLifecycleEvents`.
+   */
+  private emitLifecycle(event: string, payload: unknown): void {
+    if (this.pendingLifecycleEvents) {
+      this.pendingLifecycleEvents.push({ event, payload });
+      return;
+    }
+
+    this.emit(event, payload);
+  }
+
+  /**
+   * Deliver every buffered construction-time event on the next microtask, by
+   * which point the caller holds the instance and can have subscribed.
+   */
+  private flushLifecycleEvents(): void {
+    const pending = this.pendingLifecycleEvents;
+    this.pendingLifecycleEvents = null;
+
+    if (!pending || pending.length === 0) return;
+
+    queueMicrotask(() => {
+      for (const { event, payload } of pending) {
+        this.emit(event, payload);
+      }
+    });
+  }
+
+  /**
    * Initialize all configured projects
+   *
+   * Project setup itself stays synchronous - `listProjects()` must be usable
+   * the instant the constructor returns - but the lifecycle events it raises
+   * are deferred so they are actually observable.
    */
   private initialize(): void {
+    this.pendingLifecycleEvents = [];
+
     try {
-      this.emit('initialization:started', {
+      this.emitLifecycle('initialization:started', {
         projectCount: this.config.projects.length,
       });
 
@@ -320,7 +532,7 @@ export class MultiProjectManager extends EventEmitter {
         } catch (err) {
           failureCount++;
           const projectId = this.config.projects[index].projectId;
-          this.emit('project:initialization:failed', {
+          this.emitLifecycle('project:initialization:failed', {
             projectId,
             error: err instanceof Error ? err : new Error(String(err)),
           });
@@ -340,13 +552,16 @@ export class MultiProjectManager extends EventEmitter {
       // Start quota reset interval (daily)
       this.startQuotaResetInterval();
 
-      this.emit('initialization:completed', {
+      this.emitLifecycle('initialization:completed', {
         successCount,
         failureCount,
         totalProjects: this.config.projects.length,
       });
+
+      this.flushLifecycleEvents();
     } catch (error) {
-      this.emit('initialization:error', error);
+      this.emitLifecycle('initialization:error', error);
+      this.flushLifecycleEvents();
       throw new MultiProjectManagerError(
         'Failed to initialize multi-project manager',
         'INITIALIZATION_ERROR',
@@ -436,10 +651,17 @@ export class MultiProjectManager extends EventEmitter {
       // Setup event forwarding
       this.setupProjectEventHandlers(context);
 
+      // Retain credentials for IAM permission checks (kept off ProjectContext
+      // so they are not handed out by getProjectContext()/listProjects()).
+      this.projectAuthConfigs.set(projectId, {
+        keyFilename: projectConfig.keyFilename,
+        credentials: projectConfig.credentials,
+      });
+
       // Store project context
       this.projects.set(projectId, context);
 
-      this.emit('project:initialized', { projectId });
+      this.emitLifecycle('project:initialized', { projectId });
     } catch (error) {
       throw new MultiProjectManagerError(
         `Failed to initialize project ${projectId}`,
@@ -492,6 +714,7 @@ export class MultiProjectManager extends EventEmitter {
           accessible: false,
           datasets: [],
           permissions: [],
+          permissionStatus: 'unverified',
           error: result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
         };
       }
@@ -515,8 +738,11 @@ export class MultiProjectManager extends EventEmitter {
       // List all datasets
       const datasets = await client.listDatasets(projectId);
 
-      // Check permissions
-      const permissions = await this.getProjectPermissions(projectId);
+      // Check permissions against IAM. A failed permission check does not make
+      // the project inaccessible (dataset listing already succeeded) but the
+      // status is surfaced so callers never read the empty `permissions` array
+      // as "verified to hold nothing".
+      const outcome = await this.getProjectPermissions(projectId);
 
       // Get quota information
       const quotas = context.quotaUsage;
@@ -525,7 +751,9 @@ export class MultiProjectManager extends EventEmitter {
         projectId,
         accessible: true,
         datasets,
-        permissions,
+        permissions: outcome.granted,
+        permissionStatus: outcome.status,
+        permissionError: outcome.error,
         quotas,
       };
     } catch (error) {
@@ -534,94 +762,296 @@ export class MultiProjectManager extends EventEmitter {
         accessible: false,
         datasets: [],
         permissions: [],
+        permissionStatus: 'unverified',
         error: error as Error,
       };
     }
   }
 
   /**
-   * Get permissions for a project
+   * Build (and memoise) the auth client used for a project's IAM checks.
+   *
+   * Exposed as a protected seam so tests can supply a stub instead of reaching
+   * the network. Production code always gets a real GoogleAuth.
    */
-  private async getProjectPermissions(projectId: string): Promise<string[]> {
-    if (!this.config.permissionValidation.enabled) {
-      return [];
+  protected getAuthClient(projectId: string): GoogleAuth {
+    const existing = this.authClients.get(projectId);
+    if (existing) return existing;
+
+    const authConfig = this.projectAuthConfigs.get(projectId) ?? {};
+
+    const auth = new GoogleAuth({
+      projectId,
+      scopes: [IAM_TEST_SCOPE],
+      ...(authConfig.keyFilename ? { keyFilename: authConfig.keyFilename } : {}),
+      ...(authConfig.credentials
+        ? { credentials: authConfig.credentials as Record<string, string> }
+        : {}),
+    });
+
+    this.authClients.set(projectId, auth);
+    return auth;
+  }
+
+  /**
+   * Perform a REAL IAM permission check via Cloud Resource Manager v3
+   * `projects.testIamPermissions`.
+   *
+   * Returns exactly the subset of `permissions` that IAM confirms the calling
+   * principal holds. Nothing is inferred: a permission absent from the response
+   * is treated as not held.
+   *
+   * Throws on any failure to obtain an answer - callers translate that into an
+   * `unverified` outcome and deny.
+   *
+   * Protected so tests can exercise callers without network access.
+   */
+  protected async testIamPermissions(projectId: string, permissions: string[]): Promise<string[]> {
+    if (!PROJECT_ID_PATTERN.test(projectId)) {
+      throw new MultiProjectManagerError(
+        `Refusing to build an IAM request for malformed project ID: ${projectId}`,
+        'INVALID_PROJECT_ID',
+        projectId
+      );
     }
 
-    // Check cache
-    const cacheKey = `permissions:${projectId}`;
-    const cached = this.permissionCache.get(cacheKey);
+    const auth = this.getAuthClient(projectId);
+    const url = `${RESOURCE_MANAGER_BASE_URL}/projects/${encodeURIComponent(projectId)}:testIamPermissions`;
 
-    if (cached && new Date() < cached.expiresAt) {
-      this.emit('permission:cache:hit', { projectId });
-      return cached.permissions;
-    }
+    // Resource Manager caps each request at 100 permissions.
+    const granted = new Set<string>();
+    for (let i = 0; i < permissions.length; i += MAX_PERMISSIONS_PER_IAM_REQUEST) {
+      const batch = permissions.slice(i, i + MAX_PERMISSIONS_PER_IAM_REQUEST);
 
-    // Fetch from BigQuery (simplified - in production use IAM API)
-    try {
-      const context = this.getProjectContext(projectId);
-      const client = await context.connectionPool.acquire();
-
-      // Test basic permissions with dry run
-      await client.createQueryJob({
-        query: 'SELECT 1',
-        dryRun: true,
+      const response = await auth.request<TestIamPermissionsResponse>({
+        url,
+        method: 'POST',
+        data: { permissions: batch },
       });
 
-      const permissions = ['bigquery.jobs.create', 'bigquery.datasets.get', 'bigquery.tables.list'];
+      // An omitted `permissions` field means "none of them" - that is a real
+      // answer, not a missing one, so it maps to an empty granted set.
+      for (const permission of response.data?.permissions ?? []) {
+        // Defensive: only accept permissions we actually asked about.
+        if (batch.includes(permission)) {
+          granted.add(permission);
+        }
+      }
+    }
 
-      // Cache results
-      if (this.config.permissionValidation.cacheValidationResults) {
-        const result: PermissionValidationResult = {
-          hasAccess: true,
-          permissions,
-          validatedAt: new Date(),
-          expiresAt: new Date(Date.now() + this.config.permissionValidation.validationTTLMs),
+    return Array.from(granted);
+  }
+
+  /**
+   * Determine which of `permissions` the caller holds on a project.
+   *
+   * Returns a three-state outcome - `verified`, `unverified` or `disabled` -
+   * so that "IAM said no", "we could not ask IAM" and "checking is switched
+   * off" are never conflated. `granted` is only ever non-empty for a
+   * `verified` outcome.
+   *
+   * Only verified answers are cached; failures and skipped checks are not.
+   */
+  private async getProjectPermissions(
+    projectId: string,
+    permissions: readonly string[] = DEFAULT_BIGQUERY_PROBE_PERMISSIONS
+  ): Promise<PermissionCheckOutcome> {
+    const requested = Array.from(new Set(permissions));
+    const now = new Date();
+
+    // ---- State 3: validation switched off in configuration -----------------
+    if (!this.config.permissionValidation.enabled) {
+      return {
+        status: 'disabled',
+        requested,
+        granted: [],
+        denied: [],
+        verified: false,
+        checkedAt: now,
+        fromCache: false,
+        reason: 'Permission validation is disabled in configuration; no check was performed.',
+      };
+    }
+
+    // ---- Cache: only ever holds verified answers ---------------------------
+    const cached = this.permissionCache.get(projectId);
+    const cacheUsable = cached !== undefined && now < cached.expiresAt;
+
+    if (cacheUsable) {
+      const allKnown = requested.every(
+        (perm) => cached.granted.has(perm) || cached.denied.has(perm)
+      );
+
+      if (allKnown) {
+        this.emit('permission:cache:hit', { projectId, requested });
+        return {
+          status: 'verified',
+          requested,
+          granted: requested.filter((perm) => cached.granted.has(perm)),
+          denied: requested.filter((perm) => cached.denied.has(perm)),
+          verified: true,
+          checkedAt: now,
+          expiresAt: cached.expiresAt,
+          fromCache: true,
         };
-        this.permissionCache.set(cacheKey, result);
+      }
+    }
+
+    // ---- Real IAM call -----------------------------------------------------
+    try {
+      const grantedList = await this.testIamPermissions(projectId, requested);
+      const grantedSet = new Set(grantedList);
+      const denied = requested.filter((perm) => !grantedSet.has(perm));
+      const expiresAt = new Date(Date.now() + this.config.permissionValidation.validationTTLMs);
+
+      // Cache the verified answer (both grants and denials are facts).
+      if (this.config.permissionValidation.cacheValidationResults) {
+        const entry: VerifiedPermissionCacheEntry =
+          cacheUsable && cached
+            ? cached
+            : { granted: new Set<string>(), denied: new Set<string>(), expiresAt };
+
+        for (const perm of requested) {
+          if (grantedSet.has(perm)) {
+            entry.granted.add(perm);
+            entry.denied.delete(perm);
+          } else {
+            entry.denied.add(perm);
+            entry.granted.delete(perm);
+          }
+        }
+        entry.expiresAt = expiresAt;
+        this.permissionCache.set(projectId, entry);
       }
 
-      context.connectionPool.release(client);
-      return permissions;
-    } catch (error) {
-      this.emit('permission:check:failed', { projectId, error });
-      return [];
+      this.emit('permission:check:completed', {
+        projectId,
+        granted: grantedList,
+        denied,
+      });
+
+      return {
+        status: 'verified',
+        requested,
+        granted: requested.filter((perm) => grantedSet.has(perm)),
+        denied,
+        verified: true,
+        checkedAt: new Date(),
+        expiresAt,
+        fromCache: false,
+      };
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+
+      // Deliberately NOT cached: a transient failure must not become a
+      // durable authorization decision, in either direction.
+      this.emit('permission:check:failed', { projectId, requested, error });
+
+      return {
+        status: 'unverified',
+        requested,
+        granted: [],
+        denied: [],
+        verified: false,
+        checkedAt: new Date(),
+        fromCache: false,
+        reason: `IAM permission check failed: ${error.message}`,
+        error,
+      };
     }
   }
 
   /**
-   * Validate permissions for specific operation
+   * Validate that the caller holds `requiredPermissions` on a project.
+   *
+   * Fail-closed semantics:
+   * - IAM answered and a permission is missing -> `PermissionDeniedError`.
+   * - IAM could not be reached / errored        -> `PermissionCheckFailedError`.
+   * - `requiredPermissions` is empty            -> `PermissionCheckFailedError`
+   *   (an empty requirement list would otherwise vacuously "pass").
+   *
+   * The single non-denying path is `permissionValidation.enabled === false`,
+   * which is an explicit operator opt-out rather than a silent failure. Even
+   * then the returned result carries `verified: false`, `status: 'disabled'`
+   * and an empty `permissions` array - the manager never claims a permission
+   * it has not confirmed.
    */
   public async validatePermission(
     projectId: string,
     operation: string,
     requiredPermissions: string[]
   ): Promise<PermissionValidationResult> {
+    const validatedAt = new Date();
+    const expiresAt = new Date(
+      validatedAt.getTime() + this.config.permissionValidation.validationTTLMs
+    );
+
     if (!this.config.permissionValidation.enabled) {
       return {
         hasAccess: true,
-        permissions: requiredPermissions,
-        validatedAt: new Date(),
-        expiresAt: new Date(Date.now() + this.config.permissionValidation.validationTTLMs),
+        status: 'disabled',
+        verified: false,
+        // Intentionally empty: nothing was verified, so nothing is asserted.
+        permissions: [],
+        validatedAt,
+        expiresAt,
+        reason:
+          'Permission validation is disabled in configuration. Access was NOT verified against IAM.',
       };
     }
 
-    const projectPermissions = await this.getProjectPermissions(projectId);
-    const missingPermissions = requiredPermissions.filter(
-      (perm) => !projectPermissions.includes(perm)
-    );
+    // An empty requirement set must not vacuously grant access.
+    if (requiredPermissions.length === 0) {
+      throw new PermissionCheckFailedError(
+        projectId,
+        operation,
+        'no required permissions were specified'
+      );
+    }
 
-    const hasAccess = missingPermissions.length === 0;
+    const outcome = await this.getProjectPermissions(projectId, requiredPermissions);
 
-    if (!hasAccess) {
+    // Could not obtain an answer from IAM -> deny, but as a distinct error type.
+    if (outcome.status !== 'verified') {
+      throw new PermissionCheckFailedError(
+        projectId,
+        operation,
+        outcome.reason ?? 'permission check did not produce a verified result',
+        outcome.error
+      );
+    }
+
+    const grantedSet = new Set(outcome.granted);
+    const missingPermissions = requiredPermissions.filter((perm) => !grantedSet.has(perm));
+
+    if (missingPermissions.length > 0) {
       throw new PermissionDeniedError(projectId, operation, missingPermissions);
     }
 
     return {
-      hasAccess,
-      permissions: projectPermissions,
-      validatedAt: new Date(),
-      expiresAt: new Date(Date.now() + this.config.permissionValidation.validationTTLMs),
+      hasAccess: true,
+      status: 'verified',
+      verified: true,
+      permissions: outcome.granted,
+      missingPermissions: [],
+      validatedAt,
+      expiresAt: outcome.expiresAt ?? expiresAt,
     };
+  }
+
+  /**
+   * Drop any cached permission answers for a project (or all projects).
+   *
+   * Use after an IAM policy change so stale grants are not honoured for the
+   * remainder of the TTL.
+   */
+  public invalidatePermissionCache(projectId?: string): void {
+    if (projectId) {
+      this.permissionCache.delete(projectId);
+    } else {
+      this.permissionCache.clear();
+    }
+    this.emit('permission:cache:invalidated', { projectId: projectId ?? 'all' });
   }
 
   /**
@@ -836,7 +1266,7 @@ export class MultiProjectManager extends EventEmitter {
     }, this.config.discoveryIntervalMs);
     if (typeof this.discoveryInterval.unref === 'function') this.discoveryInterval.unref();
 
-    this.emit('auto-discovery:started', {
+    this.emitLifecycle('auto-discovery:started', {
       intervalMs: this.config.discoveryIntervalMs,
     });
   }
@@ -947,8 +1377,11 @@ export class MultiProjectManager extends EventEmitter {
     await context.connectionPool.shutdown();
     context.datasetManager.shutdown();
 
-    // Remove from map
+    // Remove from map and drop all permission/auth state for this project
     this.projects.delete(projectId);
+    this.projectAuthConfigs.delete(projectId);
+    this.authClients.delete(projectId);
+    this.permissionCache.delete(projectId);
 
     // Update current project if needed
     if (this.currentProjectId === projectId) {
@@ -961,9 +1394,20 @@ export class MultiProjectManager extends EventEmitter {
 
   /**
    * Enable/disable project
+   *
+   * Deliberately does NOT go through getProjectContext(): that helper rejects
+   * projects which are already disabled, which made disabling a project a
+   * one-way door - re-enabling it threw PROJECT_DISABLED. Lifecycle management
+   * has to be able to address a disabled project, so the lookup is done
+   * directly against the project map.
    */
   public setProjectEnabled(projectId: string, enabled: boolean): void {
-    const context = this.getProjectContext(projectId);
+    const context = this.projects.get(projectId);
+
+    if (!context) {
+      throw new ProjectNotFoundError(projectId);
+    }
+
     context.enabled = enabled;
 
     this.emit('project:status:changed', {
@@ -1021,6 +1465,8 @@ export class MultiProjectManager extends EventEmitter {
     // Clear caches
     this.projects.clear();
     this.permissionCache.clear();
+    this.projectAuthConfigs.clear();
+    this.authClients.clear();
 
     this.emit('shutdown:completed');
   }

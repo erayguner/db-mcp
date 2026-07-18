@@ -4,13 +4,14 @@ import { BigQueryClient } from '../../src/bigquery/client.js';
 // Mock BigQueryClient
 jest.mock('../../src/bigquery/client');
 
-describe.skip('QueryOptimizer', () => {
+describe('QueryOptimizer', () => {
   let optimizer: QueryOptimizer;
   let mockClient: jest.Mocked<BigQueryClient>;
 
   beforeEach(() => {
     mockClient = {
       dryRun: jest.fn(),
+      getQueryPlan: jest.fn(),
     } as any;
 
     optimizer = new QueryOptimizer(mockClient, {
@@ -194,10 +195,10 @@ describe.skip('QueryOptimizer', () => {
     });
   });
 
-  describe('analyzeQueryPlan', () => {
+  describe('analyzeQueryShape', () => {
     it('should analyze query complexity', async () => {
       const simpleQuery = 'SELECT * FROM users';
-      const plan1 = await optimizer.analyzeQueryPlan(simpleQuery);
+      const plan1 = await optimizer.analyzeQueryShape(simpleQuery);
 
       expect(plan1.complexity).toBe('simple');
 
@@ -208,23 +209,66 @@ describe.skip('QueryOptimizer', () => {
         GROUP BY u.id
         ORDER BY COUNT(o.id)
       `;
-      const plan2 = await optimizer.analyzeQueryPlan(complexQuery);
+      const plan2 = await optimizer.analyzeQueryShape(complexQuery);
 
       expect(plan2.complexity).toBe('complex');
     });
 
     it('should detect query operations', async () => {
       const query = 'SELECT * FROM users JOIN orders ON users.id = orders.user_id';
-      const plan = await optimizer.analyzeQueryPlan(query);
+      const plan = await optimizer.analyzeQueryShape(query);
 
       expect(plan.hasJoin).toBe(true);
     });
 
     it('should detect aggregations', async () => {
       const query = 'SELECT COUNT(*) FROM users GROUP BY country';
-      const plan = await optimizer.analyzeQueryPlan(query);
+      const plan = await optimizer.analyzeQueryShape(query);
 
       expect(plan.hasAggregation).toBe(true);
+    });
+
+    it('should report only syntactic facts, never fabricated execution counters', () => {
+      // Regression: this used to return a hardcoded single-stage plan with
+      // totalSlotMs/estimatedRows/recordsRead/recordsWritten all pinned to 0,
+      // which generateReport then consumed as if measured. Execution counters
+      // must not be derivable from SQL text.
+      const shape = optimizer.analyzeQueryShape('SELECT * FROM users ORDER BY id');
+
+      expect(Object.keys(shape).sort()).toEqual([
+        'complexity',
+        'hasAggregation',
+        'hasJoin',
+        'hasSort',
+      ]);
+      expect(mockClient.dryRun).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getQueryPlan', () => {
+    it('should return the real plan reported by the job', async () => {
+      const realPlan = {
+        jobId: 'job-abc',
+        stages: [
+          { name: 'S00: Input', status: 'COMPLETE', slotMs: 1200, recordsRead: 5000, steps: [] },
+        ],
+        totalSlotMs: 1200,
+      };
+      mockClient.getQueryPlan.mockResolvedValue(realPlan);
+
+      const plan = await optimizer.getQueryPlan('job-abc');
+
+      expect(mockClient.getQueryPlan).toHaveBeenCalledWith('job-abc');
+      expect(plan).toEqual(realPlan);
+    });
+
+    it('should not invent counters when the job reports no plan', async () => {
+      mockClient.getQueryPlan.mockResolvedValue({ jobId: 'cached-job', stages: [] });
+
+      const plan = await optimizer.getQueryPlan('cached-job');
+
+      expect(plan.stages).toEqual([]);
+      expect(plan.totalSlotMs).toBeUndefined();
     });
   });
 
@@ -242,7 +286,7 @@ describe.skip('QueryOptimizer', () => {
 
       expect(report.validation).toBeDefined();
       expect(report.cost).toBeDefined();
-      expect(report.plan).toBeDefined();
+      expect(report.shape).toBeDefined();
       expect(report.score).toBeGreaterThanOrEqual(0);
       expect(report.score).toBeLessThanOrEqual(100);
     });
