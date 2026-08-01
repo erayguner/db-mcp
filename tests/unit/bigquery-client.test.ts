@@ -219,17 +219,27 @@ describe('BigQueryClient', () => {
   });
 
   describe('dryRun', () => {
+    /**
+     * Real BigQuery resolves `createQueryJob` to `[job, apiResponse]`, and a
+     * dry-run job is never persisted — `job.getMetadata()` issues a `jobs.get`
+     * for an ID that does not exist and throws "Not found: Job …". These mocks
+     * therefore put the statistics on the SECOND array element and leave
+     * `getMetadata` rejecting, so a regression back to `getMetadata()` fails
+     * here instead of only in production.
+     */
+    const dryRunResponse = (totalBytesProcessed: string, extra: Record<string, unknown> = {}) => [
+      mockJob,
+      { statistics: { query: { totalBytesProcessed, ...extra } } },
+    ];
+
+    beforeEach(() => {
+      mockJob.getMetadata.mockRejectedValue(
+        new Error('Not found: Job test-project:US.00000000-0000-0000-0000-000000000000')
+      );
+    });
+
     it('should estimate query cost', async () => {
-      mockJob.getMetadata.mockResolvedValue([
-        {
-          statistics: {
-            query: {
-              totalBytesProcessed: '1250000000000', // 1.25 TB
-            },
-          },
-        },
-      ]);
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
+      mockBQClient.createQueryJob.mockResolvedValue(dryRunResponse('1250000000000')); // 1.25 TB
 
       const result = await client.dryRun('SELECT * FROM large_table');
 
@@ -242,38 +252,37 @@ describe('BigQueryClient', () => {
       );
     });
 
+    it('should not call getMetadata on a dry-run job', async () => {
+      mockBQClient.createQueryJob.mockResolvedValue(dryRunResponse('1250000000000'));
+
+      await expect(client.dryRun('SELECT * FROM large_table')).resolves.toBeDefined();
+
+      expect(mockJob.getMetadata).not.toHaveBeenCalled();
+    });
+
     it('should calculate cost for large query', async () => {
-      mockJob.getMetadata.mockResolvedValue([
-        {
-          statistics: {
-            query: {
-              totalBytesProcessed: '5497558138880', // ~5 TB
-            },
-          },
-        },
-      ]);
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
+      mockBQClient.createQueryJob.mockResolvedValue(dryRunResponse('5497558138880')); // ~5 TB
 
       const result = await client.dryRun('SELECT * FROM huge_table');
 
+      expect(result.totalBytesProcessed).toBe('5497558138880');
       expect(result.estimatedCostUSD).toBeGreaterThan(0);
     });
 
     it('should return zero cost for cached query', async () => {
-      mockJob.getMetadata.mockResolvedValue([
-        {
-          statistics: {
-            query: {
-              totalBytesProcessed: '0',
-              cacheHit: true,
-            },
-          },
-        },
-      ]);
-      mockBQClient.createQueryJob.mockResolvedValue([mockJob]);
+      mockBQClient.createQueryJob.mockResolvedValue(dryRunResponse('0', { cacheHit: true }));
 
       const result = await client.dryRun('SELECT 1');
 
+      expect(result.estimatedCostUSD).toBe(0);
+    });
+
+    it('should default to zero bytes when the API response carries no statistics', async () => {
+      mockBQClient.createQueryJob.mockResolvedValue([mockJob, {}]);
+
+      const result = await client.dryRun('SELECT 1');
+
+      expect(result.totalBytesProcessed).toBe('0');
       expect(result.estimatedCostUSD).toBe(0);
     });
   });

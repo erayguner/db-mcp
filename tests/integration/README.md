@@ -369,7 +369,7 @@ When adding new integration tests:
 
 ## Related Documentation
 
-- [BigQuery Client Documentation](../../src/bigquery/README.md)
-- [Connection Pool Architecture](../../docs/connection-pool.md)
-- [Workload Identity Federation Guide](../../docs/wif-setup.md)
-- [Performance Tuning](../../docs/performance.md)
+- [BigQuery Client Documentation](../../README.md)
+- [Connection Pool Architecture](../../docs/explanation/connection-pooling-design.md)
+- [Workload Identity Federation Guide](../../docs/how-to/deploy-with-terraform.md)
+- [Performance Tuning](../../docs/how-to/set-up-monitoring-and-alerts.md)

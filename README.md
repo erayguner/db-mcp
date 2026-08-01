@@ -49,7 +49,7 @@ db-mcp/
 ├── tests/                     # Unit, integration, and performance tests
 ├── terraform/                 # Infrastructure as Code
 │   └── modules/               # Reusable Terraform modules
-├── docs/                      # Comprehensive documentation
+├── docs/                      # Documentation (Diátaxis: tutorials/how-to/reference/explanation)
 ├── scripts/                   # Deployment and utility scripts
 ├── examples/                  # Usage examples
 ├── .github/workflows/         # CI/CD automation
@@ -75,12 +75,15 @@ db-mcp/
 
 ## Quick Start
 
+> **First time here?** [Tutorial 1](docs/tutorials/01-run-the-server-locally.md) walks you from a fresh clone to a
+> working MCP conversation in about ten minutes, and needs **no Google Cloud account**.
+
 ### Prerequisites
 
-- GCP Project with billing enabled
-- Terraform >= 1.5.0
-- Node.js >= 22.0.0
-- Docker (for containerization)
+- Node.js >= 22.0.0 — required for everything below
+- GCP Project with billing enabled — only for querying real data
+- Terraform >= 1.5.0 — only for deployment
+- Docker — only for containerization
 
 ### Installation
 
@@ -94,6 +97,9 @@ cp .env.example .env
 # Build the project
 npm run build
 ```
+
+`GCP_PROJECT_ID` is the one required setting; the server exits with `Invalid environment configuration` without it. See
+[environment variables](docs/reference/environment-variables.md) for the rest.
 
 ### Local Development
 
@@ -177,23 +183,33 @@ BigQuery API
 
 ## Documentation
 
-| Document                                                             | Description                                                         |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [Usage Guide](docs/USAGE-GUIDE.md)                                   | Complete guide for local dev, testing, and production               |
-| [Gemini Enterprise Deployment](docs/GEMINI-ENTERPRISE-DEPLOYMENT.md) | Runbook for registering as a Gemini Enterprise custom MCP connector |
-| [MCP Compliance](docs/MCP-COMPLIANCE.md)                             | MCP 2025-11-25 spec compliance matrix and gap implementations       |
-| [Architecture](docs/architecture/)                                   | System design and component documentation                           |
-| [Security](docs/SECURITY.md)                                         | Security middleware and best practices                              |
-| [WIF Guide](docs/wif-architecture.md)                                | Workload Identity Federation details                                |
-| [Deployment](docs/wif-deployment-guide.md)                           | Full production deployment guide                                    |
-| [Docker](docs/DOCKER-DEPLOYMENT.md)                                  | Container configuration                                             |
-| [Monitoring](docs/MONITORING-GUIDE.md)                               | Observability setup                                                 |
-| [Documentation Index](docs/README.md)                                | Complete documentation map                                          |
+Documentation is organised with [Diátaxis](https://diataxis.fr/) — start with
+**[the documentation index](docs/README.md)**, or go straight to the section that matches what you are doing:
+
+| Section                             | For                                                                                                                               |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 📚 [Tutorials](docs/tutorials/)     | Learning the server by using it. Start at [Tutorial 1](docs/tutorials/01-run-the-server-locally.md) — 10 minutes, no GCP account. |
+| 🔧 [How-to guides](docs/how-to/)    | Accomplishing a specific task: deploy, configure a tenant, mask columns, troubleshoot.                                            |
+| 📖 [Reference](docs/reference/)     | Looking things up: tool schemas, environment variables, HTTP endpoints.                                                           |
+| 💡 [Explanation](docs/explanation/) | Understanding the design: architecture, WIF, security model, trade-offs.                                                          |
+
+Most-used pages:
+
+| Document                                                                           | Description                                                |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [Tutorial 1 — Run the server locally](docs/tutorials/01-run-the-server-locally.md) | First contact: build it, start it, list its tools.         |
+| [MCP tools reference](docs/reference/mcp-tools.md)                                 | Every tool's input schema, output shapes, and annotations. |
+| [Environment variables](docs/reference/environment-variables.md)                   | Every variable, its default, and the ones read by nothing. |
+| [Deploy with Terraform](docs/how-to/deploy-with-terraform.md)                      | Full production deployment.                                |
+| [Register with Gemini Enterprise](docs/how-to/register-with-gemini-enterprise.md)  | Custom MCP connector registration runbook.                 |
+| [Troubleshoot the server](docs/how-to/troubleshoot-the-server.md)                  | Startup, request, BigQuery and policy failures.            |
+| [Architecture](docs/explanation/architecture/)                                     | System design, component documentation, ADRs.              |
+| [MCP compliance matrix](docs/reference/mcp-compliance-matrix.md)                   | MCP 2025-11-25 spec coverage and gap implementations.      |
 
 ## Testing
 
 ```bash
-# Run all tests — 68 suites, 871 tests, none skipped
+# Run all tests — 69 suites, 891 tests, none skipped
 npm test
 
 # Run specific test suites
@@ -212,8 +228,8 @@ npm run test:watch
 ```
 
 Timing-sensitive assertions are gated behind `PERF_TIMING_ASSERTIONS=true`, set only by `npm run test:performance`, so
-ordinary runs measure timing budgets without enforcing them. See [LOCAL-TESTING.md](docs/LOCAL-TESTING.md) for the
-coverage floors.
+ordinary runs measure timing budgets without enforcing them. See
+[how to run the test suite](docs/how-to/run-the-test-suite.md) for the coverage floors.
 
 ## Development Commands
 

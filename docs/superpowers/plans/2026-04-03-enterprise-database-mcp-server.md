@@ -57,7 +57,7 @@ The existing codebase at `/Users/eray/db-mcp` already provides:
 
 ### New Files to Create
 
-```
+```text
 src/
   auth/
     oidc-authenticator.ts       # Generic OIDC token validation with JWKS caching
@@ -98,7 +98,7 @@ tests/
 
 ### Existing Files to Modify
 
-```
+```text
 src/index.ts                        # Wire auth middleware, tenant context, HTTP transport
 src/mcp/server-factory.ts           # Add HTTP transport support
 src/mcp/handlers/tool-handlers.ts   # Inject tenant context, enforce dataset policies
@@ -2296,7 +2296,7 @@ After completing all tasks above, the system provides:
 
 ### Architecture
 
-```
+```text
 Customer Agent (Claude/Gemini/Custom)
        │
        │ HTTPS + Bearer Token

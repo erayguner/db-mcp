@@ -23,4 +23,4 @@ public disclosure.
 - Secrets are never committed to the repository.
 - Dependencies are monitored via Dependabot and MegaLinter.
 - Container images are scanned with Trivy on every PR.
-- See [docs/security-architecture.md](docs/security-architecture.md) for the full security architecture.
+- See [docs/security-architecture.md](docs/explanation/security-layers.md) for the full security architecture.

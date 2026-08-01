@@ -1,177 +1,135 @@
-# MCP BigQuery Server Documentation
+# MCP BigQuery Server — documentation
 
-## Overview
+An enterprise MCP server for Google Cloud BigQuery, with keyless authentication via Workload Identity Federation.
 
-This directory contains documentation for the MCP BigQuery Server - an enterprise-grade Model Context Protocol server
-for Google Cloud BigQuery with Workload Identity Federation.
+This documentation follows [Diátaxis](https://diataxis.fr/). Four sections, four different needs — pick the one that
+matches what you are doing right now.
 
----
-
-## Getting Started
-
-### [USAGE-GUIDE.md](./USAGE-GUIDE.md)
-
-Complete usage guide covering local development, testing, and production deployment. **Start here** if you want to use
-the server.
-
-### [GEMINI-ENTERPRISE-DEPLOYMENT.md](./GEMINI-ENTERPRISE-DEPLOYMENT.md)
-
-Runbook for registering this server as a custom MCP connector in Gemini Enterprise. Covers OAuth 2.0 discovery, strict
-Streamable HTTP, the Vertex AI Search redirect URI, and the cost-elicitation gate.
-
-### [MCP-COMPLIANCE.md](./MCP-COMPLIANCE.md)
-
-MCP 2025-06-18 spec compliance matrix, gap implementations, and the native feature catalogue (tools, resources, resource
-templates, prompts, elicitation).
+|                           | Learning                                         | Working                                           |
+| ------------------------- | ------------------------------------------------ | ------------------------------------------------- |
+| **Practical steps**       | 📚 [Tutorials](tutorials/)<br>Get to know it     | 🔧 [How-to guides](how-to/)<br>Get something done |
+| **Theoretical knowledge** | 💡 [Explanation](explanation/)<br>Understand why | 📖 [Reference](reference/)<br>Look something up   |
 
 ---
 
-## Architecture
+## Start here
 
-### [architecture/](./architecture/)
+**New to this server?** → [Tutorial 1 — Run the server and talk to it](tutorials/01-run-the-server-locally.md)
 
-Modular architecture documentation:
+Ten minutes, no Google Cloud account, and you will have held a complete MCP conversation with it.
 
-- [System Overview](./architecture/01-system-overview.md)
-- [Component Architecture](./architecture/02-component-architecture.md)
-- [Data Flow](./architecture/03-data-flow.md)
-- [Security Architecture](./architecture/04-security-architecture.md)
-- [Error Handling](./architecture/05-error-handling.md)
-- [Observability](./architecture/06-observability.md)
-- [Scalability](./architecture/07-scalability.md)
-- [Disaster Recovery](./architecture/08-disaster-recovery.md)
+**Know what you need?** Jump to the task:
 
-### [connection-pooling-design.md](./connection-pooling-design.md)
-
-BigQuery connection pool design and implementation.
-
----
-
-## Security
-
-### [SECURITY.md](./SECURITY.md)
-
-Security middleware implementation including rate limiting, injection detection, and data redaction.
-
-### [wif-architecture.md](./wif-architecture.md)
-
-Workload Identity Federation architecture and keyless authentication.
-
-### [wif-security-guide.md](./wif-security-guide.md)
-
-WIF security best practices and token lifecycle management.
-
-### [security-architecture.md](./security-architecture.md)
-
-Security design patterns and implementation details.
-
-### [authentication-guide.md](./authentication-guide.md)
-
-Authentication methods and configuration.
+| I want to…                             | Go to                                                                                   |
+| -------------------------------------- | --------------------------------------------------------------------------------------- |
+| Run it locally                         | [Tutorial 1](tutorials/01-run-the-server-locally.md)                                    |
+| Run it as a web service                | [Tutorial 2](tutorials/02-serve-over-http.md)                                           |
+| Connect it to my own BigQuery project  | [Tutorial 3](tutorials/03-query-your-own-data.md)                                       |
+| Restrict what a caller can see         | [Configure a tenant](how-to/configure-a-tenant.md)                                      |
+| Hide PII from the model                | [Mask sensitive columns](how-to/mask-sensitive-columns.md)                              |
+| Stop runaway query costs               | [Tune the cost guardrail](how-to/tune-the-cost-guardrail.md)                            |
+| Require authentication                 | [Enable OIDC authentication](how-to/enable-oidc-authentication.md)                      |
+| Deploy to Cloud Run                    | [Deploy with Terraform](how-to/deploy-with-terraform.md)                                |
+| Use it from Gemini Enterprise          | [Register with Gemini Enterprise](how-to/register-with-gemini-enterprise.md)            |
+| Set up dashboards and alerts           | [Set up monitoring and alerts](how-to/set-up-monitoring-and-alerts.md)                  |
+| Work out why something is broken       | [Troubleshoot the server](how-to/troubleshoot-the-server.md)                            |
+| Know what a tool accepts and returns   | [MCP tools](reference/mcp-tools.md)                                                     |
+| Know what an environment variable does | [Environment variables](reference/environment-variables.md)                             |
+| Understand the keyless auth design     | [About Workload Identity Federation](explanation/about-workload-identity-federation.md) |
 
 ---
 
-## Multi-Tenancy
+## 📚 [Tutorials](tutorials/)
 
-### Tenant Configuration
+Lessons that teach the server by using it. Take them in order.
 
-Per-tenant dataset access policies with YAML-based configuration. See `src/config/tenants.yaml` for the default config
-format.
+1. [Run the server and talk to it](tutorials/01-run-the-server-locally.md) — stdio, no credentials needed
+2. [Serve the same server over HTTP](tutorials/02-serve-over-http.md) — health, metrics, `POST /mcp`
+3. [Query your own BigQuery data](tutorials/03-query-your-own-data.md) — real data, dry runs, the cost gate
 
-**Key features:**
+## 🔧 [How-to guides](how-to/)
 
-- Dataset allowlist/denylist per tenant
-- Write-mode controls (blocked/protected/allowed)
-- Per-tenant rate limiting
-- OIDC subject pattern matching for automatic tenant resolution
-- Hot-reloadable configuration via file watching
+Directions for a specific goal.
 
-### Implementation Plan
+**Configure** — [tenants](how-to/configure-a-tenant.md) · [column masking](how-to/mask-sensitive-columns.md) ·
+[cost guardrail](how-to/tune-the-cost-guardrail.md) · [OIDC](how-to/enable-oidc-authentication.md)
 
-See [Enterprise Database MCP Server Plan](./superpowers/plans/2026-04-03-enterprise-database-mcp-server.md) for the full
-architecture and implementation details.
+**Deploy** — [container](how-to/build-and-run-the-container.md) · [Terraform](how-to/deploy-with-terraform.md) ·
+[Gemini Enterprise](how-to/register-with-gemini-enterprise.md)
 
----
+**Operate** — [monitoring](how-to/set-up-monitoring-and-alerts.md) ·
+[troubleshooting](how-to/troubleshoot-the-server.md)
 
-## Deployment
+**Query** — [dataset discovery](how-to/discover-datasets.md) · [multiple projects](how-to/query-multiple-projects.md)
 
-### [wif-deployment-guide.md](./wif-deployment-guide.md)
+**Develop** — [test suite](how-to/run-the-test-suite.md)
 
-Step-by-step deployment guide for Workload Identity Federation.
+## 📖 [Reference](reference/)
 
-### [DOCKER-DEPLOYMENT.md](./DOCKER-DEPLOYMENT.md)
+Authoritative descriptions, derived from source.
 
-Docker containerization and Cloud Run deployment.
+**MCP** — [tools](reference/mcp-tools.md) · [resources](reference/mcp-resources.md) ·
+[prompts](reference/mcp-prompts.md) · [compliance matrix](reference/mcp-compliance-matrix.md)
 
-### [LOCAL-TESTING.md](./LOCAL-TESTING.md)
+**Configuration** — [environment variables](reference/environment-variables.md) ·
+[tenant configuration](reference/tenant-configuration.md) · [npm scripts](reference/npm-scripts.md)
 
-Local development and testing setup.
+**Runtime** — [HTTP endpoints](reference/http-endpoints.md) ·
+[health and readiness probes](reference/health-and-readiness-probes.md)
 
----
+## 💡 [Explanation](explanation/)
 
-## Monitoring
+Why it is built this way.
 
-### [MONITORING-GUIDE.md](./MONITORING-GUIDE.md)
+**Architecture** — [the nine-part set](explanation/architecture/), from system overview to disaster recovery
 
-OpenTelemetry instrumentation, alerts, and dashboards.
+**Identity** — [Workload Identity Federation](explanation/about-workload-identity-federation.md) ·
+[authentication](explanation/about-authentication.md) · [WIF security model](explanation/wif-security-model.md)
 
-### [health-monitoring.md](./health-monitoring.md)
+**Security** — [the middleware](explanation/about-security.md) · [defence layers](explanation/security-layers.md)
 
-Liveness, readiness, and Prometheus endpoints; the readiness registry and probe semantics.
-
----
-
-## Features
-
-### [QUERY_OPTIMIZATION.md](./QUERY_OPTIMIZATION.md)
-
-Query caching, optimization, and cost control.
-
-### [dataset-discovery-guide.md](./dataset-discovery-guide.md)
-
-Cross-project dataset discovery and search.
-
-### [multi-project-manager.md](./multi-project-manager.md)
-
-Multi-project BigQuery management.
-
-### MCP Server Features
-
-- **Prompt Providers** — 5 BigQuery-specific prompt templates for AI clients
-- **Streamable HTTP Transport** — Stateless production transport for Cloud Run (POST `/mcp`)
-- **Progress Notifications** — `notifications/progress` when the client supplies a `_meta.progressToken`
-- **MCP Logging** — `logging/setLevel` plus `notifications/message` for security refusals
-- **Resource Templates** — RFC 6570 parameterized `bigquery://` URIs, including job metadata
-- **Column Masking** — Per-tenant column-level masking, reported in `provenance.maskedColumns`
-- **Tenant-Aware Tool Annotations** — `readOnlyHint` reflects the tenant's write mode
-- **Cost Elicitation Gate** — Confirmation required above a configurable byte threshold
-- **Behavioral Anomaly Detection** — Per-user query pattern baselines
-- **Intelligence Effectiveness Metrics** — Tool call quality tracking
-- **Graceful Degradation** — Circuit breaker with stale cache fallback
+**Performance** — [query optimization and caching](explanation/query-optimization-and-caching.md) ·
+[connection pooling](explanation/connection-pooling-design.md)
 
 ---
 
-## Quick Reference
+## Documentation that lives elsewhere
 
-| Topic               | Document                                                                            |
-| ------------------- | ----------------------------------------------------------------------------------- |
-| Getting started     | [USAGE-GUIDE.md](./USAGE-GUIDE.md)                                                  |
-| Architecture        | [architecture/](./architecture/)                                                    |
-| Security            | [SECURITY.md](./SECURITY.md)                                                        |
-| Deployment          | [wif-deployment-guide.md](./wif-deployment-guide.md)                                |
-| Docker              | [DOCKER-DEPLOYMENT.md](./DOCKER-DEPLOYMENT.md)                                      |
-| Local dev           | [LOCAL-TESTING.md](./LOCAL-TESTING.md)                                              |
-| Monitoring          | [MONITORING-GUIDE.md](./MONITORING-GUIDE.md)                                        |
-| Query optimization  | [QUERY_OPTIMIZATION.md](./QUERY_OPTIMIZATION.md)                                    |
-| Multi-tenancy       | `src/config/tenants.yaml`                                                           |
-| OIDC Auth           | [authentication-guide.md](./authentication-guide.md)                                |
-| Implementation Plan | [Enterprise Plan](./superpowers/plans/2026-04-03-enterprise-database-mcp-server.md) |
+Some documentation sits next to the code it describes:
+
+| Location                           | Contents                                   |
+| ---------------------------------- | ------------------------------------------ |
+| `terraform/README.md`              | Terraform modules, variables, outputs.     |
+| `terraform/environments/README.md` | Per-environment configuration.             |
+| `deployment/README.md`             | Release and rollback procedure.            |
+| `tests/README.md`                  | Test layout and conventions.               |
+| `docs/governance/CONFORMANCE.md`   | Governance framework conformance evidence. |
+| `CONTRIBUTING.md`                  | Contribution workflow.                     |
+| `SECURITY.md`                      | Vulnerability disclosure policy.           |
+| `CHANGELOG.md`                     | Release history.                           |
 
 ---
 
-## External Resources
+## Contributing to these docs
 
-- [Workload Identity Federation Docs](https://cloud.google.com/iam/docs/workload-identity-federation)
-- [BigQuery API Reference](https://cloud.google.com/bigquery/docs/reference)
-- [MCP Protocol Specification](https://modelcontextprotocol.io)
-- [Cloud Run Documentation](https://cloud.google.com/run/docs)
+Each page belongs to exactly one Diátaxis category. Before adding content, decide which need it serves:
+
+| If the reader is…              | Write…      | And avoid…                                  |
+| ------------------------------ | ----------- | ------------------------------------------- |
+| learning by doing              | a tutorial  | choices, alternatives, extended explanation |
+| trying to accomplish something | a how-to    | teaching, completeness for its own sake     |
+| looking something up           | reference   | instruction, opinion, persuasion            |
+| trying to understand           | explanation | step-by-step instructions, API listings     |
+
+Mixing types in one page is the most common way documentation degrades. If a page is doing two jobs, split it.
+
+Verify commands and configuration values against the source before documenting them — the
+[reference index](reference/README.md#where-these-facts-come-from) lists which file is authoritative for each area.
+
+## External resources
+
+- [Model Context Protocol specification](https://modelcontextprotocol.io)
+- [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation)
+- [BigQuery API reference](https://cloud.google.com/bigquery/docs/reference)
+- [Cloud Run documentation](https://cloud.google.com/run/docs)
+- [Diátaxis](https://diataxis.fr/)

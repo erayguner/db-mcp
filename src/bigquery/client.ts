@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { EventEmitter } from 'events';
 import { ConnectionPool } from './connection-pool.js';
 import { DatasetManager, DatasetMetadata, TableMetadata } from './dataset-manager.js';
+import { estimateQueryCostUsd, loadCostElicitationConfig } from '../mcp/tools/annotations.js';
 
 // Google Cloud credentials interface
 export interface BigQueryCredentials {
@@ -358,24 +359,29 @@ export class BigQueryClient extends EventEmitter {
     const client = await this.connectionPool.acquire();
 
     try {
-      const [job] = await client.createQueryJob({
+      // A dry-run job is NEVER persisted by BigQuery, so `job.getMetadata()`
+      // issues a `jobs.get` for an ID that does not exist and throws
+      // "Not found: Job <project>:<location>.<uuid>". The statistics we need are
+      // already in the API response returned alongside the job handle — read
+      // them from there and never call getMetadata() on a dry run.
+      const [, apiResponse] = await client.createQueryJob({
         ...this.config.queryDefaults,
         ...options,
         query,
         dryRun: true,
       });
 
-      const metadataResponse = await job.getMetadata();
-      const metadata = metadataResponse[0] as JobMetadata;
-      const totalBytesProcessed = metadata.statistics?.query?.totalBytesProcessed || '0';
+      const metadata: JobMetadata = apiResponse ?? {};
+      const totalBytesProcessed = metadata.statistics?.query?.totalBytesProcessed ?? '0';
 
-      // BigQuery on-demand pricing: $6.25 per TB (as of 2025)
-      const bytesProcessed = parseInt(totalBytesProcessed);
-      const terabytesProcessed = bytesProcessed / 1024 ** 4;
-      const estimatedCostUSD = terabytesProcessed * 6.25;
+      const bytesProcessed = Number.parseInt(String(totalBytesProcessed), 10) || 0;
+      const estimatedCostUSD = estimateQueryCostUsd(
+        bytesProcessed,
+        loadCostElicitationConfig().usdPerTiB
+      );
 
       return {
-        totalBytesProcessed,
+        totalBytesProcessed: String(totalBytesProcessed),
         estimatedCostUSD,
       };
     } finally {

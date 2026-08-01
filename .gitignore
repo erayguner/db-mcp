@@ -291,3 +291,15 @@ npm_install.log
 # RuVector intelligence data
 .ruvector/
 .claude/statusline.sh
+
+# Codex local configuration
+.codex/
+
+# Claude Flow runtime data
+.claude-flow/data/
+.claude-flow/logs/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
