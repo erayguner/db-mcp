@@ -36,9 +36,9 @@
     "@google-cloud/bigquery": "^8.1.1",
     "@google-cloud/opentelemetry-cloud-monitoring-exporter": "^0.21.0",
     "@google-cloud/opentelemetry-cloud-trace-exporter": "^3.0.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@opentelemetry/api": "^1.9.1",
-    "@opentelemetry/auto-instrumentations-node": "^0.77.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
     "@opentelemetry/core": "^2.8.0",
     "@opentelemetry/exporter-prometheus": "^0.219.0",
     "@opentelemetry/instrumentation": "^0.217.0",
@@ -76,7 +76,7 @@
     "node": ">=22.0.0"
   },
   "overrides": {
-    "fast-uri": "^3.1.2",
+    "fast-uri": "^3.1.5",
     "protobufjs": "^7.6.1",
     "@grpc/grpc-js": "^1.14.4",
     "hono": "^4.12.25"
